@@ -1,4 +1,4 @@
-import { getDevDatabase } from '@/db/dev-database';
+import { getDatabase } from '@/db';
 import { assessAll } from '@/db/queries';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 const ORDER = { strong: 0, worth_considering: 1, conditional: 2, not_recommended: 3 };
 
 export default async function HomePage() {
-  const database = await getDevDatabase();
+  const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
   const { organisation, project, assessed } = await assessAll(database, DEMO_ORG_ID, asOf);
 

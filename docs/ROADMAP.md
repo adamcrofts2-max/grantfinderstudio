@@ -22,6 +22,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Budget validation against funder restrictions
 - [x] Application readiness scoring (completeness, not win probability)
 
+## Deployment
+- [x] Postgres adapter with transaction-local role and tenant context
+- [x] Migration runner, tracked and safe to re-run
+- [x] Environment validation reporting every problem at once
+- [x] Health check endpoint
+- [x] Vercel config with security headers, UK region
+- [ ] Deploy and verify Companies House and 360Giving against their real APIs
+
 ## Phase 2 — Persistence
 - [x] SQL schema covering the MVP tables, with enums and check constraints
 - [x] Migrations (`src/db/migrations`)

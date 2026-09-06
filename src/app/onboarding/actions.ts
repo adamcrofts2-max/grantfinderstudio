@@ -1,6 +1,6 @@
 'use server';
 
-import { withAdmin } from '@/db/dev-database';
+import { withAdmin } from '@/db';
 import { CompaniesHouseClient, describeFailure } from '@/ingestion/companieshouse/client';
 import { looksLikeCompanyNumber } from '@/ingestion/companieshouse/normalise';
 import { EMPTY_SEARCH, type ConfirmState, type SearchState } from './state';

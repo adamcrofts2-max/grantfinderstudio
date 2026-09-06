@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { draftFunderEnquiry } from '@/domain/assessment/enquiry';
 import { assessOpportunity } from '@/domain/assessment/assess';
-import { getDevDatabase } from '@/db/dev-database';
+import { getDatabase } from '@/db';
 import {
   loadAwards,
   loadCriteria,
@@ -30,7 +30,7 @@ export default async function OpportunityPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const database = await getDevDatabase();
+  const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
 
   const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {

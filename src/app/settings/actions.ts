@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { withAdmin } from '@/db/dev-database';
+import { withAdmin } from '@/db';
 import { loadMasterKey, SecretError } from '@/secrets/crypto';
 import {
   checkKeyShape,

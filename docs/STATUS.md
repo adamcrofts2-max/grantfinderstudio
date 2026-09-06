@@ -4,7 +4,7 @@
 
 ## What exists
 
-**477 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**496 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -121,6 +121,15 @@ arrays. The caps now live only in the zod parser.
 - **The test suite takes ~60s** because each isolation test builds a fresh database. That is
   deliberate: sharing a database between tests that deliberately attempt cross-tenant writes
   would let one test's leakage mask another's.
+
+## Deploying
+
+See `docs/DEPLOYMENT.md`. You need a Postgres URL and an encryption key; the two
+API keys are entered in the running app, not as environment variables.
+
+With no `DATABASE_URL` the app runs on PGlite in memory — the same migrations and
+the same RLS policies, but lost on restart. `/api/health` says so plainly rather
+than letting it pass for a real deployment.
 
 ## Next task
 

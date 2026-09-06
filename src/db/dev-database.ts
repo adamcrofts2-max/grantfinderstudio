@@ -14,10 +14,11 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
+// Shared with production so dev, tests and deployment cannot drift apart.
+import { MIGRATIONS } from './migrate.js';
 import { seedDemoData } from '../demo/seed.js';
 import { TenantDatabase, type Queryable, type TransactionCapable } from './client.js';
 
-const MIGRATIONS = ['0001_init.sql', '0002_credentials.sql'] as const;
 
 let instance: Promise<TenantDatabase> | null = null;
 let raw: PGlite | null = null;

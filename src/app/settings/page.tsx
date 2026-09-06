@@ -1,4 +1,4 @@
-import { withAdmin } from '@/db/dev-database';
+import { withAdmin } from '@/db';
 import { readCredentialStatuses } from '@/secrets/store';
 import { KeyForm, type ProviderCopy } from './KeyForm';
 
