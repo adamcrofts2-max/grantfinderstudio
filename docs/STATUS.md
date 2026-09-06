@@ -4,7 +4,7 @@
 
 ## What exists
 
-**339 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**379 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -76,11 +76,27 @@ demonstration CIC, and a detail page showing eligibility per criterion, funder b
 its licence and attribution, effort broken down by driver, and a draft enquiry when something
 is unresolved. Demo data is fictional and the interface says so on every page.
 
+### Phase 7 — the AI layer (foundation)
+Provider abstraction (`claude-opus-5`, adaptive thinking, structured outputs), untrusted-content
+fencing, a schema-validated runner, and the Extractor agent. Tested against scripted providers,
+so the guarantees are verified without spending a token.
+
+Three properties are enforced structurally rather than by prompting alone:
+- **No vendor SDK outside `src/ai/providers`.** Everything else depends on an interface.
+- **Extraction can only produce unconfirmed facts.** `confirmedBy` is hard-coded null in
+  `toCandidateFacts`; there is no parameter that could make it otherwise.
+- **No key means unavailable, never invented.** `createProvider` returns a reason rather than
+  a stub that could answer.
+
 ## Not built yet
 
-Authentication and sign-in · onboarding and natural-language intake · document intelligence ·
-the AI layer and its four agents · application workspace and drafting · critic and red team ·
-pipeline and deadlines · export · billing.
+Authentication and sign-in · onboarding and natural-language intake · document upload, parsing
+and embeddings · the Analyst, Writer and Critic agents · application workspace and drafting ·
+red team · pipeline and deadlines · export · billing.
+
+**The AI layer has never been run against the real API.** It is tested entirely against
+scripted providers. Before trusting it, run it with a real key and check the Extractor's output
+on genuine documents.
 
 ## Environment constraints
 

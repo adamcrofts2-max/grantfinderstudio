@@ -45,6 +45,14 @@
       "rules": {
         "no-await-in-loop": "off"
       }
+    },
+    {
+      "files": [
+        "src/ai/**"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
     }
   ]
 }

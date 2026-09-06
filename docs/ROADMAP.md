@@ -68,9 +68,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Saving and filtering opportunities
 
 ## Phase 7 — Document intelligence
-- [ ] Upload, parse, chunk, embed
-- [ ] Candidate fact extraction with source spans
-- [ ] Prompt-injection test corpus
+- [x] AI provider abstraction; no vendor SDK outside `src/ai/providers`
+- [x] Untrusted-content fencing with a per-call random marker
+- [x] Schema-validated agent runner with one retry, then visible failure
+- [x] Extractor agent producing candidate facts that are never confirmed
+- [ ] Upload, parse and chunk documents
+- [ ] Embeddings and retrieval
+- [ ] Live verification against the real API (needs an API key)
+- [ ] Prompt-injection eval corpus run in CI
 
 ## Phase 8 — Application workspace
 - [ ] Question intelligence ("what this question is really asking")
