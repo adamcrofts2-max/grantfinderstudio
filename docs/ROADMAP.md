@@ -33,10 +33,12 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Licence propagation enforced at query and export time
 
 ## Phase 3 — Auth and tenancy
-- [ ] Authentication
-- [ ] Organisations and memberships
-- [ ] RBAC (owner/admin/editor/viewer)
-- [ ] Audit logging
+- [x] RBAC (owner/admin/editor/viewer) with lock-out invariants
+- [x] Per-request tenant context via transaction-local `set_config`
+- [x] Tests proving the context cannot outlive a request
+- [ ] Authentication (sessions, sign-in)
+- [ ] Organisation and membership management endpoints
+- [ ] Audit logging on privileged actions
 
 ## Phase 4 — Onboarding
 - [ ] Natural-language intake ("What are you trying to fund?")
