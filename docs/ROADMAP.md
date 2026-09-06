@@ -46,10 +46,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Fact confirmation UI with source spans
 
 ## Phase 5 — Funder intelligence
-- [ ] 360Giving connector (contract tests + fixtures)
-- [ ] Live verification against the real API
-- [ ] Funder behaviour summaries with attribution
-- [ ] Licence rendering and export gating
+- [x] 360Giving connector with pagination, dedupe and SSRF-checked page links
+- [x] Normalisation that rejects rather than repairs (non-GBP, bad amounts/dates)
+- [x] Untrusted-text handling at the ingestion boundary
+- [x] Funder behaviour summaries (quartiles, recency, region and tag tallies)
+- [x] Refusal to ingest a dataset with no licence or attribution
+- [ ] Live verification against the real API (blocked: egress allowlist)
+- [ ] Persisting awards and licence to the database
+- [ ] Licence rendering in the UI and export gating
 
 ## Phase 6 — Discovery
 - [ ] Opportunity index with freshness states

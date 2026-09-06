@@ -1,0 +1,38 @@
+{
+  "count": 6,
+  "next": "https://api.threesixtygiving.org/api/v1/org/GB-FICTIONAL-001/grants_made/?page=2",
+  "results": [
+    {
+      "id": "360G-fictional-0001",
+      "title": "Youth environmental skills programme",
+      "description": "Fictional fixture record. Practical skills training for young people.",
+      "currency": "GBP",
+      "amountAwarded": 22000,
+      "awardDate": "2025-04-15",
+      "recipientOrganization": [{ "id": "GB-COH-00000001", "name": "Fictional Youth CIC" }],
+      "fundingOrganization": [{ "id": "GB-FICTIONAL-001", "name": "The Fictional Trust" }],
+      "classifications": [{ "title": "Young people" }, { "title": "Environment" }],
+      "beneficiaryLocation": [{ "name": "Somerset", "countryCode": "GB" }, { "name": "England" }]
+    },
+    {
+      "id": "360G-fictional-0002",
+      "title": "Community garden",
+      "currency": "GBP",
+      "amountAwarded": 15000,
+      "awardDate": "2025-02-01",
+      "recipientOrganization": [{ "id": "GB-COH-00000002", "name": "Fictional Garden CIC" }],
+      "classifications": [{ "title": "Environment" }],
+      "beneficiaryLocation": [{ "name": "Devon" }, { "name": "England" }]
+    },
+    {
+      "id": "360G-fictional-0003",
+      "title": "Holiday activity club",
+      "currency": "GBP",
+      "amountAwarded": 40000,
+      "awardDate": "2024-11-20",
+      "recipientOrganization": [{ "name": "Fictional Play Association" }],
+      "classifications": [{ "title": "Young people" }],
+      "beneficiaryLocation": [{ "name": "Somerset" }, { "name": "England" }]
+    }
+  ]
+}

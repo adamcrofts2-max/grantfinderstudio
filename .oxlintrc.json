@@ -27,6 +27,14 @@
       "rules": {
         "no-await-in-loop": "off"
       }
+    },
+    {
+      "files": [
+        "src/ingestion/**"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
     }
   ]
 }

@@ -1,0 +1,59 @@
+{
+  "count": 6,
+  "next": null,
+  "results": [
+    {
+      "id": "360G-fictional-0004",
+      "title": "Coastal volunteering",
+      "currency": "GBP",
+      "amountAwarded": 8000,
+      "awardDate": "2024-09-05",
+      "recipientOrganization": [{ "name": "Fictional Coast CIC" }],
+      "classifications": [{ "title": "Environment" }],
+      "beneficiaryLocation": [{ "name": "Gwynedd" }, { "name": "Wales" }]
+    },
+    {
+      "id": "360G-fictional-0005",
+      "title": "Mentoring scheme",
+      "currency": "GBP",
+      "amountAwarded": 31000,
+      "awardDate": "2025-06-30",
+      "recipientOrganization": [{ "name": "Fictional Mentors CIC" }],
+      "classifications": [{ "title": "Young people" }],
+      "beneficiaryLocation": [{ "name": "Somerset" }, { "name": "England" }]
+    },
+    {
+      "id": "360G-fictional-0001",
+      "title": "Duplicate of the first record, as overlapping pages produce",
+      "currency": "GBP",
+      "amountAwarded": 22000,
+      "awardDate": "2025-04-15",
+      "recipientOrganization": [{ "name": "Fictional Youth CIC" }],
+      "classifications": [{ "title": "Young people" }],
+      "beneficiaryLocation": [{ "name": "Somerset" }]
+    },
+    {
+      "id": "360G-fictional-0006",
+      "title": "Award in another currency",
+      "currency": "EUR",
+      "amountAwarded": 12000,
+      "awardDate": "2025-01-10",
+      "recipientOrganization": [{ "name": "Fictional European Body" }],
+      "classifications": [],
+      "beneficiaryLocation": []
+    },
+    {
+      "id": "360G-fictional-0007",
+      "amountAwarded": null,
+      "awardDate": "2025-01-10",
+      "recipientOrganization": [{ "name": "Fictional Missing Amount" }]
+    },
+    {
+      "id": "360G-fictional-0008",
+      "currency": "GBP",
+      "amountAwarded": 5000,
+      "awardDate": "not-a-date",
+      "recipientOrganization": [{ "name": "Fictional Bad Date" }]
+    }
+  ]
+}
