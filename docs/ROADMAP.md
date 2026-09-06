@@ -6,8 +6,8 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] TypeScript strict configuration
 - [x] Vitest with coverage thresholds
 - [x] Path alias `@/*`
-- [ ] Lint (oxlint or eslint)
-- [ ] CI workflow running build, lint, test, coverage
+- [x] Lint (oxlint)
+- [x] CI workflow running lint, typecheck, test, coverage
 
 ## Phase 1 — Domain core (pure, no I/O)
 - [x] Shared domain vocabulary and legal-form predicates
@@ -19,15 +19,18 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Fact lifecycle: confirmation, supersession, append-only
 - [x] Claim grounding with unsupported-claim detection
 - [x] 100% branch coverage on executable domain code
-- [ ] Budget validation against funder restrictions
-- [ ] Application readiness scoring
+- [x] Budget validation against funder restrictions
+- [x] Application readiness scoring (completeness, not win probability)
 
 ## Phase 2 — Persistence
-- [ ] Drizzle schema for the 15 MVP tables
-- [ ] Migrations
-- [ ] Row-Level Security policies on every tenant-scoped table
-- [ ] Automated cross-tenant isolation tests
-- [ ] `source_datasets` licence propagation
+- [x] SQL schema covering the MVP tables, with enums and check constraints
+- [x] Migrations (`src/db/migrations`)
+- [x] Row-Level Security on every tenant-scoped table, with `WITH CHECK`
+- [x] Automated cross-tenant isolation tests against real Postgres (PGlite/WASM)
+- [x] `source_datasets` table carrying licence and attribution
+- [ ] pgvector extension and `document_chunks.embedding`
+- [ ] Drizzle typed query layer (deferred to Phase 3, where the queries are)
+- [ ] Licence propagation enforced at query and export time
 
 ## Phase 3 — Auth and tenancy
 - [ ] Authentication

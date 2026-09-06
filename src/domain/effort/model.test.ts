@@ -70,7 +70,7 @@ describe('estimateEffort', () => {
   it('lists drivers in descending order of cost', () => {
     const e = estimateEffort({ ...minimal, totalWordBudget: 2400, questionCount: 8 });
     const hours = e.drivers.map((d) => d.hours);
-    expect([...hours].sort((a, b) => b - a)).toEqual(hours);
+    expect(hours.toSorted((a, b) => b - a)).toEqual(hours);
     expect(e.drivers[0]?.label).toContain('2,400 words');
   });
 

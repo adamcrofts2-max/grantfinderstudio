@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Includes the tenant-isolation suite, which runs against real
+      # PostgreSQL via PGlite. A cross-tenant leak fails the build.
+      - name: Test
+        run: npm test
+
+      - name: Coverage thresholds
+        run: npm run test:coverage

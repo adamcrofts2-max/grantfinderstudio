@@ -134,12 +134,9 @@ export function estimateEffort(features: ApplicationFeatures): EffortEstimate {
         : 'high';
 
   drivers.sort((a, b) => b.hours - a.hours);
+  for (const driver of drivers) driver.hours = roundHalf(driver.hours);
 
-  return {
-    hours,
-    band,
-    drivers: drivers.map((d) => ({ ...d, hours: roundHalf(d.hours) })),
-  };
+  return { hours, band, drivers };
 }
 
 export type Recommendation =
