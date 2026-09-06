@@ -44,8 +44,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Audit logging on privileged actions
 
 ## Phase 4 — Onboarding
+- [x] Companies House search by name, with company-number lookup as a fallback
+- [x] CIC guarantee/shares distinction read from the register, never guessed
+- [x] Dissolved companies flagged before any effort is spent
+- [x] Adopting a company writes facts with `companies_house` provenance
+- [x] Graceful degradation when lookup is unconfigured or unavailable
+- [ ] Manual entry, recorded as self-declared rather than verified
+- [ ] Live verification against the real Companies House API (egress-blocked here)
 - [ ] Natural-language intake ("What are you trying to fund?")
-- [ ] Companies House verification
 - [ ] Fact confirmation UI with source spans
 
 ## Phase 5 — Funder intelligence

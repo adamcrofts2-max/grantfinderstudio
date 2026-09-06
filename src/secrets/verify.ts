@@ -54,13 +54,18 @@ async function verifyAnthropic(key: string): Promise<VerificationResult> {
 async function verifyCompaniesHouse(key: string): Promise<VerificationResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  // Overridable so the check can be pointed at a staging or contract-test
+  // endpoint; defaults to the real service.
+  const baseUrl =
+    process.env['COMPANIES_HOUSE_BASE_URL'] ??
+    'https://api.company-information.service.gov.uk';
   try {
     // Companies House uses HTTP basic auth with the key as the username.
     const auth = Buffer.from(`${key}:`).toString('base64');
-    const response = await fetch(
-      'https://api.company-information.service.gov.uk/company/00000006',
-      { headers: { Authorization: `Basic ${auth}` }, signal: controller.signal },
-    );
+    const response = await fetch(`${baseUrl}/company/00000006`, {
+      headers: { Authorization: `Basic ${auth}` },
+      signal: controller.signal,
+    });
     if (response.status === 401) {
       return { ok: false, note: 'Companies House rejected that key.' };
     }

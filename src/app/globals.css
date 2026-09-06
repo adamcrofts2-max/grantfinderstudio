@@ -326,3 +326,21 @@ a:hover { color: var(--accent-hover); }
 }
 
 .divider { height: 1px; background: var(--line); border: 0; margin: var(--s-4) 0; }
+
+/* ---------- Company search results --------------------------------------- */
+
+.results { list-style: none; margin: var(--s-3) 0 0; padding: 0; }
+.result {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--s-4); margin-bottom: var(--s-3); background: var(--surface);
+}
+.result-name { font-weight: 620; font-size: var(--t-base); }
+.result-meta { color: var(--ink-faint); font-size: var(--t-sm); margin-top: 2px; }
+.result-form { color: var(--ink-soft); font-size: var(--t-sm); margin-top: var(--s-1); }
+
+.provenance {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  font-size: var(--t-xs); font-weight: 600;
+}
+.provenance-verified { color: var(--positive); }
+.provenance-declared { color: var(--caution); }

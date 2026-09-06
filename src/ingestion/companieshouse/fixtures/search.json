@@ -1,0 +1,31 @@
+{
+  "total_results": 3,
+  "items": [
+    {
+      "company_number": "11111111",
+      "title": "MENDIP GREEN FUTURES CIC",
+      "company_status": "active",
+      "company_type": "private-limited-guarant-nsc",
+      "company_subtype": "community-interest-company",
+      "date_of_creation": "2020-01-15",
+      "address_snippet": "1 Fictional Street, Wells, Somerset, BA5 0AA"
+    },
+    {
+      "company_number": "22222222",
+      "title": "MENDIP GREEN TRADING CIC",
+      "company_status": "active",
+      "company_type": "ltd",
+      "company_subtype": "community-interest-company",
+      "date_of_creation": "2022-06-01",
+      "address_snippet": "2 Fictional Road, Wells, Somerset, BA5 0AB"
+    },
+    {
+      "company_number": "33333333",
+      "title": "MENDIP GREEN HOLDINGS LIMITED",
+      "company_status": "dissolved",
+      "company_type": "ltd",
+      "date_of_creation": "2015-03-20",
+      "address_snippet": "3 Fictional Lane, Wells, Somerset, BA5 0AC"
+    }
+  ]
+}

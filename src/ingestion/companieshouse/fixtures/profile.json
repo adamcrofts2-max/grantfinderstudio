@@ -1,0 +1,16 @@
+{
+  "company_name": "MENDIP GREEN FUTURES CIC",
+  "company_number": "11111111",
+  "company_status": "active",
+  "type": "private-limited-guarant-nsc",
+  "subtype": "community-interest-company",
+  "date_of_creation": "2020-01-15",
+  "jurisdiction": "england-wales",
+  "registered_office_address": {
+    "address_line_1": "1 Fictional Street",
+    "locality": "Wells",
+    "region": "Somerset",
+    "postal_code": "BA5 0AA",
+    "country": "England"
+  }
+}

@@ -9,7 +9,7 @@
  */
 
 import type { Queryable } from '../db/client.js';
-import { encryptSecret, maskSecret } from './crypto.js';
+import { decryptSecret, encryptSecret, maskSecret } from './crypto.js';
 
 export type ProviderId = 'anthropic' | 'companies_house';
 
@@ -123,4 +123,26 @@ export function checkKeyShape(provider: ProviderId, key: string): string | null 
     return 'That key looks too short — it may have been cut off.';
   }
   return null;
+}
+
+/**
+ * Decrypt a stored key for server-side use.
+ *
+ * The only function here that returns plaintext. Callers must use the value to
+ * make a request and never place it in a response, a log, or a rendered page.
+ * Returns null when nothing is configured, so features can degrade rather than
+ * crash.
+ */
+export async function readCredentialSecret(
+  db: Queryable,
+  provider: ProviderId,
+  masterKey: Buffer,
+): Promise<string | null> {
+  const result = await db.query<{ ciphertext: string }>(
+    'SELECT ciphertext FROM app_credentials WHERE provider = $1',
+    [provider],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return decryptSecret(row.ciphertext, masterKey);
 }

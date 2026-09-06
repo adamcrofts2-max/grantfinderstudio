@@ -53,6 +53,14 @@
       "rules": {
         "no-await-in-loop": "off"
       }
+    },
+    {
+      "files": [
+        "src/app/**"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
     }
   ]
 }
