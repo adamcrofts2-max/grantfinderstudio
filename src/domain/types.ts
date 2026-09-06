@@ -125,3 +125,29 @@ export function isLimitedByGuarantee(form: LegalForm): boolean {
     form === 'cic_limited_by_guarantee' || form === 'company_limited_by_guarantee'
   );
 }
+
+const JURISDICTION_LABELS: Readonly<Record<Jurisdiction, string>> = {
+  england: 'England',
+  wales: 'Wales',
+  scotland: 'Scotland',
+  northern_ireland: 'Northern Ireland',
+  uk_wide: 'the whole UK',
+};
+
+/**
+ * Human-readable jurisdiction name.
+ *
+ * Enum values are a storage detail. They should never reach the user, who
+ * reads "northern_ireland" as a bug, and rightly so.
+ */
+export function formatJurisdiction(value: Jurisdiction): string {
+  return JURISDICTION_LABELS[value];
+}
+
+/** Format a list of jurisdictions as prose: "England, Wales and Scotland". */
+export function formatJurisdictions(values: readonly Jurisdiction[]): string {
+  const labels = values.map((v) => formatJurisdiction(v));
+  if (labels.length === 0) return 'nowhere stated';
+  if (labels.length === 1) return labels[0]!;
+  return `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)!}`;
+}

@@ -206,7 +206,20 @@ describe('non-CIC legal forms', () => {
 describe('jurisdiction and region', () => {
   it('passes when the jurisdiction is permitted', () => {
     const c: Criterion = { kind: 'jurisdiction', id: 'j', label: 'Area', permitted: ['england'] };
-    expect(evaluateEligibility(cicGuarantee, project, [c], CONTEXT).verdict).toBe('eligible');
+    const v = evaluateEligibility(cicGuarantee, project, [c], CONTEXT);
+    expect(v.verdict).toBe('eligible');
+    // The reason is shown to the user, so it must read as English, not as an enum.
+    expect(v.results[0]?.reason).toBe("England is within the funder's area.");
+  });
+
+  it('writes a mismatch reason in prose, not enum values', () => {
+    const c: Criterion = {
+      kind: 'jurisdiction', id: 'j', label: 'Area', permitted: ['scotland', 'northern_ireland'],
+    };
+    const v = evaluateEligibility(cicGuarantee, project, [c], CONTEXT);
+    expect(v.failures[0]?.reason).toBe(
+      'The funder covers Scotland and Northern Ireland, not England.',
+    );
   });
 
   it('passes any jurisdiction for a UK-wide fund', () => {

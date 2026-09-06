@@ -4,7 +4,7 @@
 
 ## What exists
 
-**160 tests, lint clean, typecheck clean.** `npm run verify` runs all three.
+**339 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -58,11 +58,29 @@ opportunities, licences) readable by all tenants and writable only by the ingest
   expressed in a Drizzle schema, and the policies are the security boundary. Drizzle is
   deferred to Phase 3, where there are queries to type.
 
+### Phase 3 — auth and tenancy (partial)
+RBAC with lock-out invariants, and per-request tenant context that cannot outlive a request.
+Sign-in and membership management endpoints are not built.
+
+### Phase 5 — funder intelligence ✅
+360Giving connector with pagination, dedupe, SSRF-checked page links and licence enforcement.
+Normalisation rejects rather than repairs. Live verification against the real API is still
+outstanding and blocked by this environment's egress allowlist.
+
+### Phase 6 — discovery ✅
+Assessment composing the three signals, honest deadline and freshness notices, the
+"ask the funder" enquiry generator, and a working interface over the real schema.
+
+**The application runs.** `npm run dev` serves a list of opportunities assessed against a
+demonstration CIC, and a detail page showing eligibility per criterion, funder behaviour with
+its licence and attribution, effort broken down by driver, and a draft enquiry when something
+is unresolved. Demo data is fictional and the interface says so on every page.
+
 ## Not built yet
 
-Phases 3–11 of `docs/MASTER_IMPLEMENTATION_PROMPT.md`: auth and RBAC, onboarding, 360Giving
-ingestion, opportunity index, document intelligence, application workspace, critic and red
-team, pipeline, export. There is no UI at all yet.
+Authentication and sign-in · onboarding and natural-language intake · document intelligence ·
+the AI layer and its four agents · application workspace and drafting · critic and red team ·
+pipeline and deadlines · export · billing.
 
 ## Environment constraints
 
@@ -72,15 +90,21 @@ team, pipeline, export. There is no UI at all yet.
   elsewhere before any claim is made about coverage.
 - **No Postgres server, no Docker** — solved rather than worked around. PGlite runs real
   PostgreSQL compiled to WebAssembly in Node, including the genuine RLS policy engine, so
-  tenant isolation is proven rather than asserted. Production uses ordinary Postgres; the
-  migrations are plain SQL and portable.
+  tenant isolation is proven rather than asserted. It also backs the dev database the app
+  runs against, so the interface exercises the real migrations and real policies. Production
+  uses ordinary Postgres; the migrations are plain SQL and portable.
+- **The bundler needs an extension alias.** Source uses ESM-correct `.js` specifiers pointing
+  at `.ts` files, which TypeScript and Vitest resolve but Next's webpack does not. `next.config.mjs`
+  teaches it the mapping rather than rewriting every import to a bundler-specific style.
 - **The test suite takes ~60s** because each isolation test builds a fresh database. That is
   deliberate: sharing a database between tests that deliberately attempt cross-tenant writes
   would let one test's leakage mask another's.
 
 ## Next task
 
-Phase 3: authentication, organisations, memberships and RBAC — including the middleware that
-sets `app.organisation_id` per request. That setting is what every RLS policy depends on, so
-it needs its own tests: a request with no session must never leave a stale tenant context on a
-pooled connection.
+Authentication, so the tenant context comes from a real session rather than a fixed demo
+organisation id. Everything below it is already tenant-scoped and tested, so this is the last
+piece before the app can hold more than one organisation.
+
+After that, the AI layer: the provider abstraction and the four agents, starting with the
+Extractor so onboarding can accept a plain-English description instead of seeded data.

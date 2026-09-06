@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * Contrast pairs are chosen to meet WCAG 2.2 AA against their backgrounds in
+ * both themes. Verdict colours are never the only signal — every state also
+ * carries a word and an icon, so the interface does not depend on colour
+ * perception to be read.
+ */
+@theme {
+  --color-ink: #12171f;
+  --color-ink-muted: #566070;
+  --color-surface: #ffffff;
+  --color-canvas: #f6f7f9;
+  --color-line: #e2e5ea;
+
+  --color-positive: #12694a;
+  --color-positive-bg: #e7f4ee;
+  --color-caution: #8a5300;
+  --color-caution-bg: #fdf2e0;
+  --color-negative: #a12020;
+  --color-negative-bg: #fbeaea;
+  --color-accent: #1a4fa0;
+  --color-accent-bg: #e9effa;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  --ink: #12171f;
+  --ink-soft: #4d5766;
+  --surface: #ffffff;
+  --canvas: #f6f7f9;
+  --line: #e2e5ea;
+  --positive: #12694a;
+  --positive-bg: #e7f4ee;
+  --caution: #8a5300;
+  --caution-bg: #fdf2e0;
+  --negative: #a12020;
+  --negative-bg: #fbeaea;
+  --accent: #1a4fa0;
+  --accent-bg: #e9effa;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #eef1f5;
+    --ink-soft: #a4aeba;
+    --surface: #161b22;
+    --canvas: #0d1117;
+    --line: #2b323c;
+    --positive: #6ddaa8;
+    --positive-bg: #12291f;
+    --caution: #f0bc66;
+    --caution-bg: #2e2314;
+    --negative: #f39b9b;
+    --negative-bg: #2e1717;
+    --accent: #8fb4f2;
+    --accent-bg: #16233a;
+    color-scheme: dark;
+  }
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A visible, high-contrast focus ring everywhere, never removed. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.75rem 1rem;
+  z-index: 50;
+  border: 2px solid var(--accent);
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}

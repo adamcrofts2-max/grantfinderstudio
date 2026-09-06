@@ -31,3 +31,6 @@ jobs:
 
       - name: Coverage thresholds
         run: npm run test:coverage
+
+      - name: Build
+        run: npm run build

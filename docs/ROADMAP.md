@@ -28,9 +28,10 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Row-Level Security on every tenant-scoped table, with `WITH CHECK`
 - [x] Automated cross-tenant isolation tests against real Postgres (PGlite/WASM)
 - [x] `source_datasets` table carrying licence and attribution
+- [x] Read models joining opportunities, funders, criteria and licences
+- [x] Dev database on PGlite running the real migrations and RLS
 - [ ] pgvector extension and `document_chunks.embedding`
-- [ ] Drizzle typed query layer (deferred to Phase 3, where the queries are)
-- [ ] Licence propagation enforced at query and export time
+- [ ] Licence enforcement at export time (it is displayed, not yet gated)
 
 ## Phase 3 — Auth and tenancy
 - [x] RBAC (owner/admin/editor/viewer) with lock-out invariants
@@ -59,9 +60,12 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Assessment composing the three signals, with no composite score
 - [x] Honest deadline and freshness notices (an estimate cannot read as confirmed)
 - [x] "Ask the funder" enquiry generator (deterministic, invents nothing)
-- [ ] Opportunity index queries over the database
-- [ ] Results UI
-- [ ] Effort display
+- [x] Opportunity index queries over the database
+- [x] Results UI showing the three signals, ordered by whether it is worth the time
+- [x] Effort display with its drivers broken out
+- [x] Criteria row mapper that rejects rather than silently loses a bound
+- [ ] Natural-language intake (needs the AI layer)
+- [ ] Saving and filtering opportunities
 
 ## Phase 7 — Document intelligence
 - [ ] Upload, parse, chunk, embed

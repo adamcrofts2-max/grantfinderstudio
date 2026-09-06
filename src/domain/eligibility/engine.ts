@@ -13,6 +13,8 @@
  */
 
 import {
+  formatJurisdiction,
+  formatJurisdictions,
   hasShareCapital,
   isCic,
   isLimitedByGuarantee,
@@ -184,11 +186,15 @@ function evaluateCriterion(
         applicant.jurisdiction === 'uk_wide' ||
         permitted.includes(applicant.jurisdiction);
       return ok
-        ? { ...base, outcome: 'pass', reason: `${applicant.jurisdiction} is within the funder's area.` }
+        ? {
+            ...base,
+            outcome: 'pass',
+            reason: `${formatJurisdiction(applicant.jurisdiction)} is within the funder's area.`,
+          }
         : {
             ...base,
             outcome: 'fail',
-            reason: `The funder covers ${permitted.join(', ')}, not ${applicant.jurisdiction}.`,
+            reason: `The funder covers ${formatJurisdictions(permitted)}, not ${formatJurisdiction(applicant.jurisdiction)}.`,
           };
     }
 

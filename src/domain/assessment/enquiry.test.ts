@@ -37,6 +37,20 @@ describe('draftFunderEnquiry', () => {
     expect(draftFunderEnquiry(input()).body).toContain('environmental skills programme');
   });
 
+  it('does not double the full stop when the summary already ends in one', () => {
+    const body = draftFunderEnquiry(
+      input({ projectSummary: 'a programme for young people in Somerset.' }),
+    ).body;
+    expect(body).toContain('young people in Somerset.');
+    expect(body).not.toContain('Somerset..');
+  });
+
+  it('handles a summary ending in other punctuation', () => {
+    const body = draftFunderEnquiry(input({ projectSummary: 'what next?' })).body;
+    expect(body).toContain('what next.');
+    expect(body).not.toContain('what next?.');
+  });
+
   it('omits the project clause when there is no summary, rather than inventing one', () => {
     const body = draftFunderEnquiry(input({ projectSummary: null })).body;
     expect(body).toContain('about Fictional Youth Fund');

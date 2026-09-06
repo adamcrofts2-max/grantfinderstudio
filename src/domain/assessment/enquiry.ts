@@ -41,6 +41,14 @@ function oneLine(text: string): string {
   return text.replaceAll(/\s+/gu, ' ').trim();
 }
 
+/**
+ * Drop trailing sentence punctuation so the template can add its own without
+ * producing "Somerset..".
+ */
+function withoutTrailingStop(text: string): string {
+  return text.replace(/[.!?]+$/u, '');
+}
+
 export function draftFunderEnquiry(input: EnquiryInput): Enquiry {
   if (input.questions.length === 0) throw new NoQuestionsError();
 
@@ -49,7 +57,7 @@ export function draftFunderEnquiry(input: EnquiryInput): Enquiry {
   const opening =
     input.projectSummary === null
       ? `I am writing from ${oneLine(input.organisationName)}, a Community Interest Company, about ${oneLine(input.opportunityTitle)}.`
-      : `I am writing from ${oneLine(input.organisationName)}, a Community Interest Company. We are considering applying to ${oneLine(input.opportunityTitle)} for the following: ${oneLine(input.projectSummary)}.`;
+      : `I am writing from ${oneLine(input.organisationName)}, a Community Interest Company. We are considering applying to ${oneLine(input.opportunityTitle)} for the following: ${withoutTrailingStop(oneLine(input.projectSummary))}.`;
 
   const preamble =
     input.questions.length === 1

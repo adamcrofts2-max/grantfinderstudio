@@ -17,7 +17,9 @@
   "ignorePatterns": [
     "node_modules",
     "coverage",
-    "dist"
+    "dist",
+    ".next",
+    "next-env.d.ts"
   ],
   "overrides": [
     {
@@ -31,6 +33,14 @@
     {
       "files": [
         "src/ingestion/**"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": [
+        "src/demo/**"
       ],
       "rules": {
         "no-await-in-loop": "off"
