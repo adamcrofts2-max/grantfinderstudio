@@ -38,6 +38,13 @@ export const extractorOutputSchema = z.object({
 
 export type ExtractorOutput = z.infer<typeof extractorOutputSchema>;
 
+/**
+ * The schema sent to the API.
+ *
+ * Note: structured outputs reject `maxItems` on arrays, so the caps live only
+ * in the zod parser, which enforces them on the response. Keeping them out of
+ * this schema is a requirement of the API, not an oversight.
+ */
 const OUTPUT_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -45,7 +52,6 @@ const OUTPUT_JSON_SCHEMA = {
   properties: {
     facts: {
       type: 'array',
-      maxItems: 50,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -60,7 +66,6 @@ const OUTPUT_JSON_SCHEMA = {
     },
     instructionLikeContent: {
       type: 'array',
-      maxItems: 10,
       items: { type: 'string' },
     },
   },

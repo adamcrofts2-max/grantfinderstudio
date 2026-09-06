@@ -36,8 +36,6 @@ export default async function SettingsPage() {
   // go through the tenant connection.
   const statuses = await withAdmin((tx) => readCredentialStatuses(tx));
 
-  const connected = PROVIDERS.filter((p) => statuses[p.id].lastCheckOk === true).length;
-
   return (
     <div className="page page-narrow">
       <header className="page-head">
@@ -49,10 +47,10 @@ export default async function SettingsPage() {
           The services Grant Finder Studio uses on your behalf. These are the platform’s own
           keys — the CICs using this product never see them and are never asked for one.
         </p>
+        {/* No summary count here: it would duplicate the per-service badges
+            and go stale the moment one is saved, since this is server-rendered
+            and the cards update from the action's own result. */}
         <p className="page-sub" style={{ marginTop: 'var(--s-3)' }}>
-          <strong>
-            {connected} of {PROVIDERS.length} connected.
-          </strong>{' '}
           Keys are encrypted before they are stored and are never shown again after saving.
         </p>
       </header>

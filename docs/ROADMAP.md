@@ -82,7 +82,7 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Extractor agent producing candidate facts that are never confirmed
 - [ ] Upload, parse and chunk documents
 - [ ] Embeddings and retrieval
-- [ ] Live verification against the real API (needs an API key)
+- [x] Live verification against the real API, including prompt injection
 - [ ] Prompt-injection eval corpus run in CI
 
 ## Phase 8 — Application workspace

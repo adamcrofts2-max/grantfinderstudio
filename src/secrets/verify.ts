@@ -10,6 +10,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { DEFAULT_MODEL } from '../ai/providers/anthropic.js';
 import type { ProviderId, VerificationResult } from './store.js';
 
 const TIMEOUT_MS = 15_000;
@@ -23,20 +24,23 @@ function safeMessage(error: unknown, key: string): string {
 async function verifyAnthropic(key: string): Promise<VerificationResult> {
   try {
     const client = new Anthropic({ apiKey: key, timeout: TIMEOUT_MS, maxRetries: 0 });
-    const models = await client.models.list({ limit: 1 });
-    const first = models.data[0];
-    return {
-      ok: true,
-      note: first
-        ? `Connected. Claude models are reachable (${first.id}).`
-        : 'Connected.',
-    };
+    // Retrieve the model this product actually uses, rather than listing
+    // models and reporting whichever came back first — that would say
+    // "connected" while telling the operator about a model we never call.
+    const model = await client.models.retrieve(DEFAULT_MODEL);
+    return { ok: true, note: `Connected. ${model.display_name ?? model.id} is available.` };
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
       return { ok: false, note: 'Anthropic rejected that key. Check you copied all of it.' };
     }
     if (error instanceof Anthropic.PermissionDeniedError) {
       return { ok: false, note: 'That key is valid but lacks permission for the Messages API.' };
+    }
+    if (error instanceof Anthropic.NotFoundError) {
+      return {
+        ok: false,
+        note: `That key works, but ${DEFAULT_MODEL} is not available to it.`,
+      };
     }
     if (error instanceof Anthropic.RateLimitError) {
       return { ok: false, note: 'Anthropic rate-limited the check. The key may be fine — try again shortly.' };

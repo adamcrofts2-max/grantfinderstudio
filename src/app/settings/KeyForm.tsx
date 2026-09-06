@@ -1,10 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { removeKeyAction, saveKeyAction, type ActionState } from './actions';
+import { removeKeyAction, saveKeyAction } from './actions';
+import { EMPTY_ACTION } from './state';
 import type { CredentialStatus, ProviderId } from '@/secrets/store';
-
-const EMPTY: ActionState = { provider: null, ok: false, message: '' };
 
 export interface ProviderCopy {
   id: ProviderId;
@@ -33,16 +32,20 @@ export function KeyForm({
   provider: ProviderCopy;
   status: CredentialStatus;
 }) {
-  const [saveState, save, saving] = useActionState(saveKeyAction, EMPTY);
-  const [removeState, remove, removing] = useActionState(removeKeyAction, EMPTY);
+  const [saveState, save, saving] = useActionState(saveKeyAction, EMPTY_ACTION);
+  const [removeState, remove, removing] = useActionState(removeKeyAction, EMPTY_ACTION);
 
-  const badge = statusBadge(status);
   const result =
     saveState.provider === provider.id
       ? saveState
       : removeState.provider === provider.id
         ? removeState
         : null;
+
+  // Prefer the state the action just returned, so a save cannot leave the
+  // badge saying "Not connected" beside a message saying "Connected".
+  const current = result?.status ?? status;
+  const badge = statusBadge(current);
 
   const fieldId = `key-${provider.id}`;
   const messageId = `msg-${provider.id}`;
@@ -61,7 +64,7 @@ export function KeyForm({
         </span>
       </div>
 
-      {status.masked === null ? null : (
+      {current.masked === null ? null : (
         <div className="row" style={{ marginTop: 'var(--s-4)', gap: 'var(--s-2)' }}>
           <code
             style={{
@@ -73,18 +76,18 @@ export function KeyForm({
               padding: '0.2rem 0.5rem',
             }}
           >
-            {status.masked}
+            {current.masked}
           </code>
-          {status.lastCheckedAt ? (
-            <span className="hint">Last checked {status.lastCheckedAt.slice(0, 10)}</span>
+          {current.lastCheckedAt ? (
+            <span className="hint">Last checked {current.lastCheckedAt.slice(0, 10)}</span>
           ) : null}
         </div>
       )}
 
-      {status.masked !== null && status.lastCheckOk === false && status.lastCheckNote ? (
+      {current.masked !== null && current.lastCheckOk === false && current.lastCheckNote ? (
         <p className="notice notice-caution" style={{ marginTop: 'var(--s-3)' }}>
           <span aria-hidden="true">⚠</span>
-          <span>{status.lastCheckNote}</span>
+          <span>{current.lastCheckNote}</span>
         </p>
       ) : null}
 
@@ -92,7 +95,7 @@ export function KeyForm({
         <input type="hidden" name="provider" value={provider.id} />
         <div className="field">
           <label className="label" htmlFor={fieldId}>
-            {status.masked === null ? 'Paste your key' : 'Replace with a new key'}
+            {current.masked === null ? 'Paste your key' : 'Replace with a new key'}
           </label>
           <input
             id={fieldId}
@@ -118,7 +121,7 @@ export function KeyForm({
           <button className="btn btn-primary" type="submit" disabled={saving}>
             {saving ? 'Checking…' : 'Save and test'}
           </button>
-          {status.masked === null ? null : (
+          {current.masked === null ? null : (
             <button className="btn btn-secondary" type="submit" formAction={remove} disabled={removing}>
               {removing ? 'Removing…' : 'Remove'}
             </button>

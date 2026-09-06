@@ -6,16 +6,12 @@ import { loadMasterKey, SecretError } from '@/secrets/crypto';
 import {
   checkKeyShape,
   deleteCredential,
+  readCredentialStatuses,
   saveCredential,
   type ProviderId,
 } from '@/secrets/store';
 import { verifyCredential } from '@/secrets/verify';
-
-export interface ActionState {
-  provider: ProviderId | null;
-  ok: boolean;
-  message: string;
-}
+import type { ActionState } from './state';
 
 function isProvider(value: unknown): value is ProviderId {
   return value === 'anthropic' || value === 'companies_house';
@@ -60,12 +56,15 @@ export async function saveKeyAction(
 
   const verification = await verifyCredential(provider, key);
 
-  await withAdmin(async (tx) => {
+  const status = await withAdmin(async (tx) => {
     await saveCredential(tx, provider, key, masterKey, verification, null);
+    // Read the stored state back so the badge reflects what was actually
+    // saved, rather than waiting on a revalidation the form does not await.
+    return (await readCredentialStatuses(tx))[provider];
   });
 
   revalidatePath('/settings');
-  return { provider, ok: verification.ok, message: verification.note };
+  return { provider, ok: verification.ok, message: verification.note, status };
 }
 
 export async function removeKeyAction(
@@ -76,9 +75,10 @@ export async function removeKeyAction(
   if (!isProvider(provider)) {
     return { provider: null, ok: false, message: 'Unknown provider.' };
   }
-  await withAdmin(async (tx) => {
+  const status = await withAdmin(async (tx) => {
     await deleteCredential(tx, provider);
+    return (await readCredentialStatuses(tx))[provider];
   });
   revalidatePath('/settings');
-  return { provider, ok: true, message: 'Key removed.' };
+  return { provider, ok: true, message: 'Key removed.', status };
 }

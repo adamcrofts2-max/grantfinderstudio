@@ -94,9 +94,14 @@ Authentication and sign-in · onboarding and natural-language intake · document
 and embeddings · the Analyst, Writer and Critic agents · application workspace and drafting ·
 red team · pipeline and deadlines · export · billing.
 
-**The AI layer has never been run against the real API.** It is tested entirely against
-scripted providers. Before trusting it, run it with a real key and check the Extractor's output
-on genuine documents.
+**The AI layer has now been verified live** against `claude-opus-5`. `extractor.live.test.ts`
+runs the Extractor over a document carrying an embedded prompt-injection attempt and asserts
+that every extracted fact quotes wording genuinely present in the source, that the injection is
+reported rather than obeyed, that the injected figure is not adopted, and that nothing comes
+back confirmed. It skips automatically without `ANTHROPIC_API_KEY`, so CI is unaffected.
+
+That run found a bug the fixture tests could not: structured outputs reject `maxItems` on
+arrays. The caps now live only in the zod parser.
 
 ## Environment constraints
 
