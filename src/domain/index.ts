@@ -5,3 +5,6 @@ export * from './effort/model.js';
 export * from './provenance/facts.js';
 export * from './budget/validate.js';
 export * from './readiness/readiness.js';
+export * from './funder/behaviour.js';
+export * from './assessment/assess.js';
+export * from './assessment/enquiry.js';

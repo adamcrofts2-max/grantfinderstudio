@@ -56,10 +56,12 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Licence rendering in the UI and export gating
 
 ## Phase 6 — Discovery
-- [ ] Opportunity index with freshness states
-- [ ] Eligibility results UI (three signals, no composite score)
+- [x] Assessment composing the three signals, with no composite score
+- [x] Honest deadline and freshness notices (an estimate cannot read as confirmed)
+- [x] "Ask the funder" enquiry generator (deterministic, invents nothing)
+- [ ] Opportunity index queries over the database
+- [ ] Results UI
 - [ ] Effort display
-- [ ] "Ask the funder" email generator
 
 ## Phase 7 — Document intelligence
 - [ ] Upload, parse, chunk, embed
