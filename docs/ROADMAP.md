@@ -86,9 +86,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Prompt-injection eval corpus run in CI
 
 ## Phase 8 — Application workspace
+- [x] Writer agent drafting from confirmed facts only
+- [x] Per-sentence fact citation, verified against the supplied facts
+- [x] Gaps recorded instead of figures invented
+- [x] Deterministic checks: fabricated citation, unsupported claim, word limit, repetition
+- [x] Live-verified, including refusing to invent a number it was asked for
 - [ ] Question intelligence ("what this question is really asking")
-- [ ] Retrieval-grounded drafting
-- [ ] Per-claim provenance UI, unsupported-claim flagging
+- [ ] Workspace UI wiring the Writer to real questions
+- [ ] Per-claim provenance display
 
 ## Phase 9 — Review
 - [ ] Critic agent
