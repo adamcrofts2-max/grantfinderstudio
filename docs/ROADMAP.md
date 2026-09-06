@@ -34,6 +34,8 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Licence enforcement at export time (it is displayed, not yet gated)
 
 ## Phase 3 — Auth and tenancy
+- [x] Operator settings screen for service credentials (encrypted, verified)
+- [x] Privileged `withAdmin` path, separate from every tenant connection
 - [x] RBAC (owner/admin/editor/viewer) with lock-out invariants
 - [x] Per-request tenant context via transaction-local `set_config`
 - [x] Tests proving the context cannot outlive a request

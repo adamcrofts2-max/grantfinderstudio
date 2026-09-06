@@ -4,7 +4,7 @@
 
 ## What exists
 
-**379 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**401 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -100,10 +100,11 @@ on genuine documents.
 
 ## Environment constraints
 
-- **Egress is allowlisted.** `api.threesixtygiving.org` and
-  `find-government-grants.service.gov.uk` return `connect_rejected` from this container.
-  Ingestion connectors must be written against recorded fixtures here and verified live
-  elsewhere before any claim is made about coverage.
+- **Egress is allowlisted, but not uniformly.** `api.anthropic.com` IS reachable — a request
+  with a bad key returns a real 401 — so the AI layer can be verified live as soon as a key is
+  configured. `api.threesixtygiving.org`, `find-government-grants.service.gov.uk` and
+  `api.company-information.service.gov.uk` return `connect_rejected`, so those connectors are
+  still fixture-tested only and need live verification elsewhere.
 - **No Postgres server, no Docker** — solved rather than worked around. PGlite runs real
   PostgreSQL compiled to WebAssembly in Node, including the genuine RLS policy engine, so
   tenant isolation is proven rather than asserted. It also backs the dev database the app

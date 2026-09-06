@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 
-const MIGRATIONS = ['0001_init.sql'] as const;
+const MIGRATIONS = ['0001_init.sql', '0002_credentials.sql'] as const;
 
 export interface TestDatabase {
   db: PGlite;

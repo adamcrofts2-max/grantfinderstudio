@@ -10,7 +10,7 @@ import {
   loadProject,
 } from '@/db/queries';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
-import { Card, gbp, Notice, OutcomeBadge, RecommendationBadge } from '@/app/components';
+import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,52 +77,36 @@ export default async function OpportunityPage({
     assessment.funderBehaviour.kind === 'summary' ? assessment.funderBehaviour.behaviour : null;
 
   return (
-    <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '2rem 1.5rem 4rem' }}>
-      <p style={{ margin: '0 0 1rem' }}>
-        <a href="/" style={{ color: 'var(--accent)', fontWeight: 600 }}>
-          <span aria-hidden="true">← </span>All opportunities
-        </a>
+    <div className="page page-narrow">
+      <p style={{ marginBottom: 'var(--s-4)' }}>
+        <a href="/"><span aria-hidden="true">← </span>All opportunities</a>
       </p>
 
-      <h1 style={{ fontSize: '1.6rem', margin: '0 0 0.2rem', lineHeight: 1.25 }}>
-        {opportunity.title}
-      </h1>
-      <p style={{ color: 'var(--ink-soft)', margin: '0 0 1rem' }}>{opportunity.funderName}</p>
-
-      <div style={{ marginBottom: '1.25rem' }}>
-        <RecommendationBadge value={assessment.recommendation.recommendation} />
-      </div>
-      <p style={{ fontSize: '1.05rem', fontWeight: 600, margin: '0 0 0.35rem' }}>
-        {assessment.headline}
-      </p>
-      <p style={{ color: 'var(--ink-soft)', margin: '0 0 1.5rem' }}>
-        {assessment.recommendation.reason}
-      </p>
+      <header className="page-head">
+        <p className="eyebrow">{opportunity.funderName}</p>
+        <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>{opportunity.title}</h1>
+        <div style={{ margin: 'var(--s-4) 0 var(--s-3)' }}>
+          <RecommendationPill value={assessment.recommendation.recommendation} />
+        </div>
+        <p style={{ fontSize: 'var(--t-md)', fontWeight: 600 }}>{assessment.headline}</p>
+        <p className="page-sub">{assessment.recommendation.reason}</p>
+      </header>
 
       <Card title="1 · Eligibility">
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        <ul className="criteria">
           {assessment.eligibility.results.map((result) => (
-            <li
-              key={result.criterionId}
-              style={{
-                display: 'flex',
-                gap: '0.85rem',
-                alignItems: 'flex-start',
-                padding: '0.55rem 0',
-                borderBottom: '1px solid var(--line)',
-              }}
-            >
-              <span style={{ flex: '0 0 6.5rem' }}>
+            <li key={result.criterionId}>
+              <span className="criteria-badge">
                 <OutcomeBadge outcome={result.outcome} />
               </span>
-              <span style={{ flex: 1 }}>
-                <strong style={{ display: 'block', fontSize: '0.92rem' }}>{result.label}</strong>
-                <span style={{ fontSize: '0.9rem', color: 'var(--ink-soft)' }}>{result.reason}</span>
+              <span className="criteria-body">
+                <strong className="criteria-name">{result.label}</strong>
+                <span className="criteria-why">{result.reason}</span>
               </span>
             </li>
           ))}
         </ul>
-        <p style={{ margin: '0.9rem 0 0', fontSize: '0.9rem' }}>
+        <p style={{ marginTop: 'var(--s-4)', fontSize: 'var(--t-sm)' }}>
           Overall:{' '}
           <strong>
             {assessment.eligibility.verdict === 'eligible'
@@ -173,14 +157,17 @@ export default async function OpportunityPage({
       </Card>
 
       <Card title="3 · What applying would cost you">
-        <p style={{ margin: '0 0 0.7rem', fontSize: '1.05rem' }}>
-          <strong>About {assessment.effort.hours} hours</strong> ·{' '}
-          <span style={{ textTransform: 'capitalize' }}>{assessment.effort.band}</span> effort
+        <p style={{ fontSize: 'var(--t-lg)', fontWeight: 660, marginBottom: 'var(--s-3)' }}>
+          About {assessment.effort.hours} hours{' '}
+          <span style={{ color: 'var(--ink-faint)', fontWeight: 500, fontSize: 'var(--t-base)' }}>
+            · {assessment.effort.band} effort
+          </span>
         </p>
-        <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.9rem', color: 'var(--ink-soft)' }}>
+        <ul className="drivers">
           {assessment.effort.drivers.map((driver) => (
-            <li key={driver.label} style={{ marginBottom: '0.2rem' }}>
-              {driver.label} — {driver.hours} {driver.hours === 1 ? 'hour' : 'hours'}
+            <li key={driver.label}>
+              <span>{driver.label}</span>
+              <b>{driver.hours}h</b>
             </li>
           ))}
         </ul>
@@ -196,20 +183,7 @@ export default async function OpportunityPage({
           <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem' }}>
             <strong>Subject:</strong> {enquiry.subject}
           </p>
-          <pre
-            style={{
-              whiteSpace: 'pre-wrap',
-              background: 'var(--canvas)',
-              border: '1px solid var(--line)',
-              borderRadius: '8px',
-              padding: '1rem',
-              margin: 0,
-              fontSize: '0.88rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            {enquiry.body}
-          </pre>
+          <pre className="email-preview">{enquiry.body}</pre>
         </Card>
       ) : null}
 

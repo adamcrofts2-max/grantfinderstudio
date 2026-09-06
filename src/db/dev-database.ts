@@ -15,11 +15,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { seedDemoData } from '../demo/seed.js';
-import { TenantDatabase, type TransactionCapable } from './client.js';
+import { TenantDatabase, type Queryable, type TransactionCapable } from './client.js';
 
-const MIGRATIONS = ['0001_init.sql'] as const;
+const MIGRATIONS = ['0001_init.sql', '0002_credentials.sql'] as const;
 
 let instance: Promise<TenantDatabase> | null = null;
+let raw: PGlite | null = null;
 
 async function build(): Promise<TenantDatabase> {
   const db = new PGlite();
@@ -34,6 +35,7 @@ async function build(): Promise<TenantDatabase> {
   await seedDemoData(db);
   await db.exec('SET ROLE app_user;');
 
+  raw = db;
   return new TenantDatabase(db as unknown as TransactionCapable);
 }
 
@@ -41,4 +43,32 @@ async function build(): Promise<TenantDatabase> {
 export function getDevDatabase(): Promise<TenantDatabase> {
   instance ??= build();
   return instance;
+}
+
+/**
+ * Run a query with operator privileges, outside every tenant policy.
+ *
+ * This exists for exactly one thing: the platform's own service credentials,
+ * which belong to no tenant and which `app_user` is deliberately granted no
+ * access to. Attempting to read them through the ordinary tenant connection
+ * fails with "permission denied" — that is the control working, not a bug.
+ *
+ * In production this is a separate connection pool authenticating as an admin
+ * role. Here there is one connection, so the role is raised and lowered around
+ * the call, and lowered again in `finally` so a thrown error cannot leave the
+ * connection privileged.
+ *
+ * Nothing tenant-scoped may be read through this. Keep the callers countable
+ * on one hand.
+ */
+export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  await getDevDatabase();
+  if (raw === null) throw new Error('The database is not initialised.');
+  const db = raw;
+  await db.exec('RESET ROLE;');
+  try {
+    return await fn(db as unknown as Queryable);
+  } finally {
+    await db.exec('SET ROLE app_user;');
+  }
 }

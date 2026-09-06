@@ -1,13 +1,12 @@
 import { getDevDatabase } from '@/db/dev-database';
 import { assessAll } from '@/db/queries';
 import { DEMO_ORG_ID } from '@/demo/seed';
-import { Card, gbp, Notice, RecommendationBadge } from '@/app/components';
+import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Ordering reflects the product's purpose: put the opportunities worth the
- * user's time first, and do not hide the ones that are not worth it — knowing
+ * Worth-your-time first, and never hide what is not worth doing — knowing
  * what to skip is half the value.
  */
 const ORDER = { strong: 0, worth_considering: 1, conditional: 2, not_recommended: 3 };
@@ -24,75 +23,58 @@ export default async function HomePage() {
   );
 
   return (
-    <div style={{ maxWidth: '68rem', margin: '0 auto', padding: '2rem 1.5rem 4rem' }}>
-      <h1 style={{ fontSize: '1.6rem', margin: '0 0 0.35rem', lineHeight: 1.25 }}>
-        Your funding opportunities
-      </h1>
-      {organisation && project ? (
-        <p style={{ color: 'var(--ink-soft)', margin: '0 0 1.75rem', maxWidth: '46rem' }}>
-          For <strong>{organisation.name}</strong> — {project.name}
-          {project.amountSoughtGbp === null
-            ? null
-            : `, seeking ${gbp(project.amountSoughtGbp)}`}
-          {project.durationMonths === null ? null : ` over ${project.durationMonths} months`}.
-        </p>
-      ) : (
-        <p style={{ color: 'var(--ink-soft)' }}>
-          No organisation profile found. Add one to see opportunities assessed against it.
-        </p>
-      )}
+    <div className="page">
+      <div className="banner" role="note" style={{ marginBottom: 'var(--s-5)' }}>
+        <span aria-hidden="true">⚠</span>
+        <span>
+          Demonstration data. Every funder, fund and award below is fictional and must not be
+          treated as a real funding opportunity.
+        </span>
+      </div>
+
+      <header className="page-head">
+        <h1 className="page-title">Your funding opportunities</h1>
+        {organisation && project ? (
+          <p className="page-sub">
+            For <strong>{organisation.name}</strong> — {project.name}
+            {project.amountSoughtGbp === null ? null : `, seeking ${gbp(project.amountSoughtGbp)}`}
+            {project.durationMonths === null ? null : ` over ${project.durationMonths} months`}.
+          </p>
+        ) : (
+          <p className="page-sub">
+            No organisation profile yet. Add one to see opportunities assessed against it.
+          </p>
+        )}
+      </header>
 
       {sorted.map(({ opportunity, assessment }) => (
-        <Card key={opportunity.id}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              alignItems: 'flex-start',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ flex: '1 1 22rem', minWidth: 0 }}>
-              <h2 style={{ fontSize: '1.15rem', margin: '0 0 0.2rem' }}>
-                <a
-                  href={`/opportunities/${opportunity.id}`}
-                  style={{ color: 'var(--ink)', textDecoration: 'none' }}
-                >
-                  {opportunity.title}
-                </a>
-              </h2>
-              <p style={{ color: 'var(--ink-soft)', margin: '0 0 0.6rem', fontSize: '0.9rem' }}>
-                {opportunity.funderName}
-              </p>
-              <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{assessment.headline}</p>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--ink-soft)' }}>
-                {assessment.recommendation.reason}
-              </p>
+        <a className="opportunity" key={opportunity.id} href={`/opportunities/${opportunity.id}`}>
+          <Card>
+            <div className="row-between">
+              <div style={{ flex: '1 1 24rem', minWidth: 0 }}>
+                <h2 className="opportunity-title">{opportunity.title}</h2>
+                <p className="opportunity-funder">{opportunity.funderName}</p>
+                <p className="headline">{assessment.headline}</p>
+                <p className="criteria-why" style={{ marginTop: 'var(--s-1)' }}>
+                  {assessment.recommendation.reason}
+                </p>
+              </div>
+              <div className="metric">
+                <RecommendationPill value={assessment.recommendation.recommendation} />
+                <p className="metric-value" style={{ marginTop: 'var(--s-3)' }}>
+                  ~{assessment.effort.hours}h
+                </p>
+                <p className="metric-label">{assessment.effort.band} effort</p>
+              </div>
             </div>
-
-            <div style={{ flex: '0 0 auto', textAlign: 'right' }}>
-              <RecommendationBadge value={assessment.recommendation.recommendation} />
-              <p style={{ margin: '0.6rem 0 0', fontSize: '0.85rem', color: 'var(--ink-soft)' }}>
-                About {assessment.effort.hours} hours
-                <br />
-                <span style={{ textTransform: 'capitalize' }}>{assessment.effort.band}</span> effort
-              </p>
+            <div className="card-foot">
+              <Notice tone={assessment.deadlineNotice.tone}>{assessment.deadlineNotice.text}</Notice>
+              <Notice tone={assessment.freshnessNotice.tone}>
+                {assessment.freshnessNotice.text}
+              </Notice>
             </div>
-          </div>
-
-          <div style={{ marginTop: '0.75rem', borderTop: '1px solid var(--line)', paddingTop: '0.6rem' }}>
-            <Notice tone={assessment.deadlineNotice.tone}>{assessment.deadlineNotice.text}</Notice>
-            <Notice tone={assessment.freshnessNotice.tone}>{assessment.freshnessNotice.text}</Notice>
-            <p style={{ margin: '0.5rem 0 0' }}>
-              <a href={`/opportunities/${opportunity.id}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                See why{' '}
-                <span aria-hidden="true">→</span>
-                <span className="sr-only"> {opportunity.title} was assessed this way</span>
-              </a>
-            </p>
-          </div>
-        </Card>
+          </Card>
+        </a>
       ))}
     </div>
   );
