@@ -119,9 +119,18 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Budget engine
 - [ ] Outcomes table
 
-## Phase 10 — Pipeline and export
+## Phase 10 — Tracker, pipeline and export
 - [ ] Pipeline states
-- [ ] Deadline tracking with honest deadline types
+- [x] Deadline tracking with honest deadline types
+- [x] Latest-start-date scheduling from remaining effort and weekly capacity
+- [x] Tracker groups work by what it needs, not by calendar bucket
+- [x] Eligibility overrides urgency — a ruled-out fund is set aside, not chased
+- [x] Mark an application submitted (and undo it), which stops its clock
+- [x] iCalendar export: deadlines and start dates into the user's own calendar
+- [ ] Weekly capacity as a per-organisation setting rather than a 4h/week assumption
+- [ ] Subscribable calendar feed (needs auth: a feed URL is fetched without a session)
+- [ ] Track a fund without opening an application for it (an explicit watchlist)
+- [ ] Effort features beyond word counts (attachments, policies, match funding) per opportunity
 - [ ] DOCX/PDF export
 
 ## Phase 11 — Hardening
@@ -131,5 +140,6 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Performance
 
 ## Explicitly out of MVP
-Billing · notifications · post-award reporting · human marketplace · predictive matching ·
+Billing · push/email notifications (superseded in part: the tracker exports to the user's own
+calendar, which reminds them without us building a channel) · post-award reporting · human marketplace · predictive matching ·
 integrations · public API · white label · learned organisational voice · theory-of-change generation

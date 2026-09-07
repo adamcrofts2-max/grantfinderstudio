@@ -52,6 +52,27 @@ opportunities, licences) readable by all tenants and writable only by the ingest
   unset, and `= NULL` is never true, so no tenant context means no rows. Tested.
 - Effort constants (`EFFORT_CONSTANTS`) and value bands (`VALUE_THRESHOLDS`) are collected in
   one place so they can be tuned from real usage rather than scattered through the code.
+- **The tracker schedules backwards, not forwards.** A deadline tells a user nothing they did
+  not know; the last day they can still *start* is the number nobody has. `latestStartDate`
+  works back from the deadline through the writing still outstanding at the organisation's
+  weekly capacity (`SCHEDULE_CONSTANTS.defaultHoursPerWeek`, currently 4 and shown to the user
+  as an assumption). This is why the tracker is a scheduling surface rather than a calendar.
+- **Unknown work is reported as unknown.** `remainingHours` returns `null` when no questions
+  have been pasted in — an unmeasured form is not an empty one, and a confident schedule on top
+  of no information is worse than saying "paste the questions in".
+- **Eligibility overrides urgency in the tracker.** A fund the engine has ruled you out of is
+  moved to "Ruled out" and its schedule suppressed, whatever its deadline says. Urging someone
+  to drop everything for a fund they cannot win is the product arguing with itself, and the
+  fastest way to teach people to ignore it. It is set aside, never hidden — the applicant may
+  know something about the funder that we do not.
+- **Reminders go to the user's own calendar, not to a notification channel we build.** The
+  architecture cut notifications because alerting over a thin opportunity feed manufactures
+  noise; that reasoning holds for *discovery*. A person's own committed deadlines are real,
+  user-entered data, and they already own something that reminds them reliably. So the tracker
+  exports iCalendar (deadlines and start dates, with alarms) rather than growing a mail
+  provider, a scheduler and an unauthenticated feed token. A download, not a subscribable feed:
+  a feed URL must be fetchable by Google's servers without a session, and inventing an
+  unauthenticated token for tenant data is not a decision to make in passing.
 - Facts are never mutated. `supersede()` returns both records; callers persist both.
 - Only confirmed, non-superseded facts may ground generated prose (`isUsableForGeneration`).
 - **SQL migrations are the schema source of truth**, not an ORM model. RLS policies cannot be
@@ -92,7 +113,7 @@ Three properties are enforced structurally rather than by prompting alone:
 
 Authentication and sign-in · onboarding and natural-language intake · document upload, parsing
 and embeddings · the Analyst, Writer and Critic agents · application workspace and drafting ·
-red team · pipeline and deadlines · export · billing.
+red team · export · billing.
 
 **The AI layer has now been verified live** against `claude-opus-5`. `extractor.live.test.ts`
 runs the Extractor over a document carrying an embedded prompt-injection attempt and asserts
@@ -136,15 +157,46 @@ than letting it pass for a real deployment.
 Find your company on Companies House → confirm what we know about you →
 see opportunities assessed against you → start an application → paste the
 funder's questions → draft each answer from confirmed facts → copy it into
-their portal.
+their portal → track what is left against the time you actually have, and put
+the dates in your own calendar → mark it submitted, which stops its clock.
 
 What is missing from that line: document upload (the Extractor exists but
 nothing feeds it), budgets, outcomes, and DOCX export.
 
+## The tracker (Phase 10)
+
+`src/domain/tracker/schedule.ts` is pure scheduling arithmetic: `remainingHours` sizes the
+writing left from the pasted questions (word limits where the funder gave one,
+`assumedWordsPerUnlimitedQuestion` where it did not, and the one-off cost of reading the
+guidance only while nothing is answered); `daysOfWorkNeeded` converts that to calendar days at
+the weekly pace; `latestStartDate` subtracts it, plus a two-day buffer, from the deadline. The
+result is one of seven states — `overdue`, `start_now`, `behind`, `effort_unknown`, `on_track`,
+`no_clock`, `submitted` — each carrying a plain-English reason built from the numbers. No
+score, for the same reason `assess.ts` refuses a composite. `dateIsFirm` travels with every
+judgement so an estimated deadline never generates confident urgency, and a rolling fund is
+`no_clock` even when a date is recorded against it.
+
+`src/domain/tracker/calendar.ts` renders iCalendar: CRLF, RFC 5545 escaping, 75-octet folding
+that never splits a multi-byte character, all-day events with an exclusive end date, stable
+UIDs so re-importing updates rather than duplicates, and a `VALARM` a week before each deadline
+and a day before each start date. An unconfirmed date says so in the SUMMARY, not just the
+description — the summary is all most people see in a month view.
+
+`src/db/tracker.ts` is the read model. It returns applications *and* the opportunities with no
+application against them, because the second group is where deadlines are actually missed. The
+`NOT EXISTS` check is scoped by RLS, so a fund another tenant is working on still reads as
+untouched here; there is a test for exactly that.
+
+`/tracker` groups by what the work needs (Needs you this week · In hand · No fixed deadline ·
+Not started · Ruled out · Submitted) rather than by calendar bucket, because the question a
+user arrives with is "what do I do today", not "what happens in October".
+`/api/tracker/calendar` serves the `.ics`.
+
 ## Next task
 
 Authentication, so the tenant context comes from a real session rather than a fixed demo
-organisation id. Everything below it is already tenant-scoped and tested, so this is the last
+organisation id. It now also gates two tracker follow-ups: a subscribable calendar feed, and
+weekly capacity as a per-organisation setting rather than the 4h/week assumption. Everything below it is already tenant-scoped and tested, so this is the last
 piece before the app can hold more than one organisation.
 
 After that, the AI layer: the provider abstraction and the four agents, starting with the
