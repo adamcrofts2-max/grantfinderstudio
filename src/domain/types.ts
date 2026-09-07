@@ -41,14 +41,25 @@ export function isCic(form: LegalForm): boolean {
  * `not_stated` is deliberately a first-class value: the honest response to
  * silence is to ask the funder, not to guess.
  */
-export type CicTreatment =
-  | 'explicitly_permitted'
-  | 'charity_only'
-  | 'asset_locked_only'
-  | 'limited_by_guarantee_only'
-  | 'no_share_capital_only'
-  | 'permitted_with_conditions'
-  | 'not_stated';
+/**
+ * How a funder treats the CIC form, as its own guidance states it.
+ *
+ * The array is the single definition and the type is derived from it, so the
+ * runtime list and the compile-time union cannot drift. They already did once:
+ * the Analyst agent was written against invented values and only failed at the
+ * database enum.
+ */
+export const CIC_TREATMENTS = [
+  'explicitly_permitted',
+  'charity_only',
+  'asset_locked_only',
+  'limited_by_guarantee_only',
+  'no_share_capital_only',
+  'permitted_with_conditions',
+  'not_stated',
+] as const;
+
+export type CicTreatment = (typeof CIC_TREATMENTS)[number];
 
 /** Confidence that an opportunity record still reflects reality. */
 export type Freshness =

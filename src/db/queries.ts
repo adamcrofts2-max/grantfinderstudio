@@ -197,13 +197,68 @@ export async function loadAwards(tx: Queryable, funderId: string): Promise<Award
   }));
 }
 
+/**
+ * The criteria the eligibility engine is allowed to decide on.
+ *
+ * Verified only, and this filter is load-bearing. The architecture's rule is
+ * that AI proposes criteria, a person verifies them, and only then does the
+ * engine decide. Without the `verified_at IS NOT NULL` clause, a criterion a
+ * model invented from pasted guidance would drive a verdict the moment it was
+ * stored — which would make the AI the decision-maker and quietly remove the
+ * one guarantee this product is built on.
+ *
+ * An opportunity with nothing verified yet therefore has an empty criteria
+ * set, and `evaluateEligibility` returns `unknown` for that. Knowing nothing
+ * about a funder's rules is not the same as meeting them.
+ */
 export async function loadCriteria(tx: Queryable, opportunityId: string) {
   const r = await tx.query<CriterionRow>(
     `SELECT id, kind, label, params, cic_handling
-     FROM eligibility_criteria WHERE opportunity_id = $1 ORDER BY id`,
+     FROM eligibility_criteria
+     WHERE opportunity_id = $1 AND verified_at IS NOT NULL
+     ORDER BY id`,
     [opportunityId],
   );
   return mapCriteria(r.rows);
+}
+
+export interface ProposedCriterion {
+  id: string;
+  kind: string;
+  label: string;
+  params: unknown;
+  cicHandling: string | null;
+  sourceSpan: string | null;
+  proposedBy: string;
+}
+
+/**
+ * Criteria awaiting a person's judgement.
+ *
+ * Separate from `loadCriteria` on purpose: these are for a review screen, not
+ * for the engine, and keeping them in different functions means no caller can
+ * pass one where the other belongs.
+ */
+export async function loadProposedCriteria(
+  tx: Queryable,
+  opportunityId: string,
+): Promise<ProposedCriterion[]> {
+  const r = await tx.query<CriterionRow & { source_span: string | null; proposed_by: string }>(
+    `SELECT id, kind, label, params, cic_handling, source_span, proposed_by
+     FROM eligibility_criteria
+     WHERE opportunity_id = $1 AND verified_at IS NULL AND rejected_at IS NULL
+     ORDER BY id`,
+    [opportunityId],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    label: row.label,
+    params: row.params,
+    cicHandling: row.cic_handling,
+    sourceSpan: row.source_span,
+    proposedBy: row.proposed_by,
+  }));
 }
 
 export interface AssessedOpportunity {

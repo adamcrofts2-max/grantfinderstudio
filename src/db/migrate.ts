@@ -27,6 +27,7 @@ export const MIGRATIONS = [
   '0001_init.sql',
   '0002_credentials.sql',
   '0003_documents.sql',
+  '0004_user_opportunities.sql',
 ] as const;
 
 export async function readMigration(name: string): Promise<string> {

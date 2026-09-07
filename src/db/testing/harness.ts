@@ -123,5 +123,13 @@ async function seedFixtures(db: PGlite): Promise<void> {
 
     INSERT INTO funders (id, name, source_dataset_id)
     VALUES ('funder_demo', 'Demonstration Trust (fictional)', 'ds_demo');
+
+    -- Shared register data, belonging to no tenant. Present so tests can prove
+    -- that a tenant cannot delete or claim an opportunity it did not add.
+    INSERT INTO opportunities
+      (id, funder_id, title, deadline, deadline_kind, freshness_state, retrieved_at)
+    VALUES
+      ('opp_seed', 'funder_demo', 'Seeded Register Fund', '2026-12-01', 'confirmed',
+       'current', now());
   `);
 }
