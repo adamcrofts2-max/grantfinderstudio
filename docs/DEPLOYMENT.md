@@ -51,9 +51,44 @@ GET https://your-app.vercel.app/api/health
 `{"status":"ok","database":"ok","persistent":true,"problems":[]}` is what you
 want. Anything else lists every problem at once, each with a fix.
 
-**5. Add the API keys** at `/settings`. Each is tested against the provider as
+**5. Protect the deployment before you put anything real in it.** There is no
+authentication yet: anyone with the URL sees the organisation's data. In
+Vercel, Settings → Deployment Protection → **Password Protection** (or Vercel
+Authentication) covers the whole deployment and is a setting rather than a
+sprint. Do this before step 6.
+
+**6. Add the API keys** at `/settings`. Each is tested against the provider as
 you save, so "Connected" means it genuinely works rather than merely that
 something was stored.
+
+**7. First run.** A real database starts completely empty — the demo funds are
+seeded only into the in-memory dev database, so there is no fictional data and
+no "demonstration data" banner. Go to `/onboarding` and either look your
+company up on Companies House or, under **Enter your details yourself**, type
+them in; then fill in **What you are trying to fund**. Both are needed: the
+profile decides eligibility on legal form, and the project supplies the amount,
+duration and beneficiary groups that three more criteria turn on.
+
+## Rehearsed against a real Postgres
+
+This was run end to end against PostgreSQL 16 as a **non-superuser owner**,
+which is the shape every managed host gives you. Three things only that
+rehearsal could find, all now fixed:
+
+- **`CREATE ROLE app_user` is cluster-scoped, not database-scoped.** A second
+  database in the same Neon project would have failed migration 0001. Role
+  creation is now idempotent, and it explicitly grants `app_user` to the
+  connecting role, because `SET LOCAL ROLE` needs that membership on a host
+  that does not hand out superuser.
+- **`FORCE ROW LEVEL SECURITY` binds the table owner too.** Writing an
+  organisation through the admin connection was refused. Every PGlite test had
+  seeded as a superuser, which bypasses RLS entirely, so this was invisible
+  until the app ran against a real database. Organisation, membership, profile
+  and fact writes now go through the tenant path, where the policies are
+  satisfied by construction; only the `users` row is the operator's.
+- **`confirmCompanyAction` was an UPDATE.** On an empty database it changed
+  nothing and reported success. Both routes into onboarding now create the
+  organisation first.
 
 ## What to verify first
 

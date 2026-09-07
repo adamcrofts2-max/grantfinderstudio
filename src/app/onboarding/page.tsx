@@ -1,4 +1,6 @@
 import { CompanySearch } from './CompanySearch';
+import { ManualProfile } from './ManualProfile';
+import { ProjectForm } from './ProjectForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +86,10 @@ export default function OnboardingPage() {
           </li>
         </ul>
       </section>
+
+      <ManualProfile />
+
+      <ProjectForm />
     </div>
   );
 }

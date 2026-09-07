@@ -449,7 +449,26 @@ CREATE INDEX ai_generations_org_idx ON ai_generations (organisation_id, created_
 -- true, so an unset tenant sees nothing. The system fails closed.
 -- ---------------------------------------------------------------------------
 
-CREATE ROLE app_user NOLOGIN;
+-- Roles in Postgres are CLUSTER-scoped, not database-scoped. A plain
+-- CREATE ROLE therefore fails the second time this schema is applied anywhere
+-- in the same cluster — a staging database alongside production on the same
+-- Neon project is enough to break the first deploy.
+--
+-- The GRANT afterwards matters just as much. `SET LOCAL ROLE app_user` only
+-- works if the connecting role is a member of app_user (or a superuser, which
+-- a managed host will not give you). Postgres 16 grants the creator membership
+-- implicitly, but that is not something to depend on across hosts and
+-- versions, so it is stated explicitly and made safe to repeat.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+    CREATE ROLE app_user NOLOGIN;
+  END IF;
+  EXECUTE format('GRANT app_user TO %I', current_user);
+EXCEPTION
+  -- Already a member. Harmless, and not worth failing a deploy over.
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 GRANT SELECT ON source_datasets, funders, funder_awards, opportunities,
   eligibility_criteria TO app_user;

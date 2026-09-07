@@ -78,12 +78,14 @@ interface ProjectRow {
   beneficiary_groups: string[];
   amount_sought_gbp: string | null;
   duration_months: number | null;
+  capital_or_revenue: 'capital' | 'revenue' | 'both' | null;
 }
 
 export async function loadProject(tx: Queryable): Promise<ProjectView | null> {
   const r = await tx.query<ProjectRow>(`
     SELECT name, description, beneficiary_groups,
-           amount_sought_gbp::text AS amount_sought_gbp, duration_months
+           amount_sought_gbp::text AS amount_sought_gbp, duration_months,
+           capital_or_revenue::text AS capital_or_revenue
     FROM projects
     ORDER BY created_at
     LIMIT 1
@@ -99,7 +101,8 @@ export async function loadProject(tx: Queryable): Promise<ProjectView | null> {
     durationMonths: row.duration_months,
     // Not yet captured in onboarding; the engine reports these as unknown
     // rather than assuming, which is the correct behaviour.
-    capitalOrRevenue: null,
+    // 'both' means no capital/revenue restriction can exclude this project.
+    capitalOrRevenue: row.capital_or_revenue === 'both' ? null : row.capital_or_revenue,
     hasMatchFunding: null,
   };
 }

@@ -6,23 +6,35 @@
  */
 
 /** UK jurisdictions are modelled explicitly and never as free text. */
-export type Jurisdiction =
-  | 'england'
-  | 'wales'
-  | 'scotland'
-  | 'northern_ireland'
-  | 'uk_wide';
+/**
+ * Arrays first, types derived from them, so the runtime list and the
+ * compile-time union cannot drift. `CicTreatment` is defined the same way,
+ * after the Analyst was written against invented values and only failed at the
+ * database enum.
+ */
+export const JURISDICTIONS = [
+  'england',
+  'wales',
+  'scotland',
+  'northern_ireland',
+  'uk_wide',
+] as const;
 
-export type LegalForm =
-  | 'cic_limited_by_guarantee'
-  | 'cic_limited_by_shares'
-  | 'charity'
-  | 'charitable_incorporated_organisation'
-  | 'community_benefit_society'
-  | 'company_limited_by_guarantee'
-  | 'company_limited_by_shares'
-  | 'unincorporated_association'
-  | 'other';
+export type Jurisdiction = (typeof JURISDICTIONS)[number];
+
+export const LEGAL_FORMS = [
+  'cic_limited_by_guarantee',
+  'cic_limited_by_shares',
+  'charity',
+  'charitable_incorporated_organisation',
+  'community_benefit_society',
+  'company_limited_by_guarantee',
+  'company_limited_by_shares',
+  'unincorporated_association',
+  'other',
+] as const;
+
+export type LegalForm = (typeof LEGAL_FORMS)[number];
 
 export const CIC_LEGAL_FORMS = [
   'cic_limited_by_guarantee',

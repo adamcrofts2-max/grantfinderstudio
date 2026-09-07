@@ -1,5 +1,6 @@
 import { getDatabase } from '@/db';
 import { assessAll } from '@/db/queries';
+import { readEnvironment } from '@/env';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
 
@@ -16,6 +17,11 @@ export default async function HomePage() {
   const asOf = new Date().toISOString().slice(0, 10);
   const { organisation, project, assessed } = await assessAll(database, DEMO_ORG_ID, asOf);
 
+  // The demo funds are seeded only into the in-memory dev database. Warning a
+  // real deployment that its data is fictional, when there is no fictional
+  // data anywhere, teaches people to ignore the banner that will matter.
+  const isDemoData = readEnvironment().databaseUrl === null;
+
   const sorted = [...assessed].toSorted(
     (a, b) =>
       ORDER[a.assessment.recommendation.recommendation] -
@@ -24,13 +30,15 @@ export default async function HomePage() {
 
   return (
     <div className="page">
-      <div className="banner" role="note" style={{ marginBottom: 'var(--s-5)' }}>
-        <span aria-hidden="true">⚠</span>
-        <span>
-          Demonstration data. Every funder, fund and award below is fictional and must not be
-          treated as a real funding opportunity.
-        </span>
-      </div>
+      {isDemoData ? (
+        <div className="banner" role="note" style={{ marginBottom: 'var(--s-5)' }}>
+          <span aria-hidden="true">⚠</span>
+          <span>
+            Demonstration data. Every funder, fund and award below is fictional and must not be
+            treated as a real funding opportunity.
+          </span>
+        </div>
+      ) : null}
 
       <header className="page-head">
         <h1 className="page-title">Your funding opportunities</h1>
@@ -40,9 +48,17 @@ export default async function HomePage() {
             {project.amountSoughtGbp === null ? null : `, seeking ${gbp(project.amountSoughtGbp)}`}
             {project.durationMonths === null ? null : ` over ${project.durationMonths} months`}.
           </p>
+        ) : organisation === null ? (
+          <p className="page-sub">
+            We do not know who you are yet.{' '}
+            <a href="/onboarding">Tell us about your organisation</a> and every fund below gets
+            checked against it.
+          </p>
         ) : (
           <p className="page-sub">
-            No organisation profile yet. Add one to see opportunities assessed against it.
+            We know who you are, but not what you are trying to fund.{' '}
+            <a href="/onboarding">Add your project</a> — the amount, the length and who benefits
+            are what most eligibility rules turn on.
           </p>
         )}
         <div className="row" style={{ marginTop: 'var(--s-4)' }}>

@@ -1,12 +1,26 @@
 'use server';
 
-import { withAdmin } from '@/db';
+import { revalidatePath } from 'next/cache';
+import { getDatabase, withAdmin } from '@/db';
 import { CompaniesHouseClient, describeFailure } from '@/ingestion/companieshouse/client';
 import { looksLikeCompanyNumber } from '@/ingestion/companieshouse/normalise';
-import { EMPTY_SEARCH, type ConfirmState, type SearchState } from './state';
+import {
+  EMPTY_SEARCH,
+  type ConfirmState,
+  type ManualState,
+  type ProjectState,
+  type SearchState,
+} from './state';
 import { loadMasterKey } from '@/secrets/crypto';
 import { readCredentialSecret } from '@/secrets/store';
-import { DEMO_ORG_ID } from '@/demo/seed';
+import {
+  ensureOrganisation,
+  ensureUser,
+  saveProject,
+  saveSelfDeclaredProfile,
+} from '@/db/onboarding';
+import { JURISDICTIONS, LEGAL_FORMS, type Jurisdiction, type LegalForm } from '@/domain/types';
+import { DEMO_ORG_ID, DEMO_USER_ID } from '@/demo/seed';
 
 /** Build a client from the stored operator credential, if there is one. */
 async function buildClient(): Promise<CompaniesHouseClient | null> {
@@ -99,7 +113,13 @@ export async function confirmCompanyAction(
   }
   const profile = result.profile;
 
-  await withAdmin(async (tx) => {
+  await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
+
+  const database = await getDatabase();
+  await database.withTenant(DEMO_ORG_ID, async (tx) => {
+    // On a fresh deployment there is no organisation yet, and this UPDATE
+    // would silently affect nothing. Both routes in create it first.
+    await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, profile.name);
     await tx.query(
       `UPDATE organisation_profiles
          SET legal_name = $2, company_number = $3, form = COALESCE($4, form),
@@ -150,4 +170,156 @@ export async function confirmCompanyAction(
     saved: true,
     message: `Saved ${profile.name} from the Companies House register.${formNote}`,
   };
+}
+
+/**
+ * Enter the organisation's details by hand.
+ *
+ * The route that must always work. Companies House lookup needs a key, an
+ * outbound connection and a company on the register — and if any of those is
+ * missing on a fresh deployment there is otherwise no way past the first
+ * screen at all.
+ *
+ * It also creates the organisation itself. `confirmCompanyAction` was written
+ * as an UPDATE, which on an empty database silently changes nothing; both
+ * paths now go through `ensureOrganisation` first.
+ */
+export async function saveManualProfileAction(
+  _previous: ManualState,
+  formData: FormData,
+): Promise<ManualState> {
+  const read = (name: string): string => String(formData.get(name) ?? '').trim();
+
+  const legalName = read('legalName');
+  const legalForm = read('legalForm');
+  const jurisdiction = read('jurisdiction');
+  const region = read('region');
+  const companyNumber = read('companyNumber');
+  const incorporationDate = read('incorporationDate');
+
+  const errors: Record<string, string> = {};
+  if (legalName === '') errors['legalName'] = 'We need the name your organisation is registered under.';
+  if (!(LEGAL_FORMS as readonly string[]).includes(legalForm)) errors['legalForm'] = 'Choose the legal form.';
+  if (!(JURISDICTIONS as readonly string[]).includes(jurisdiction)) errors['jurisdiction'] = 'Choose where you are based.';
+  if (incorporationDate !== '' && !/^\d{4}-\d{2}-\d{2}$/u.test(incorporationDate)) {
+    errors['incorporationDate'] = 'Use the date picker, or leave it blank.';
+  }
+  // A UK company number is 8 characters, sometimes with a two-letter prefix.
+  if (companyNumber !== '' && !/^[A-Za-z]{0,2}\d{6,8}$/u.test(companyNumber)) {
+    errors['companyNumber'] = 'That is not a company number. Leave it blank if you do not have one.';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { saved: false, message: 'Check the highlighted fields.', errors };
+  }
+
+  try {
+    // The user account is the operator's; everything else belongs to the
+    // tenant and must be written inside its own context, because FORCE ROW
+    // LEVEL SECURITY binds the table owner too.
+    await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
+
+    const database = await getDatabase();
+    await database.withTenant(DEMO_ORG_ID, async (tx) => {
+      await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, legalName);
+      await saveSelfDeclaredProfile(tx, DEMO_ORG_ID, DEMO_USER_ID, {
+        legalName,
+        companyNumber: companyNumber === '' ? null : companyNumber.toUpperCase(),
+        legalForm: legalForm as LegalForm,
+        jurisdiction: jurisdiction as Jurisdiction,
+        region: region === '' ? null : region,
+        incorporationDate: incorporationDate === '' ? null : incorporationDate,
+      });
+    });
+  } catch {
+    return {
+      saved: false,
+      message: 'We could not save that. Nothing has been changed — please try again.',
+      errors: {},
+    };
+  }
+
+  revalidatePath('/');
+  revalidatePath('/organisation');
+  revalidatePath('/onboarding');
+  return {
+    saved: true,
+    message: 'Saved. These are recorded as your own declaration, not as verified against the register.',
+    errors: {},
+  };
+}
+
+
+/**
+ * What the organisation is trying to fund.
+ *
+ * Without this there is nothing to assess an opportunity against. Amount,
+ * duration and beneficiary group are three of the ten criteria the engine
+ * evaluates, and the three that change per application — a profile alone gets
+ * you eligibility on legal form and very little else.
+ */
+export async function saveProjectAction(
+  _previous: ProjectState,
+  formData: FormData,
+): Promise<ProjectState> {
+  const read = (name: string): string => String(formData.get(name) ?? '').trim();
+
+  const name = read('projectName');
+  const description = read('description');
+  const amountRaw = read('amountSoughtGbp').replace(/[£,\s]/gu, '');
+  const durationRaw = read('durationMonths');
+  const spend = read('capitalOrRevenue');
+  const beneficiaries = formData.getAll('beneficiaries').map(String).filter((b) => b !== '');
+
+  const errors: Record<string, string> = {};
+  if (name === '') errors['projectName'] = 'Give the project a name you would put on a form.';
+
+  let amountSoughtGbp: number | null = null;
+  if (amountRaw !== '') {
+    const parsed = Number(amountRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) errors['amountSoughtGbp'] = 'Enter an amount in pounds.';
+    else amountSoughtGbp = Math.round(parsed);
+  }
+
+  let durationMonths: number | null = null;
+  if (durationRaw !== '') {
+    const parsed = Number(durationRaw);
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 120) {
+      errors['durationMonths'] = 'Enter a whole number of months, up to 120.';
+    } else durationMonths = parsed;
+  }
+
+  if (spend !== '' && !['capital', 'revenue', 'both'].includes(spend)) {
+    errors['capitalOrRevenue'] = 'Choose what the money is for.';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { saved: false, message: 'Check the highlighted fields.', errors };
+  }
+
+  try {
+    await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
+    const database = await getDatabase();
+    await database.withTenant(DEMO_ORG_ID, async (tx) => {
+      await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, name);
+      await saveProject(tx, DEMO_ORG_ID, {
+        name,
+        description: description === '' ? null : description,
+        amountSoughtGbp,
+        durationMonths,
+        beneficiaryGroups: beneficiaries,
+        capitalOrRevenue: spend === '' ? null : (spend as 'capital' | 'revenue' | 'both'),
+      });
+    });
+  } catch {
+    return {
+      saved: false,
+      message: 'We could not save that. Nothing has been changed — please try again.',
+      errors: {},
+    };
+  }
+
+  revalidatePath('/');
+  revalidatePath('/onboarding');
+  return { saved: true, message: 'Saved. Every fund is now checked against this.', errors: {} };
 }

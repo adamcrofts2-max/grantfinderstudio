@@ -28,7 +28,12 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Environment validation reporting every problem at once
 - [x] Health check endpoint
 - [x] Vercel config with security headers, UK region
+- [x] Rehearsed against real PostgreSQL 16 as a non-superuser owner
+- [x] Idempotent, cluster-safe `app_user` role creation with explicit membership
+- [x] First run works on an empty database: manual profile entry and project
+- [x] Demo-data banner shown only when there is demo data
 - [ ] Deploy and verify Companies House and 360Giving against their real APIs
+- [ ] Deployment protection on, until authentication exists
 
 ## Phase 2 — Persistence
 - [x] SQL schema covering the MVP tables, with enums and check constraints
@@ -57,7 +62,7 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Dissolved companies flagged before any effort is spent
 - [x] Adopting a company writes facts with `companies_house` provenance
 - [x] Graceful degradation when lookup is unconfigured or unavailable
-- [ ] Manual entry, recorded as self-declared rather than verified
+- [x] Manual entry, recorded as self-declared rather than verified
 - [ ] Live verification against the real Companies House API (egress-blocked here)
 - [ ] Natural-language intake ("What are you trying to fund?")
 - [ ] Fact confirmation UI with source spans
