@@ -129,6 +129,8 @@ export interface AnswerRow {
 export interface ApplicationView {
   id: string;
   status: string;
+  /** Null when the application was started without a fund attached. */
+  opportunityId: string | null;
   amountRequestedGbp: number | null;
   opportunityTitle: string | null;
   funderName: string | null;
@@ -144,12 +146,13 @@ export async function loadApplication(
   const app = await tx.query<{
     id: string;
     status: string;
+    opportunity_id: string | null;
     amount_requested_gbp: string | null;
     title: string | null;
     funder_name: string | null;
     deadline: string | null;
   }>(
-    `SELECT a.id, a.status, a.amount_requested_gbp::text AS amount_requested_gbp,
+    `SELECT a.id, a.status, a.opportunity_id, a.amount_requested_gbp::text AS amount_requested_gbp,
             o.title, f.name AS funder_name, o.deadline::text AS deadline
      FROM applications a
      LEFT JOIN opportunities o ON o.id = a.opportunity_id
@@ -177,6 +180,7 @@ export async function loadApplication(
   return {
     id: row.id,
     status: row.status,
+    opportunityId: row.opportunity_id,
     amountRequestedGbp: row.amount_requested_gbp === null ? null : Number(row.amount_requested_gbp),
     opportunityTitle: row.title,
     funderName: row.funder_name,
@@ -438,4 +442,23 @@ export async function loadApplications(tx: Queryable): Promise<ApplicationSummar
     answered: Number(row.answered),
     unsupported: Number(row.unsupported),
   }));
+}
+
+/**
+ * The funder's rules, as verified, in the applicant's own words.
+ *
+ * Verified only — the Critic must judge an application against rules a person
+ * has accepted, never against a criterion a model proposed and nobody checked.
+ */
+export async function loadVerifiedCriteriaLabels(
+  tx: Queryable,
+  opportunityId: string,
+): Promise<string[]> {
+  const r = await tx.query<{ label: string }>(
+    `SELECT label FROM eligibility_criteria
+     WHERE opportunity_id = $1 AND verified_at IS NOT NULL
+     ORDER BY id`,
+    [opportunityId],
+  );
+  return r.rows.map((row) => row.label);
 }

@@ -80,6 +80,22 @@ opportunities, licences) readable by all tenants and writable only by the ingest
   match funding and the funder's budget template are untouched by drafting help, and on a form
   with real paperwork they become the majority of the remaining cost. That is what an applicant
   should be planning around, and the effort drivers are sorted to make it visible.
+- **The Critic reads what only a reader of the whole form can see.** Word limits, fabricated
+  fact ids, unsupported claims and repeated facts are already decided exactly by `checkDraft`;
+  asking a model to re-find them would be slower, dearer, less reliable, and would bury the
+  findings only it can make — an answer that misses the question, two answers that cannot both
+  be true, an outcome nobody could verify. It never rewrites (that is the Writer's job, and a
+  critic that silently fixes things teaches nothing) and there is no field in its schema in
+  which a probability of success could be returned.
+- **Every finding quotes the applicant's own words, and one that quotes words they never wrote
+  is discarded before they see it.** A criticism of an invented sentence is the review
+  equivalent of a fabricated citation: it sends someone hunting through their own application
+  for text that is not there.
+- **The Writer and the Critic turn out to be complementary in a way neither was designed for.**
+  Found on the first live run: because the Writer refuses to invent, its answers openly decline
+  to give figures the organisation has not confirmed — and the Critic correctly reports that as
+  an application an assessor could not score. The honesty of one produces the gaps, and the
+  other turns them into a list of what to go and find.
 - **The eligibility engine only ever sees criteria a person has verified.** `loadCriteria`
   filters on `verified_at IS NOT NULL`, and that filter is load-bearing: without it a criterion
   a model proposed from pasted guidance would drive a verdict the moment it was stored, making
@@ -304,6 +320,25 @@ organisation page is for facts. Verified live against `claude-opus-5` on a reali
 nine rules proposed, each quoting the guidance, including the asset-lock condition split from the
 legal-form rule — where the interface tells a CIC it *meets* it, which is the misreading the
 product exists to prevent.
+
+## Review, and the path to paid human review (Phase 9, step 1)
+
+`src/ai/agents/critic.ts` holds two agents sharing one schema and one set of rules, differing
+only in stance: `CRITIC` reads on the applicant's behalf, `RED_TEAM` reads as a sceptical
+assessor with more applications than money. Verified live against both — the red-team pass found
+ten faults to the standard pass's eight, including an answer that opened by restating the
+organisation instead of describing a need, and it refused to accept "we would rather not give
+estimates" as a reason for an unanswerable application.
+
+This is step 1 of the sequence in ROADMAP Phase 9: the machine takes the mechanical and
+structural faults so nobody pays a bid writer to notice a word count. Steps 2-4 are a shareable
+read-only review link, curated referral, and only then a marketplace.
+
+Also fixed here: `providerFromStore` checked only the encrypted stored credential while
+`isWriterAvailable` counted `ANTHROPIC_API_KEY` too, so the interface offered drafting and
+reviewing and then reported that encryption was not configured. Both routes now count, and the
+stored key wins where both exist because entering one in Settings is a deliberate choice about
+which account pays.
 
 ## Next task
 

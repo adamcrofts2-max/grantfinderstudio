@@ -149,9 +149,13 @@ Sequenced so each step is useful alone and earns the right to the next. A
 marketplace built first is a bet; built last it is an obvious extension.
 
 **Step 1 — the machine catches the mechanical faults (free)**
-- [ ] Critic agent: reads the whole application as an assessor would
-- [ ] Red-team mode: the same read, adversarially
-- [ ] Findings quote the span they refer to, so each one is checkable
+- [x] Critic agent: reads the whole application as an assessor would
+- [x] Red-team mode: the same read, adversarially
+- [x] Findings quote the span they refer to, so each one is checkable
+- [x] Findings quoting words the application does not contain are discarded
+- [x] The Critic never rewrites, never scores, and never repeats a check the
+      deterministic `checkDraft` already makes exactly
+- [ ] Store reviews against the application (the `reviews` table is still unused)
 - [ ] Readiness breakdown (completeness, never a success probability)
 
 **Step 2 — a human of the applicant's choosing (free, no supply side needed)**

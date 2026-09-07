@@ -7,8 +7,16 @@ import { usableFacts } from '@/domain/provenance/facts';
 import { providerFromStore } from '@/ai/provider-from-store';
 import { runAgent } from '@/ai/run';
 import { buildWriterPrompt, checkDraft, WRITER } from '@/ai/agents/writer';
+import {
+  buildCriticPrompt,
+  bySeverity,
+  CRITIC,
+  keepCheckableFindings,
+  RED_TEAM,
+} from '@/ai/agents/critic';
+import { loadVerifiedCriteriaLabels } from '@/db/workspace';
 import { DEMO_ORG_ID, DEMO_USER_ID } from '@/demo/seed';
-import { EMPTY_DRAFT, type AddState, type DraftState } from './state';
+import { EMPTY_DRAFT, EMPTY_REVIEW, type AddState, type DraftState, type ReviewState } from './state';
 
 /**
  * Draft one answer.
@@ -193,4 +201,88 @@ export async function addQuestionsAction(
     ok: true,
     message: `Added ${questions.length} question${questions.length === 1 ? '' : 's'}.`,
   };
+}
+
+/**
+ * Review the whole application before it goes in.
+ *
+ * The free first step on the path to paid human review: the machine takes the
+ * mechanical and structural faults so that a person's time — and later a paid
+ * bid writer's — is spent on judgement rather than on noticing a word count.
+ *
+ * Findings that quote words the application does not contain are dropped
+ * before the applicant ever sees them. A criticism of an invented sentence is
+ * the review equivalent of a fabricated citation.
+ */
+export async function reviewApplicationAction(
+  _previous: ReviewState,
+  formData: FormData,
+): Promise<ReviewState> {
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const mode = formData.get('mode') === 'red_team' ? 'red_team' : 'standard';
+  if (applicationId === '') return { ...EMPTY_REVIEW, ok: false, message: 'No application.' };
+
+  const provider = await providerFromStore();
+  if (!provider.available) return { ...EMPTY_REVIEW, ok: false, message: provider.reason };
+
+  const database = await getDatabase();
+  const loaded = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+    const application = await loadApplication(tx, applicationId);
+    if (application === null) return null;
+    const criteria =
+      application.opportunityId === null
+        ? []
+        : await loadVerifiedCriteriaLabels(tx, application.opportunityId);
+    return { application, criteria };
+  });
+
+  if (loaded === null) return { ...EMPTY_REVIEW, ok: false, message: 'Application not found.' };
+  const { application, criteria } = loaded;
+
+  const answered = application.questions.map((question) => ({
+    position: question.position,
+    question: question.question,
+    answer: application.answers.get(question.id)?.content ?? '',
+  }));
+
+  if (answered.every((q) => q.answer.trim() === '')) {
+    return {
+      ...EMPTY_REVIEW,
+      ok: false,
+      message: 'There is nothing to review yet — draft an answer or two first.',
+    };
+  }
+
+  try {
+    const definition = mode === 'red_team' ? RED_TEAM : CRITIC;
+    const result = await runAgent(
+      provider.provider,
+      definition,
+      buildCriticPrompt({
+        opportunityTitle: application.opportunityTitle ?? 'this fund',
+        funderName: application.funderName ?? 'the funder',
+        criteriaLabels: criteria,
+        questions: answered,
+      }),
+    );
+
+    const answers = answered.map((q) => q.answer);
+    const checked = keepCheckableFindings(result.output, answers);
+
+    return {
+      ok: true,
+      message:
+        checked.findings.length === 0
+          ? 'Nothing found. That is worth a second read by a person before you rely on it.'
+          : `${checked.findings.length} ${checked.findings.length === 1 ? 'thing' : 'things'} to look at.`,
+      mode,
+      findings: [...checked.findings].toSorted(bySeverity),
+      mostImportant: checked.mostImportant,
+      strengths: checked.strengths,
+      injected: checked.instructionLikeContent,
+      discarded: result.output.findings.length - checked.findings.length,
+    };
+  } catch {
+    return { ...EMPTY_REVIEW, ok: false, message: 'The review could not be completed. Nothing has changed.' };
+  }
 }

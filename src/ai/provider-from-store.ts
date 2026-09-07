@@ -5,6 +5,16 @@
  * encrypted. This is the one place it is decrypted for use, and the plaintext
  * never leaves this function's caller.
  *
+ * Two routes in, and both must be honoured: a key entered at /settings and
+ * stored encrypted, or ANTHROPIC_API_KEY supplied to the process — which is
+ * how a deployment configures itself, and what the provider already falls back
+ * to. Checking only the stored one made `isWriterAvailable` and this function
+ * disagree: the interface offered a feature that then reported encryption was
+ * not configured.
+ *
+ * The stored key wins where both exist, because someone entering a key in
+ * Settings is making a deliberate choice about which account pays.
+ *
  * Returns a reason rather than throwing when nothing is configured, so a
  * feature can report itself unavailable instead of failing obscurely.
  */
@@ -20,23 +30,32 @@ export type ProviderOutcome =
   | { available: false; reason: string };
 
 export async function providerFromStore(): Promise<ProviderOutcome> {
-  let masterKey: Buffer;
+  const stored = await readStoredKey();
+  if (stored !== null) return { available: true, provider: new AnthropicProvider({ apiKey: stored }) };
+
+  const fromEnvironment = process.env['ANTHROPIC_API_KEY'] ?? '';
+  if (fromEnvironment.trim() !== '') {
+    return { available: true, provider: new AnthropicProvider({ apiKey: fromEnvironment }) };
+  }
+
+  return {
+    available: false,
+    reason: 'No Anthropic key is set up yet. Add one in Settings and this will work.',
+  };
+}
+
+/**
+ * The stored key, or null for any reason it cannot be had.
+ *
+ * A missing encryption key, an empty credentials table and an unreachable
+ * database all mean the same thing to the caller: there is no stored key, so
+ * try the environment.
+ */
+async function readStoredKey(): Promise<string | null> {
   try {
-    masterKey = loadMasterKey(process.env['APP_ENCRYPTION_KEY']);
+    const masterKey = loadMasterKey(process.env['APP_ENCRYPTION_KEY']);
+    return await withAdmin((tx) => readCredentialSecret(tx, 'anthropic', masterKey));
   } catch {
-    return {
-      available: false,
-      reason: 'Encryption is not configured on this server, so stored keys cannot be read.',
-    };
+    return null;
   }
-
-  const key = await withAdmin((tx) => readCredentialSecret(tx, 'anthropic', masterKey));
-  if (key === null) {
-    return {
-      available: false,
-      reason: 'No Anthropic key is set up yet. Add one in Settings and drafting will work.',
-    };
-  }
-
-  return { available: true, provider: new AnthropicProvider({ apiKey: key }) };
 }

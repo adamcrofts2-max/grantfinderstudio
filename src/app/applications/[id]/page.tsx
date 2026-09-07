@@ -6,6 +6,7 @@ import { assessReadiness } from '@/domain/readiness/readiness';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { Workspace, type QuestionView } from './Workspace';
 import { PasteQuestions } from './PasteQuestions';
+import { ReviewPanel } from './ReviewPanel';
 import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
@@ -128,6 +129,8 @@ export default async function ApplicationPage({
       <PasteQuestions applicationId={application.id} />
 
       <Workspace applicationId={application.id} questions={questions} />
+
+      {questions.length === 0 ? null : <ReviewPanel applicationId={application.id} />}
 
       {answered > 0 ? (
         <section className="card">
