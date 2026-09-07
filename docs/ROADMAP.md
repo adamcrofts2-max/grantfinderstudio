@@ -127,6 +127,11 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Eligibility overrides urgency — a ruled-out fund is set aside, not chased
 - [x] Mark an application submitted (and undo it), which stops its clock
 - [x] iCalendar export: deadlines and start dates into the user's own calendar
+- [x] Effort priced at the rate the work is actually done — drafting with the Writer, or unaided
+- [x] Assisted rate claimed only when the Writer is genuinely usable (key present and working,
+      enough confirmed facts to ground prose in)
+- [x] Unsupported claims counted as outstanding work: assisted drafting creates them
+- [ ] Calibrate the assisted rate against real usage rather than a trade heuristic
 - [ ] Weekly capacity as a per-organisation setting rather than a 4h/week assumption
 - [ ] Subscribable calendar feed (needs auth: a feed URL is fetched without a session)
 - [ ] Track a fund without opening an application for it (an explicit watchlist)

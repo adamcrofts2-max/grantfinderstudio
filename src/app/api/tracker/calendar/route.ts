@@ -3,6 +3,7 @@ import { loadOrganisation, loadProject } from '@/db/queries';
 import { loadCriteriaFor, loadTracker } from '@/db/tracker';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
+import { readDrafting } from '@/app/drafting';
 import { toCalendarEvents, toIcs, type CalendarSource } from '@/domain/tracker/calendar';
 import { remainingHours, schedule } from '@/domain/tracker/schedule';
 
@@ -38,9 +39,11 @@ export async function GET(): Promise<Response> {
       criteria: await loadCriteriaFor(tx, ids),
       organisation: await loadOrganisation(tx),
       project: await loadProject(tx),
+      drafting: await readDrafting(tx),
     };
   });
   const { tracker, organisation, project } = loaded;
+  const mode = loaded.drafting.mode;
 
   /** A fund the engine rules you out of has no business in your diary. */
   const ruledOut = (opportunityId: string | null): boolean => {
@@ -59,7 +62,10 @@ export async function GET(): Promise<Response> {
     // A submitted application has no live dates left to warn anyone about.
     if (app.submittedOn !== null) continue;
     if (ruledOut(app.opportunityId)) continue;
-    const hours = remainingHours(app.questions);
+    const hours = remainingHours(app.questions, {
+      mode,
+      unsupportedClaims: app.unsupported,
+    });
     const state = schedule(
       {
         deadline: app.deadline,

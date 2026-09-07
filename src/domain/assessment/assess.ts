@@ -27,6 +27,7 @@ import {
   estimateEffort,
   recommend,
   type ApplicationFeatures,
+  type DraftingMode,
   type EffortEstimate,
   type RecommendationResult,
 } from '../effort/model.js';
@@ -54,6 +55,11 @@ export interface AssessmentInput {
   /** Past awards by this funder, for behaviour intelligence. */
   awards: readonly Award[];
   features: ApplicationFeatures;
+  /**
+   * How the answers will be produced. Omitted means unassisted — never assume
+   * help the organisation may not have.
+   */
+  drafting?: DraftingMode;
   /** ISO date. Injected so assessments are deterministic and testable. */
   asOf: string;
 }
@@ -207,7 +213,7 @@ export function assessOpportunity(input: AssessmentInput): OpportunityAssessment
     );
   }
 
-  const effort = estimateEffort(input.features);
+  const effort = estimateEffort(input.features, input.drafting ?? 'unassisted');
   const recommendation = recommend(
     eligibility.verdict,
     input.project.amountSoughtGbp,

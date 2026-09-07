@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  draftingMode,
   estimateEffort,
+  MIN_FACTS_FOR_ASSISTED_DRAFTING,
+  unassistedReason,
   recommend,
   VALUE_THRESHOLDS,
   type ApplicationFeatures,
@@ -175,5 +178,128 @@ describe('recommend', () => {
     expect(r.reason.toLowerCase()).not.toContain('chance');
     expect(r.reason.toLowerCase()).not.toContain('likel');
     expect(r.reason.toLowerCase()).not.toContain('probab');
+  });
+});
+
+describe('drafting mode', () => {
+  const capable = { writerAvailable: true, usableFacts: 20 };
+
+  it('is assisted only when the Writer is available and has facts to work from', () => {
+    expect(draftingMode(capable)).toBe('assisted');
+  });
+
+  it('falls back to unassisted with no Writer, however many facts are confirmed', () => {
+    expect(draftingMode({ writerAvailable: false, usableFacts: 500 })).toBe('unassisted');
+    expect(unassistedReason({ writerAvailable: false, usableFacts: 500 })).toBe(
+      'writer_unavailable',
+    );
+  });
+
+  it('falls back to unassisted when there is almost nothing to ground prose in', () => {
+    // The Writer refuses to invent, so with a near-empty fact base the human
+    // writes most of it anyway. Claiming the fast rate here would be a promise
+    // the product cannot keep.
+    const thin = { writerAvailable: true, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING - 1 };
+    expect(draftingMode(thin)).toBe('unassisted');
+    expect(unassistedReason(thin)).toBe('too_few_facts');
+  });
+
+  it('gives no reason when the fast rate does apply', () => {
+    expect(unassistedReason(capable)).toBeNull();
+  });
+
+  it('treats exactly the threshold as enough', () => {
+    expect(
+      draftingMode({ writerAvailable: true, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING }),
+    ).toBe('assisted');
+  });
+});
+
+describe('estimateEffort with drafting help', () => {
+  const form = { ...minimal, totalWordBudget: 3500, questionCount: 10 };
+
+  it('defaults to unassisted, never assuming help the user may not have', () => {
+    expect(estimateEffort(form).mode).toBe('unassisted');
+    expect(estimateEffort(form)).toEqual(estimateEffort(form, 'unassisted'));
+  });
+
+  it('prices checking a draft well below writing from scratch', () => {
+    const unaided = estimateEffort(form, 'unassisted');
+    const assisted = estimateEffort(form, 'assisted');
+    expect(assisted.hours).toBeLessThan(unaided.hours);
+    expect(assisted.mode).toBe('assisted');
+  });
+
+  it('does not pretend the writing becomes free', () => {
+    // A draft nobody checked is a liability in a funding application. The
+    // saving must be a real multiple, not an order of magnitude.
+    const unaided = estimateEffort(form, 'unassisted').hours;
+    const assisted = estimateEffort(form, 'assisted').hours;
+    expect(assisted).toBeGreaterThan(unaided / 6);
+  });
+
+  it('says what the hours are for, so the label matches the rate', () => {
+    const unaided = estimateEffort(form, 'unassisted');
+    const assisted = estimateEffort(form, 'assisted');
+    expect(unaided.drivers.some((d) => d.label.startsWith('Writing'))).toBe(true);
+    expect(assisted.drivers.some((d) => d.label.startsWith('Checking and correcting'))).toBe(true);
+  });
+
+  it('leaves the paperwork untouched — the Writer cannot file your accounts', () => {
+    const paperwork = {
+      ...minimal,
+      requiredAttachments: 4,
+      requiresLatestAccounts: true,
+      requiredPolicies: ['safeguarding', 'equal opportunities'],
+      requiresMatchFunding: true,
+      requiresBudgetTemplate: true,
+    };
+    const assisted = estimateEffort(paperwork, 'assisted');
+    const unaided = estimateEffort(paperwork, 'unassisted');
+    // Only the mode label differs — there are no words to draft here.
+    expect(assisted.hours).toBe(unaided.hours);
+    expect(assisted.drivers).toEqual(unaided.drivers);
+  });
+
+  it('lets the paperwork overtake the prose once the writing collapses', () => {
+    // The useful consequence, and it is about the total rather than the single
+    // biggest line: on a form with real paperwork, drafting help moves the
+    // majority of the remaining cost from the words to the attachments,
+    // policies, match funding and budget template — none of which the Writer
+    // can touch. That is what the applicant should be planning around.
+    const heavy = {
+      ...form,
+      requiredAttachments: 5,
+      requiresMatchFunding: true,
+      requiresBudgetTemplate: true,
+    };
+    const split = (mode: 'assisted' | 'unassisted') => {
+      const { drivers } = estimateEffort(heavy, mode);
+      const prose = drivers.find(
+        (d) => d.label.startsWith('Writing') || d.label.startsWith('Checking'),
+      );
+      const proseHours = prose?.hours ?? 0;
+      const rest = drivers.reduce((sum, d) => sum + d.hours, 0) - proseHours;
+      return { proseHours, rest };
+    };
+
+    const unaided = split('unassisted');
+    expect(unaided.proseHours).toBeGreaterThan(unaided.rest);
+
+    const assisted = split('assisted');
+    expect(assisted.proseHours).toBeLessThan(assisted.rest);
+  });
+
+  it('can turn a fund that was poor value into a reasonable one', () => {
+    // This is why the rate matters: priced as unassisted composition the
+    // tracker sends people away from funds they could comfortably complete.
+    // £7,000 against a 3,500-word form: 21 hours unaided (£333/hr, below the
+    // conditional floor) against 8.5 with drafting help (£824/hr).
+    const amount = 7_000;
+    const unaided = recommend('eligible', amount, estimateEffort(form, 'unassisted'));
+    const assisted = recommend('eligible', amount, estimateEffort(form, 'assisted'));
+    expect(unaided.valuePerHour).toBeLessThan(assisted.valuePerHour as number);
+    expect(unaided.recommendation).toBe('not_recommended');
+    expect(assisted.recommendation).not.toBe('not_recommended');
   });
 });

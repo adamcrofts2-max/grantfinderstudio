@@ -10,6 +10,7 @@ import {
   loadProject,
 } from '@/db/queries';
 import { findApplicationForOpportunity } from '@/db/workspace';
+import { readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
@@ -44,6 +45,7 @@ export default async function OpportunityPage({
     const { criteria } = await loadCriteria(tx, opportunity.id);
     const awards = await loadAwards(tx, opportunity.funderId);
     const application = await findApplicationForOpportunity(tx, opportunity.id);
+    const drafting = await readDrafting(tx);
     return {
       opportunity,
       organisation,
@@ -57,6 +59,7 @@ export default async function OpportunityPage({
         criteria,
         awards,
         features: DEMO_APPLICATION_FEATURES[opportunity.id] ?? NO_FEATURES,
+        drafting: drafting.mode,
         asOf,
       }),
     };

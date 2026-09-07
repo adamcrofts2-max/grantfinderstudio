@@ -57,6 +57,29 @@ opportunities, licences) readable by all tenants and writable only by the ingest
   works back from the deadline through the writing still outstanding at the organisation's
   weekly capacity (`SCHEDULE_CONSTANTS.defaultHoursPerWeek`, currently 4 and shown to the user
   as an assumption). This is why the tracker is a scheduling surface rather than a calendar.
+- **Effort is priced at the rate the work is actually done.** Writing a grant answer from a
+  blank box and checking a draft the Writer has already grounded in confirmed facts are not the
+  same task, so `EFFORT_CONSTANTS` carries two rates: `wordsPerHour` (200) and
+  `assistedWordsPerHour` (700, a substantive-editing rate — the work is checking each claim, not
+  reading the words). Pricing every hour as unassisted composition understated the product's own
+  point and sent people away from funds they could comfortably complete; there is a test for
+  exactly that reversal.
+- **The assisted rate is claimed only when it is true.** `draftingMode` requires both a usable
+  Anthropic key — stored *and* passing its last check, or supplied as `ANTHROPIC_API_KEY`, which
+  is how a deployment configures itself — and at least `MIN_FACTS_FOR_ASSISTED_DRAFTING` (5)
+  confirmed facts, because the Writer refuses to invent and cannot draft from nothing. Erring
+  towards the slower number costs an afternoon; erring towards the faster one costs a deadline.
+  `src/app/drafting.ts` is the single answer, shared by the tracker, the calendar export and the
+  opportunity assessment, so the three can never disagree about how fast the work goes.
+- **Assisted drafting creates a cost as well as removing one.** Every claim the Writer could not
+  ground is a real outstanding task — find the evidence, confirm the fact, or cut the sentence —
+  priced at `hoursPerUnsupportedClaim`. The workspace already counts these exactly, so it is
+  measured rather than assumed, and a form with every question answered but four unevidenced
+  claims correctly reads as unfinished.
+- **What is left, once the writing collapses, is paperwork.** Attachments, policies, accounts,
+  match funding and the funder's budget template are untouched by drafting help, and on a form
+  with real paperwork they become the majority of the remaining cost. That is what an applicant
+  should be planning around, and the effort drivers are sorted to make it visible.
 - **Unknown work is reported as unknown.** `remainingHours` returns `null` when no questions
   have been pasted in — an unmeasured form is not an empty one, and a confident schedule on top
   of no information is worse than saying "paste the questions in".

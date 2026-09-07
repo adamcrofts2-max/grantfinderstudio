@@ -363,3 +363,69 @@ describe('byUrgency', () => {
     expect(sorted).toEqual([3, 12, 40]);
   });
 });
+
+describe('remainingHours with drafting help', () => {
+  const form = [
+    { wordLimit: 700, answered: false },
+    { wordLimit: 700, answered: false },
+    { wordLimit: 700, answered: false },
+  ];
+
+  it('defaults to unassisted rather than assuming the Writer is in play', () => {
+    expect(remainingHours(form)).toBe(remainingHours(form, { mode: 'unassisted' }));
+  });
+
+  it('prices checking a draft well below writing from scratch', () => {
+    const unaided = remainingHours(form, { mode: 'unassisted' }) as number;
+    const assisted = remainingHours(form, { mode: 'assisted' }) as number;
+    expect(assisted).toBeLessThan(unaided);
+    // Not free: reading the guidance and working through each question remain.
+    expect(assisted).toBeGreaterThan(0);
+  });
+
+  it('can move an application from behind to on track', () => {
+    // The point of getting this right: priced as unaided composition, the
+    // tracker tells someone to abandon a fund they could comfortably finish.
+    // 22 days out: 12.5 hours unaided needs 24 days at 4 a week; 5 hours with
+    // drafting help needs 11.
+    const deadline = '2026-09-29';
+    const unaided = schedule(
+      { deadline, deadlineKind: 'confirmed', hoursRemaining: remainingHours(form), started: false, submittedOn: null },
+      TODAY,
+    );
+    const assisted = schedule(
+      {
+        deadline,
+        deadlineKind: 'confirmed',
+        hoursRemaining: remainingHours(form, { mode: 'assisted' }),
+        started: false,
+        submittedOn: null,
+      },
+      TODAY,
+    );
+    expect(unaided.state).toBe('start_now');
+    expect(assisted.state).toBe('on_track');
+  });
+
+  it('charges for every claim the Writer could not ground', () => {
+    const clean = remainingHours(form, { mode: 'assisted' }) as number;
+    const messy = remainingHours(form, { mode: 'assisted', unsupportedClaims: 4 }) as number;
+    expect(messy).toBe(clean + 1);
+  });
+
+  it('still has work left when every question is answered but claims are unsupported', () => {
+    // These block submission on their own, so a finished-looking form with
+    // four unevidenced claims is not finished.
+    const answered = [
+      { wordLimit: 500, answered: true },
+      { wordLimit: 500, answered: true },
+    ];
+    expect(remainingHours(answered)).toBe(0);
+    expect(remainingHours(answered, { unsupportedClaims: 4 })).toBe(1);
+  });
+
+  it('is still unknown when no questions have been pasted in, whatever the mode', () => {
+    expect(remainingHours([], { mode: 'assisted' })).toBeNull();
+    expect(remainingHours([], { mode: 'assisted', unsupportedClaims: 3 })).toBeNull();
+  });
+});

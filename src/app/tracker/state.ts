@@ -6,6 +6,12 @@
  * groupings, not scheduling rules.
  */
 
+import {
+  EFFORT_CONSTANTS,
+  MIN_FACTS_FOR_ASSISTED_DRAFTING,
+  type DraftingMode,
+  type UnassistedReason,
+} from '@/domain/effort/model';
 import type { TrackerState } from '@/domain/tracker/schedule';
 
 export const STATE_LABEL = {
@@ -81,6 +87,30 @@ export function relativeDays(days: number): string {
   const n = Math.abs(days);
   const unit = n === 1 ? 'day' : 'days';
   return days > 0 ? `in ${n} ${unit}` : `${n} ${unit} ago`;
+}
+
+/**
+ * Explain which writing rate was used and, when it is the slow one, the single
+ * thing the user could do about it.
+ *
+ * This matters more than it looks. The product's claim is that drafting from
+ * confirmed facts is much faster than writing from a blank box; if the tracker
+ * quietly prices every hour as unassisted, it argues against its own product,
+ * and the user never learns that confirming a handful of facts is the
+ * highest-leverage half hour they could spend.
+ */
+export function paceNote(
+  mode: DraftingMode,
+  reason: UnassistedReason,
+  usableFacts: number,
+): string {
+  if (mode === 'assisted') {
+    return `Assumes you draft each answer with the Writer and then check its work — about ${EFFORT_CONSTANTS.assistedWordsPerHour} words an hour rather than the ${EFFORT_CONSTANTS.wordsPerHour} it takes to write one from scratch. Checking is still your job, so it is not free.`;
+  }
+  if (reason === 'writer_unavailable') {
+    return `Assumes you write every answer yourself, at about ${EFFORT_CONSTANTS.wordsPerHour} words an hour. Add an Anthropic key in Settings and the Writer drafts from your confirmed facts, which cuts the writing time roughly to a third.`;
+  }
+  return `Assumes you write every answer yourself, at about ${EFFORT_CONSTANTS.wordsPerHour} words an hour. The Writer drafts only from confirmed facts and you have ${usableFacts} — confirm at least ${MIN_FACTS_FOR_ASSISTED_DRAFTING} in Your organisation and these estimates drop sharply.`;
 }
 
 /** The date the whole page reasons against, so one render is internally consistent. */

@@ -20,7 +20,7 @@
  *     no questions pasted in yet is not "nothing to do".
  */
 
-import { EFFORT_CONSTANTS } from '../effort/model.js';
+import { EFFORT_CONSTANTS, type DraftingMode } from '../effort/model.js';
 import type { DeadlineType } from '../types.js';
 
 export const SCHEDULE_CONSTANTS = {
@@ -72,6 +72,21 @@ export interface QuestionProgress {
   answered: boolean;
 }
 
+export interface RemainingWork {
+  /**
+   * How the outstanding answers will be produced. Defaults to unassisted:
+   * a schedule that assumes help the user does not have fails towards a missed
+   * deadline, which is the expensive direction to be wrong in.
+   */
+  mode?: DraftingMode;
+  /**
+   * Claims already drafted that no confirmed fact supports. Each one is a
+   * real outstanding task — find the evidence, confirm the fact, or cut the
+   * sentence — and assisted drafting creates them rather than removing them.
+   */
+  unsupportedClaims?: number;
+}
+
 /**
  * Hours of work still to do on an application.
  *
@@ -80,24 +95,38 @@ export interface QuestionProgress {
  * a confident schedule on top of no information.
  *
  * The one-off cost of reading the guidance is counted only while nothing has
- * been answered — once drafting has started, it has been paid.
+ * been answered — once drafting has started, it has been paid. Unsupported
+ * claims are counted whether or not any question is outstanding, because they
+ * block submission on their own.
  */
-export function remainingHours(questions: readonly QuestionProgress[]): number | null {
+export function remainingHours(
+  questions: readonly QuestionProgress[],
+  work: RemainingWork = {},
+): number | null {
   if (questions.length === 0) return null;
 
+  const unsupported =
+    (work.unsupportedClaims ?? 0) * EFFORT_CONSTANTS.hoursPerUnsupportedClaim;
+
   const outstanding = questions.filter((q) => !q.answered);
-  if (outstanding.length === 0) return 0;
+  if (outstanding.length === 0) return Math.round(unsupported * 2) / 2;
 
   const words = outstanding.reduce(
     (total, q) => total + (q.wordLimit ?? SCHEDULE_CONSTANTS.assumedWordsPerUnlimitedQuestion),
     0,
   );
 
+  const wordsPerHour =
+    work.mode === 'assisted'
+      ? EFFORT_CONSTANTS.assistedWordsPerHour
+      : EFFORT_CONSTANTS.wordsPerHour;
+
   const nothingStarted = questions.every((q) => !q.answered);
   const hours =
     (nothingStarted ? EFFORT_CONSTANTS.baseHours : 0) +
-    words / EFFORT_CONSTANTS.wordsPerHour +
-    outstanding.length * EFFORT_CONSTANTS.hoursPerQuestion;
+    words / wordsPerHour +
+    outstanding.length * EFFORT_CONSTANTS.hoursPerQuestion +
+    unsupported;
 
   return Math.round(hours * 2) / 2;
 }

@@ -224,3 +224,19 @@ export async function loadCriteriaFor(
   }
   return byOpportunity;
 }
+
+/**
+ * What the organisation can actually bring to the drafting.
+ *
+ * Read rather than assumed, because the whole point of pricing assisted
+ * drafting differently is that it must be true. `usableFacts` counts only
+ * confirmed, non-superseded facts — the Writer refuses to ground prose in
+ * anything else, so anything else would not make the drafting faster.
+ */
+export async function countUsableFacts(tx: Queryable): Promise<number> {
+  const r = await tx.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM facts
+     WHERE confirmed_by IS NOT NULL AND superseded_by IS NULL`,
+  );
+  return Number(r.rows[0]?.count ?? '0');
+}

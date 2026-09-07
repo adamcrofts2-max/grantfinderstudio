@@ -8,6 +8,8 @@ import {
 } from '@/db/tracker';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
+import type { DraftingMode } from '@/domain/effort/model';
+import { readDrafting } from '@/app/drafting';
 import {
   needsAttention,
   remainingHours,
@@ -21,6 +23,7 @@ import { markSubmittedAction, unmarkSubmittedAction } from './actions';
 import {
   GROUPS,
   humanDate,
+  paceNote,
   relativeDays,
   RULED_OUT_BADGE,
   STATE_LABEL,
@@ -64,8 +67,16 @@ function groupFor(state: Schedule['state'], started: boolean, verdict: Verdict):
   return started ? 'ahead' : 'watching';
 }
 
-function applicationRow(app: TrackedApplication, now: string, verdict: Verdict): Row {
-  const hours = remainingHours(app.questions);
+function applicationRow(
+  app: TrackedApplication,
+  now: string,
+  verdict: Verdict,
+  mode: DraftingMode,
+): Row {
+  const hours = remainingHours(app.questions, {
+    mode,
+    unsupportedClaims: app.unsupported,
+  });
   const state = schedule(
     {
       deadline: app.deadline,
@@ -208,10 +219,12 @@ export default async function TrackerPage() {
       criteria: await loadCriteriaFor(tx, ids),
       organisation: await loadOrganisation(tx),
       project: await loadProject(tx),
+      drafting: await readDrafting(tx),
     };
   });
 
-  const { tracker, organisation, project } = page;
+  const { tracker, organisation, project, drafting } = page;
+  const mode = drafting.mode;
 
   /**
    * Eligibility for one fund, or undefined when the organisation's own details
@@ -225,7 +238,9 @@ export default async function TrackerPage() {
   };
 
   const rows: Row[] = [
-    ...tracker.applications.map((app) => applicationRow(app, now, verdictFor(app.opportunityId))),
+    ...tracker.applications.map((app) =>
+      applicationRow(app, now, verdictFor(app.opportunityId), mode),
+    ),
     ...tracker.notStarted.map((opportunity) =>
       opportunityRow(opportunity, now, verdictFor(opportunity.id)),
     ),
@@ -254,9 +269,9 @@ export default async function TrackerPage() {
         </h1>
         <p className="page-sub">
           A deadline on its own tells you nothing you did not already know. What matters is the
-          last day you can still start — so every date here is worked back through the writing
-          still to do, at{' '}
-          <strong>{SCHEDULE_CONSTANTS.defaultHoursPerWeek} hours a week</strong>.
+          last day you can still start — so every date here is worked back through the work still
+          to do, at <strong>{SCHEDULE_CONSTANTS.defaultHoursPerWeek} hours a week</strong>
+          {mode === 'assisted' ? ' with the Writer drafting' : ' writing unaided'}.
         </p>
         <div className="row" style={{ marginTop: 'var(--s-4)' }}>
           <a className="btn btn-secondary" href="/api/tracker/calendar" download>
@@ -304,12 +319,20 @@ export default async function TrackerPage() {
         );
       })}
 
-      <p className="hint" style={{ marginTop: 'var(--s-6)' }}>
-        Timings assume {SCHEDULE_CONSTANTS.defaultHoursPerWeek} hours a week and about{' '}
-        {SCHEDULE_CONSTANTS.assumedWordsPerUnlimitedQuestion} words for a question the funder set
-        no limit on. They are estimates of effort, not predictions of success — this product does
-        not claim to know your chances.
-      </p>
+      <section className="card" style={{ marginTop: 'var(--s-6)' }}>
+        <h2 className="card-title">How these timings are worked out</h2>
+        <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+          {paceNote(mode, drafting.reason, drafting.usableFacts)}
+        </p>
+        <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+          On top of that: {SCHEDULE_CONSTANTS.defaultHoursPerWeek} hours a week to give it,{' '}
+          {SCHEDULE_CONSTANTS.assumedWordsPerUnlimitedQuestion} words assumed for a question the
+          funder set no limit on, and 15 minutes for every drafted claim no confirmed fact
+          supports — those are real outstanding work, and drafting creates them rather than
+          removing them. Estimates of effort, not predictions of success: this product does not
+          claim to know your chances.
+        </p>
+      </section>
     </div>
   );
 }
