@@ -24,3 +24,10 @@ export const EMPTY_DRAFT: DraftState = {
   gaps: [],
   wordCount: 0,
 };
+
+export interface AddState {
+  ok: boolean;
+  message: string;
+}
+
+export const EMPTY_ADD: AddState = { ok: false, message: '' };

@@ -105,7 +105,10 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Gaps surfaced as questions for the applicant
 - [x] Fact confirmation screen — nothing grounds an application until a person says so
 - [x] Readiness from real answer state
-- [ ] Export to DOCX/PDF
+- [x] Paste questions from a funder's portal, with word limits pulled out
+- [x] Copy an answer as plain text, warning when a claim is unsupported
+- [x] Copy the whole application as question-and-answer text
+- [ ] Export to DOCX/PDF (for internal review and email-attachment funders)
 - [ ] Creating an application from any opportunity
 
 ## Phase 9 — Review

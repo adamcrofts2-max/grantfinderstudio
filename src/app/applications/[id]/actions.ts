@@ -2,13 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
-import { loadApplication, loadFacts, saveAnswer } from '@/db/workspace';
+import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
 import { usableFacts } from '@/domain/provenance/facts';
 import { providerFromStore } from '@/ai/provider-from-store';
 import { runAgent } from '@/ai/run';
 import { buildWriterPrompt, checkDraft, WRITER } from '@/ai/agents/writer';
 import { DEMO_ORG_ID, DEMO_USER_ID } from '@/demo/seed';
-import { EMPTY_DRAFT, type DraftState } from './state';
+import { EMPTY_DRAFT, type AddState, type DraftState } from './state';
 
 /**
  * Draft one answer.
@@ -132,5 +132,65 @@ export async function draftAnswerAction(
     })),
     gaps: checked.gaps,
     wordCount: checked.wordCount,
+  };
+}
+
+/**
+ * Save questions the applicant pasted from a funder's form.
+ *
+ * Parsing happens in the browser so they can see and correct it first; this
+ * receives the reviewed result. It re-validates rather than trusting the
+ * posted shape — the browser is not a trustworthy source.
+ */
+export async function addQuestionsAction(
+  _previous: AddState,
+  formData: FormData,
+): Promise<AddState> {
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const payload = String(formData.get('questions') ?? '');
+  if (applicationId === '' || payload === '') {
+    return { ok: false, message: 'Nothing to add.' };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return { ok: false, message: 'Those questions could not be read. Try pasting again.' };
+  }
+
+  const questions: NewQuestion[] = [];
+  if (!Array.isArray(parsed)) {
+    return { ok: false, message: 'Those questions could not be read. Try pasting again.' };
+  }
+  for (const item of parsed) {
+    if (typeof item !== 'object' || item === null) continue;
+    const record = item as Record<string, unknown>;
+    const question = typeof record['question'] === 'string' ? record['question'].trim() : '';
+    if (question === '') continue;
+    const limit = record['wordLimit'];
+    questions.push({
+      question: question.slice(0, 2000),
+      wordLimit: typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? limit : null,
+      guidance:
+        typeof record['guidance'] === 'string' && record['guidance'].trim() !== ''
+          ? record['guidance'].trim().slice(0, 4000)
+          : null,
+    });
+  }
+
+  if (questions.length === 0) {
+    return { ok: false, message: 'No usable questions were found in that paste.' };
+  }
+
+  const database = await getDatabase();
+  await database.withTenant(DEMO_ORG_ID, (tx) =>
+    addQuestions(tx, DEMO_ORG_ID, applicationId, questions),
+  );
+
+  revalidatePath(`/applications/${applicationId}`);
+  return {
+    ok: true,
+    message: `Added ${questions.length} question${questions.length === 1 ? '' : 's'}.`,
   };
 }

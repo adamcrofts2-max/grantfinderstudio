@@ -5,6 +5,8 @@ import { usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { Workspace, type QuestionView } from './Workspace';
+import { PasteQuestions } from './PasteQuestions';
+import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +51,16 @@ export default async function ApplicationPage({
   const overLimit = questions.filter(
     (q) => q.wordLimit !== null && q.wordCount > q.wordLimit,
   ).length;
+
+  // Question and answer together, so it reads as a document rather than a
+  // wall of prose with no context.
+  const wholeApplication = questions
+    .filter((q) => q.answer !== null && q.answer !== '')
+    .map((q) => {
+      const limit = q.wordLimit === null ? '' : ` (${q.wordCount}/${q.wordLimit} words)`;
+      return `${q.position}. ${q.question}${limit}\n\n${q.answer ?? ''}`;
+    })
+    .join('\n\n---\n\n');
 
   const readiness = assessReadiness({
     eligibilityVerdict: 'eligible',
@@ -113,7 +125,27 @@ export default async function ApplicationPage({
         </section>
       ) : null}
 
+      <PasteQuestions applicationId={application.id} />
+
       <Workspace applicationId={application.id} questions={questions} />
+
+      {answered > 0 ? (
+        <section className="card">
+          <h2 className="card-title">Take it to the funder’s form</h2>
+          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+            Every answered question, as plain text, in order. Useful for a colleague to read
+            through before you paste each answer into the portal.
+          </p>
+          <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+            <CopyButton
+              text={wholeApplication}
+              label={`Copy all ${answered} answers`}
+              unsupportedCount={unsupported}
+              variant="primary"
+            />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

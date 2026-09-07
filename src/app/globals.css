@@ -397,3 +397,32 @@ a:hover { color: var(--accent-hover); }
   font-size: var(--t-sm); color: var(--ink-soft);
 }
 .blockers li { margin-bottom: var(--s-1); }
+
+/* ---------- Paste in, copy out ------------------------------------------- */
+
+.paste { padding: 0; }
+.paste-summary {
+  list-style: none; cursor: pointer; padding: var(--s-4) var(--s-5);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--s-3);
+  font-weight: 620;
+}
+.paste-summary::-webkit-details-marker { display: none; }
+.paste-summary .chev { color: var(--accent); font-size: var(--t-sm); font-weight: 600; }
+.paste-body { padding: 0 var(--s-5) var(--s-5); }
+
+textarea.input { resize: vertical; min-height: 8rem; font-family: var(--font-mono); font-size: var(--t-sm); }
+.input-narrow { width: 6rem; }
+
+.detected { list-style: none; margin: var(--s-3) 0 0; padding: 0; }
+.detected li {
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: var(--s-3); margin-bottom: var(--s-2);
+}
+.detected-q { font-weight: 600; font-size: var(--t-sm); }
+.detected-g { color: var(--ink-soft); font-size: var(--t-sm); margin-top: 2px; }
+
+.copywrap { display: inline-flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.copystatus { font-size: var(--t-sm); }
+.copied { color: var(--positive); font-weight: 600; }
+.btn-warn { background: var(--caution); color: #fff; }
+.btn-warn:hover { background: var(--caution); filter: brightness(0.92); color: #fff; }

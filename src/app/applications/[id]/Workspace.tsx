@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { draftAnswerAction } from './actions';
 import { EMPTY_DRAFT } from './state';
+import { CopyButton } from './CopyButton';
 
 export interface QuestionView {
   id: string;
@@ -39,6 +40,11 @@ function Question({
 
   const words = result?.ok ? result.wordCount : question.wordCount;
   const overLimit = question.wordLimit !== null && words > question.wordLimit;
+
+  // What actually goes on the clipboard: the prose alone, no markers.
+  const answerText =
+    claims.length > 0 ? claims.map((c) => c.text).join(' ') : (question.answer ?? '');
+  const unsupportedCount = claims.filter((c) => c.factId === null).length;
 
   return (
     <section className="card">
@@ -83,6 +89,17 @@ function Question({
           </p>
         ) : null}
       </div>
+
+      {answerText !== '' ? (
+        <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+          <CopyButton
+            text={answerText}
+            unsupportedCount={unsupportedCount}
+            variant="primary"
+          />
+          <span className="hint">Plain text, ready to paste into the funder’s form.</span>
+        </div>
+      ) : null}
 
       {claims.length > 0 ? (
         <div className="answer">

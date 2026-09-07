@@ -288,3 +288,53 @@ export async function findApplicationForOpportunity(
     ? { id: row.id, status: row.status, answered: Number(row.answered), total: Number(row.total) }
     : null;
 }
+
+export interface NewQuestion {
+  question: string;
+  wordLimit: number | null;
+  guidance: string | null;
+}
+
+/**
+ * Append pasted questions to an application.
+ *
+ * Positions continue from whatever is already there, so questions can be added
+ * in batches as the applicant works through a long form.
+ */
+export async function addQuestions(
+  tx: Queryable,
+  organisationId: string,
+  applicationId: string,
+  questions: readonly NewQuestion[],
+): Promise<number> {
+  const existing = await tx.query<{ next: string }>(
+    `SELECT (COALESCE(max(position), 0) + 1)::text AS next
+     FROM application_questions WHERE application_id = $1`,
+    [applicationId],
+  );
+  let position = Number(existing.rows[0]?.next ?? '1');
+
+  for (const question of questions) {
+    await tx.query(
+      `INSERT INTO application_questions
+         (id, organisation_id, application_id, position, question, word_limit, guidance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        `q_${applicationId}_${position}_${Date.now()}`,
+        organisationId,
+        applicationId,
+        position,
+        question.question,
+        question.wordLimit,
+        question.guidance,
+      ],
+    );
+    position += 1;
+  }
+  return questions.length;
+}
+
+/** Remove a question and everything drafted for it. */
+export async function deleteQuestion(tx: Queryable, questionId: string): Promise<void> {
+  await tx.query('DELETE FROM application_questions WHERE id = $1', [questionId]);
+}
