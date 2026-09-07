@@ -131,6 +131,16 @@ With no `DATABASE_URL` the app runs on PGlite in memory — the same migrations 
 the same RLS policies, but lost on restart. `/api/health` says so plainly rather
 than letting it pass for a real deployment.
 
+## The journey that now works end to end
+
+Find your company on Companies House → confirm what we know about you →
+see opportunities assessed against you → start an application → paste the
+funder's questions → draft each answer from confirmed facts → copy it into
+their portal.
+
+What is missing from that line: document upload (the Extractor exists but
+nothing feeds it), budgets, outcomes, and DOCX export.
+
 ## Next task
 
 Authentication, so the tenant context comes from a real session rather than a fixed demo

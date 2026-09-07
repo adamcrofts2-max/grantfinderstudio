@@ -10,6 +10,7 @@ import {
   loadProject,
 } from '@/db/queries';
 import { findApplicationForOpportunity } from '@/db/workspace';
+import { startApplicationAction } from '@/app/applications/actions';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 
@@ -190,10 +191,31 @@ export default async function OpportunityPage({
         </Card>
       ) : null}
 
-      {application === null ? null : (
+      {application === null ? (
+        <Card title="Ready to apply?">
+          <p style={{ marginBottom: 'var(--s-3)' }}>
+            {assessment.eligibility.verdict === 'ineligible'
+              ? 'You do not meet this funder’s criteria, so we would not spend the time — but it is your call, and you may know something about them that we do not.'
+              : assessment.eligibility.verdict === 'unknown'
+                ? 'Some eligibility questions are still open. You can start anyway and settle them as you go.'
+                : 'Start an application and paste the funder’s questions straight in from their form.'}
+          </p>
+          <form action={startApplicationAction}>
+            <input type="hidden" name="opportunityId" value={opportunity.id} />
+            <button
+              className={`btn ${assessment.eligibility.verdict === 'ineligible' ? 'btn-secondary' : 'btn-primary'}`}
+              type="submit"
+            >
+              Start an application
+            </button>
+          </form>
+        </Card>
+      ) : (
         <Card title="Your application">
           <p style={{ marginBottom: 'var(--s-3)' }}>
-            {application.answered} of {application.total} questions answered.
+            {application.total === 0
+              ? 'No questions yet — paste them in from the funder’s form.'
+              : `${application.answered} of ${application.total} questions answered.`}
           </p>
           <a className="btn btn-primary" href={`/applications/${application.id}`}>
             Open the workspace

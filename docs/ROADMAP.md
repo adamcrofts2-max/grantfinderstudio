@@ -109,7 +109,8 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Copy an answer as plain text, warning when a claim is unsupported
 - [x] Copy the whole application as question-and-answer text
 - [ ] Export to DOCX/PDF (for internal review and email-attachment funders)
-- [ ] Creating an application from any opportunity
+- [x] Start an application from any opportunity, eligibility-aware but never blocking
+- [x] Applications pipeline ordered by deadline
 
 ## Phase 9 — Review
 - [ ] Critic agent

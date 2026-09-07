@@ -338,3 +338,104 @@ export async function addQuestions(
 export async function deleteQuestion(tx: Queryable, questionId: string): Promise<void> {
   await tx.query('DELETE FROM application_questions WHERE id = $1', [questionId]);
 }
+
+/**
+ * Begin an application against an opportunity.
+ *
+ * Returns the existing one if there already is one: a second application to
+ * the same fund is almost always a misclick, and silently creating one would
+ * split a person's work across two places.
+ *
+ * The application starts with no questions. They are pasted in from the
+ * funder's own form, because that is where they live.
+ */
+export async function startApplication(
+  tx: Queryable,
+  organisationId: string,
+  opportunityId: string,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await findApplicationForOpportunity(tx, opportunityId);
+  if (existing) return { id: existing.id, created: false };
+
+  // Attach the organisation's project if it has one, so the amount sought and
+  // beneficiaries carry over rather than being asked for again.
+  const project = await tx.query<{ id: string; amount_sought_gbp: string | null }>(
+    'SELECT id, amount_sought_gbp::text AS amount_sought_gbp FROM projects ORDER BY created_at LIMIT 1',
+  );
+  const first = project.rows[0];
+
+  const id = `app_${opportunityId}_${Date.now().toString(36)}`;
+  await tx.query(
+    `INSERT INTO applications
+       (id, organisation_id, opportunity_id, project_id, status, amount_requested_gbp)
+     VALUES ($1, $2, $3, $4, 'drafting', $5)`,
+    [
+      id,
+      organisationId,
+      opportunityId,
+      first?.id ?? null,
+      first?.amount_sought_gbp === undefined || first.amount_sought_gbp === null
+        ? null
+        : Number(first.amount_sought_gbp),
+    ],
+  );
+  return { id, created: true };
+}
+
+export interface ApplicationSummary {
+  id: string;
+  status: string;
+  opportunityTitle: string | null;
+  funderName: string | null;
+  deadline: string | null;
+  deadlineKind: string | null;
+  amountRequestedGbp: number | null;
+  questions: number;
+  answered: number;
+  unsupported: number;
+}
+
+/** Everything this organisation has on the go. */
+export async function loadApplications(tx: Queryable): Promise<ApplicationSummary[]> {
+  const r = await tx.query<{
+    id: string;
+    status: string;
+    title: string | null;
+    funder_name: string | null;
+    deadline: string | null;
+    deadline_kind: string | null;
+    amount_requested_gbp: string | null;
+    questions: string;
+    answered: string;
+    unsupported: string;
+  }>(`
+    SELECT a.id, a.status, o.title, f.name AS funder_name,
+           o.deadline::text AS deadline, o.deadline_kind::text AS deadline_kind,
+           a.amount_requested_gbp::text AS amount_requested_gbp,
+           count(DISTINCT q.id)::text AS questions,
+           count(DISTINCT ans.id) FILTER (WHERE ans.content <> '')::text AS answered,
+           count(DISTINCT r.id) FILTER (WHERE r.is_unsupported)::text AS unsupported
+    FROM applications a
+    LEFT JOIN opportunities o ON o.id = a.opportunity_id
+    LEFT JOIN funders f ON f.id = o.funder_id
+    LEFT JOIN application_questions q ON q.application_id = a.id
+    LEFT JOIN answers ans ON ans.question_id = q.id
+    LEFT JOIN answer_fact_refs r ON r.answer_id = ans.id
+    GROUP BY a.id, a.status, o.title, f.name, o.deadline, o.deadline_kind, a.amount_requested_gbp
+    ORDER BY o.deadline NULLS LAST, a.created_at DESC
+  `);
+
+  return r.rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    opportunityTitle: row.title,
+    funderName: row.funder_name,
+    deadline: row.deadline,
+    deadlineKind: row.deadline_kind,
+    amountRequestedGbp:
+      row.amount_requested_gbp === null ? null : Number(row.amount_requested_gbp),
+    questions: Number(row.questions),
+    answered: Number(row.answered),
+    unsupported: Number(row.unsupported),
+  }));
+}
