@@ -9,6 +9,7 @@ import {
   loadOrganisation,
   loadProject,
 } from '@/db/queries';
+import { findApplicationForOpportunity } from '@/db/workspace';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 
@@ -41,11 +42,13 @@ export default async function OpportunityPage({
     if (!organisation || !project) return null;
     const { criteria } = await loadCriteria(tx, opportunity.id);
     const awards = await loadAwards(tx, opportunity.funderId);
+    const application = await findApplicationForOpportunity(tx, opportunity.id);
     return {
       opportunity,
       organisation,
       project,
       awards,
+      application,
       assessment: assessOpportunity({
         applicant: organisation.profile,
         project,
@@ -59,7 +62,7 @@ export default async function OpportunityPage({
   });
 
   if (!page) notFound();
-  const { opportunity, organisation, project, assessment } = page;
+  const { opportunity, organisation, project, assessment, application } = page;
 
   const enquiry =
     assessment.openQuestions.length > 0
@@ -186,6 +189,17 @@ export default async function OpportunityPage({
           <pre className="email-preview">{enquiry.body}</pre>
         </Card>
       ) : null}
+
+      {application === null ? null : (
+        <Card title="Your application">
+          <p style={{ marginBottom: 'var(--s-3)' }}>
+            {application.answered} of {application.total} questions answered.
+          </p>
+          <a className="btn btn-primary" href={`/applications/${application.id}`}>
+            Open the workspace
+          </a>
+        </Card>
+      )}
 
       <Card title="Before you apply">
         <Notice tone={assessment.deadlineNotice.tone}>{assessment.deadlineNotice.text}</Notice>

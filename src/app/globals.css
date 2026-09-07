@@ -344,3 +344,56 @@ a:hover { color: var(--accent-hover); }
 }
 .provenance-verified { color: var(--positive); }
 .provenance-declared { color: var(--caution); }
+
+/* ---------- Facts and the application workspace -------------------------- */
+
+.facts { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
+.fact {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--s-4); margin-bottom: var(--s-3);
+}
+.fact-claim {
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.fact-value { font-weight: 600; margin-top: 2px; }
+.fact-source { color: var(--ink-faint); font-size: var(--t-sm); margin-top: var(--s-1); }
+.fact-span {
+  color: var(--ink-soft); font-size: var(--t-sm); margin-top: var(--s-2);
+  padding-left: var(--s-3); border-left: 2px solid var(--line-strong); font-style: italic;
+}
+
+.assesses {
+  margin-top: var(--s-3); padding: var(--s-3);
+  background: var(--accent-bg); border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm); font-size: var(--t-sm); color: var(--accent);
+}
+
+.answer {
+  margin-top: var(--s-4); padding: var(--s-4);
+  background: var(--surface-sunken); border: 1px solid var(--line);
+  border-radius: var(--r-md); line-height: 1.65;
+}
+/* Every sentence carries its source; the ones with none are marked. */
+.claim { border-radius: 3px; }
+.claim-unsupported {
+  background: var(--caution-bg); color: var(--caution);
+  box-shadow: inset 0 -2px 0 var(--caution);
+}
+
+.gaps {
+  margin-top: var(--s-4); padding: var(--s-4);
+  border: 1px dashed var(--line-strong); border-radius: var(--r-md);
+}
+.gaps h3 {
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--s-2);
+}
+.gaps ul { margin: 0; padding-left: 1.1rem; font-size: var(--t-sm); color: var(--ink-soft); }
+.gaps li { margin-bottom: var(--s-2); }
+
+.blockers {
+  margin: var(--s-3) 0 0; padding-left: 1.1rem;
+  font-size: var(--t-sm); color: var(--ink-soft);
+}
+.blockers li { margin-bottom: var(--s-1); }

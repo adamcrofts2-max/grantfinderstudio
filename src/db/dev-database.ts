@@ -16,12 +16,21 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 // Shared with production so dev, tests and deployment cannot drift apart.
 import { MIGRATIONS } from './migrate.js';
-import { seedDemoData } from '../demo/seed.js';
+import { seedDemoApplication, seedDemoData } from '../demo/seed.js';
 import { TenantDatabase, type Queryable, type TransactionCapable } from './client.js';
 
 
-let instance: Promise<TenantDatabase> | null = null;
-let raw: PGlite | null = null;
+// Also on globalThis, for the same reason as src/db/index.ts: separate
+// bundles must share one in-memory database or writes vanish.
+const HANDLE = Symbol.for('grantfinderstudio.devDatabase');
+
+interface GlobalWithDev {
+  [HANDLE]?: { instance: Promise<TenantDatabase>; raw: PGlite | null };
+}
+
+function slot(): { instance: Promise<TenantDatabase>; raw: PGlite | null } | undefined {
+  return (globalThis as GlobalWithDev)[HANDLE];
+}
 
 async function build(): Promise<TenantDatabase> {
   const db = new PGlite();
@@ -34,16 +43,21 @@ async function build(): Promise<TenantDatabase> {
   // Seeding runs as the owning role, before dropping privileges, so the
   // fixtures exist for every tenant that is entitled to see them.
   await seedDemoData(db);
+  await seedDemoApplication(db);
   await db.exec('SET ROLE app_user;');
 
-  raw = db;
+  const existing = slot();
+  if (existing) existing.raw = db;
   return new TenantDatabase(db as unknown as TransactionCapable);
 }
 
-/** Shared across requests; built once per process. */
+/** Shared across requests and bundles; built once per process. */
 export function getDevDatabase(): Promise<TenantDatabase> {
-  instance ??= build();
-  return instance;
+  const existing = slot();
+  if (existing) return existing.instance;
+  const created = { instance: build(), raw: null as PGlite | null };
+  (globalThis as GlobalWithDev)[HANDLE] = created;
+  return created.instance;
 }
 
 /**
@@ -64,8 +78,8 @@ export function getDevDatabase(): Promise<TenantDatabase> {
  */
 export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
   await getDevDatabase();
-  if (raw === null) throw new Error('The database is not initialised.');
-  const db = raw;
+  const db = slot()?.raw;
+  if (!db) throw new Error('The database is not initialised.');
   await db.exec('RESET ROLE;');
   try {
     return await fn(db as unknown as Queryable);

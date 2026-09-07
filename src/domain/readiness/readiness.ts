@@ -93,8 +93,9 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
         : `${input.questionsAnswered} of ${input.questionsTotal} answered.`,
   });
   if (input.questionsTotal > 0 && input.questionsAnswered < input.questionsTotal) {
+    const remaining = input.questionsTotal - input.questionsAnswered;
     blockers.push(
-      `${input.questionsTotal - input.questionsAnswered} questions still to answer.`,
+      remaining === 1 ? '1 question still to answer.' : `${remaining} questions still to answer.`,
     );
   }
 
@@ -109,8 +110,11 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
         : `${input.evidenceProvided} of ${input.evidenceNeeded} claims evidenced.`,
   });
   if (input.answersWithUnsupportedClaims > 0) {
+    const n = input.answersWithUnsupportedClaims;
     blockers.push(
-      `${input.answersWithUnsupportedClaims} answers contain claims with no confirmed source.`,
+      n === 1
+        ? '1 answer contains a claim with no confirmed source.'
+        : `${n} answers contain claims with no confirmed source.`,
     );
   }
 
@@ -154,8 +158,11 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
     input.attachmentsRequired > 0 &&
     input.attachmentsProvided < input.attachmentsRequired
   ) {
+    const missing = input.attachmentsRequired - input.attachmentsProvided;
     blockers.push(
-      `${input.attachmentsRequired - input.attachmentsProvided} required attachments missing.`,
+      missing === 1
+        ? '1 required attachment missing.'
+        : `${missing} required attachments missing.`,
     );
   }
 
@@ -169,7 +176,11 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
       : `${input.answersOverWordLimit} answers exceed their word limit.`,
   });
   if (!compliant) {
-    blockers.push(`${input.answersOverWordLimit} answers are over the word limit.`);
+    blockers.push(
+      input.answersOverWordLimit === 1
+        ? '1 answer is over the word limit.'
+        : `${input.answersOverWordLimit} answers are over the word limit.`,
+    );
   }
 
   // Components that do not apply are excluded rather than counted as zero, so

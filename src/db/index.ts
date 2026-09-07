@@ -23,7 +23,29 @@ interface Backend {
   admin: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 }
 
-let backend: Promise<Backend> | null = null;
+/**
+ * Held on globalThis, not in a module variable.
+ *
+ * Next.js bundles server actions and page renders separately, so a
+ * module-level singleton is per-bundle rather than per-process: an action
+ * would write to one in-memory database while a page read from another. With
+ * a real Postgres that only wastes connection pools; with the in-memory
+ * development database it silently loses every write.
+ */
+const HANDLE = Symbol.for('grantfinderstudio.database');
+
+interface GlobalWithDatabase {
+  [HANDLE]?: Promise<Backend>;
+}
+
+function cached(): Promise<Backend> | undefined {
+  return (globalThis as GlobalWithDatabase)[HANDLE];
+}
+
+function cache(value: Promise<Backend>): Promise<Backend> {
+  (globalThis as GlobalWithDatabase)[HANDLE] = value;
+  return value;
+}
 
 async function buildPostgres(url: string): Promise<Backend> {
   const database = new PostgresDatabase(createPool(url));
@@ -55,8 +77,7 @@ function build(): Promise<Backend> {
 
 /** The tenant-scoped database. Every query through it is subject to RLS. */
 export async function getDatabase(): Promise<TenantDatabase> {
-  backend ??= build();
-  return (await backend).tenant;
+  return (await (cached() ?? cache(build()))).tenant;
 }
 
 /**
@@ -66,6 +87,5 @@ export async function getDatabase(): Promise<TenantDatabase> {
  * on one hand.
  */
 export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  backend ??= build();
-  return (await backend).admin(fn);
+  return (await (cached() ?? cache(build()))).admin(fn);
 }

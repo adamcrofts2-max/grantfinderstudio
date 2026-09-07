@@ -99,9 +99,14 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Gaps recorded instead of figures invented
 - [x] Deterministic checks: fabricated citation, unsupported claim, word limit, repetition
 - [x] Live-verified, including refusing to invent a number it was asked for
-- [ ] Question intelligence ("what this question is really asking")
-- [ ] Workspace UI wiring the Writer to real questions
-- [ ] Per-claim provenance display
+- [x] Question intelligence ("what they are really asking") shown before drafting
+- [x] Workspace wiring the Writer to real questions
+- [x] Per-claim provenance stored and displayed, unsupported sentences highlighted
+- [x] Gaps surfaced as questions for the applicant
+- [x] Fact confirmation screen — nothing grounds an application until a person says so
+- [x] Readiness from real answer state
+- [ ] Export to DOCX/PDF
+- [ ] Creating an application from any opportunity
 
 ## Phase 9 — Review
 - [ ] Critic agent

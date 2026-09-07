@@ -64,19 +64,37 @@ describe('assessReadiness', () => {
 
   it('blocks on unsupported claims even when everything else is done', () => {
     const r = assessReadiness({ ...complete, answersWithUnsupportedClaims: 2 });
-    expect(r.blockers.some((b) => b.includes('no confirmed source'))).toBe(true);
+    expect(r.blockers).toContain('2 answers contain claims with no confirmed source.');
+  });
+
+  /** Seen on screen as "1 answers contain claims" — a person reads that as a bug. */
+  it('uses the singular for a count of one', () => {
+    const r = assessReadiness({
+      ...complete,
+      answersWithUnsupportedClaims: 1,
+      questionsAnswered: complete.questionsTotal - 1,
+      attachmentsProvided: complete.attachmentsRequired - 1,
+      answersOverWordLimit: 1,
+    });
+    expect(r.blockers).toContain('1 answer contains a claim with no confirmed source.');
+    expect(r.blockers).toContain('1 question still to answer.');
+    expect(r.blockers).toContain('1 required attachment missing.');
+    expect(r.blockers).toContain('1 answer is over the word limit.');
+    for (const blocker of r.blockers) {
+      expect(blocker, blocker).not.toMatch(/\b1 [a-z]+s\b/u);
+    }
   });
 
   it('blocks on answers over the word limit', () => {
     const r = assessReadiness({ ...complete, answersOverWordLimit: 1 });
     expect(r.components.find((c) => c.id === 'compliance')?.score).toBe(0);
-    expect(r.blockers.some((b) => b.includes('over the word limit'))).toBe(true);
+    expect(r.blockers).toContain('1 answer is over the word limit.');
   });
 
   it('counts partially answered questions proportionally', () => {
     const r = assessReadiness({ ...complete, questionsAnswered: 4 });
     expect(r.components.find((c) => c.id === 'questions')?.score).toBe(0.5);
-    expect(r.blockers.some((b) => b.includes('4 questions still to answer'))).toBe(true);
+    expect(r.blockers).toContain('4 questions still to answer.');
   });
 
   it('scores a budget with errors as half, not zero', () => {
@@ -98,7 +116,7 @@ describe('assessReadiness', () => {
 
   it('reports missing attachments with a count', () => {
     const r = assessReadiness({ ...complete, attachmentsProvided: 1 });
-    expect(r.blockers.some((b) => b.includes('1 required attachments missing'))).toBe(true);
+    expect(r.blockers).toContain('1 required attachment missing.');
   });
 
   it('handles an application with no questions imported yet', () => {

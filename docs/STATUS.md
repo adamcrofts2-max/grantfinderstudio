@@ -4,7 +4,7 @@
 
 ## What exists
 
-**496 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**497 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
