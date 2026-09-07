@@ -88,7 +88,15 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Untrusted-content fencing with a per-call random marker
 - [x] Schema-validated agent runner with one retry, then visible failure
 - [x] Extractor agent producing candidate facts that are never confirmed
-- [ ] Upload, parse and chunk documents
+- [x] Upload, parse and chunk documents (PDF, .docx, text, Markdown)
+- [x] Extracted text stored, original bytes deliberately not retained
+- [x] Extractor wired to real uploads, landing candidate facts unconfirmed
+- [x] Reconciliation: duplicates dropped, conflicts surfaced against what is held
+- [x] Controlled claim vocabulary, so the same fact does not arrive under two names
+- [x] Injection attempts surfaced to the user rather than swallowed
+- [ ] Detect a byte-identical re-upload before spending a model call on it
+- [ ] Resolve a conflict in one click (supersede the old value from the review screen)
+- [ ] OCR for scanned PDFs with no text layer
 - [ ] Embeddings and retrieval
 - [x] Live verification against the real API, including prompt injection
 - [ ] Prompt-injection eval corpus run in CI
@@ -139,6 +147,7 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] DOCX/PDF export
 
 ## Phase 11 — Hardening
+- [ ] Upgrade vitest/vite (dev-only advisories: esbuild dev server, postcss via next)
 - [ ] WCAG 2.2 AA audit with automated axe in CI
 - [ ] Security review
 - [ ] AI evaluation suite

@@ -13,6 +13,7 @@ const NAV = [
   { href: '/tracker', label: 'Tracker', icon: '◷' },
   { href: '/applications', label: 'Applications', icon: '✎' },
   { href: '/organisation', label: 'Your organisation', icon: '⌂' },
+  { href: '/documents', label: 'Documents', icon: '❒' },
   { href: '/onboarding', label: 'Find your company', icon: '⌕' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ];

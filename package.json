@@ -31,10 +31,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
+    "mammoth": "^1.12.2",
     "next": "^15.5.25",
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "unpdf": "^1.8.1",
     "zod": "^4.5.4"
   }
 }

@@ -23,7 +23,11 @@ export interface MigrationExecutor extends Queryable {
 }
 
 /** Order matters. Append only; never renumber or edit an applied file. */
-export const MIGRATIONS = ['0001_init.sql', '0002_credentials.sql'] as const;
+export const MIGRATIONS = [
+  '0001_init.sql',
+  '0002_credentials.sql',
+  '0003_documents.sql',
+] as const;
 
 export async function readMigration(name: string): Promise<string> {
   const path = fileURLToPath(new URL(`./migrations/${name}`, import.meta.url));
