@@ -144,10 +144,35 @@ funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
 - [x] Start an application from any opportunity, eligibility-aware but never blocking
 - [x] Applications pipeline ordered by deadline
 
-## Phase 9 — Review
-- [ ] Critic agent
-- [ ] Red-team mode
-- [ ] Readiness breakdown
+## Phase 9 — Review, and the path to paid human review
+Sequenced so each step is useful alone and earns the right to the next. A
+marketplace built first is a bet; built last it is an obvious extension.
+
+**Step 1 — the machine catches the mechanical faults (free)**
+- [ ] Critic agent: reads the whole application as an assessor would
+- [ ] Red-team mode: the same read, adversarially
+- [ ] Findings quote the span they refer to, so each one is checkable
+- [ ] Readiness breakdown (completeness, never a success probability)
+
+**Step 2 — a human of the applicant's choosing (free, no supply side needed)**
+- [ ] Share an application read-only for review: answers, the evidence behind
+      every claim, unsupported-claim flags, the eligibility verdict
+- [ ] Structured comments a reviewer can leave against a specific answer
+- [ ] Scoped, time-boxed, revocable, audited access — a named outsider reading
+      tenant data is a deliberate GDPR processor relationship, not a toggle
+- [ ] Decide whether a reviewer's sign-off is recorded as provenance or stays
+      advisory (leaning: recorded — a reviewer's judgement is the strongest
+      provenance the product could carry)
+
+**Step 3 — curated referral (revenue, no platform liability)**
+- [ ] A short list of vetted bid writers; they contract directly with the CIC
+- [ ] Referral fee rather than a take rate, so no payments stack is needed
+
+**Step 4 — marketplace, only if steps 2 and 3 show the volume**
+- [ ] Two-sided matching, vetting, ratings, disputes, DPAs with every reviewer
+- [ ] Note the identity shift: software margins become services margins, and
+      headcount starts scaling with revenue
+
 - [ ] Budget engine
 - [ ] Outcomes table
 

@@ -173,7 +173,7 @@ The brief explicitly invites challenge (§3, §63). Here is where I depart from 
 | **Billing** | §56 | Zero users. 3–4 weeks that teaches nothing. Ship free, learn, then price |
 | **Proactive assistant / notifications** | §16 | Requires a live opportunity feed that does not yet exist. Building notifications over a thin feed manufactures noise |
 | **Post-award reporting** | §38 | Entire second product. Model the data so it is possible; build none of it |
-| **Human assistance marketplace** | §39 | Correctly flagged as non-MVP by the brief itself |
+| **Human assistance marketplace** | §39 | Correctly flagged as non-MVP by the brief itself. Revisited Sept 2026: the *idea* under it is right and answers the AI-backlash risk directly — a human expert reading an application before it goes in is a claim almost nobody in this space can make. The *marketplace* is still wrong to build first: cold start on both sides, quality control becomes the product, and a named outsider reading tenant data is a real GDPR and RLS change. Build the review artefact instead (a shareable read-only link), which is useful with zero reviewers and is a prerequisite for the marketplace anyway. See ROADMAP Phase 9. |
 | **Rejection learning** | §37 | *Record* outcomes from day one. "Learning" from n<200 is statistically meaningless and invites fabricated causality |
 | **Learned organisational voice** | §26 | Reduce to a style selector. Voice-learning from documents is high effort, low marginal value, and risks importing errors |
 | **Full theory-of-change engine** | §33 | Reduce to a structured activity→output→outcome table. Logic-model generation produces the meaningless impact language §33 itself warns against |
