@@ -56,6 +56,11 @@ export interface AssessmentInput {
   awards: readonly Award[];
   features: ApplicationFeatures;
   /**
+   * Whether `features` describes a form anyone has actually seen. Defaults to
+   * true; pass false for an opportunity whose questions are not yet known.
+   */
+  featuresKnown?: boolean;
+  /**
    * How the answers will be produced. Omitted means unassisted — never assume
    * help the organisation may not have.
    */
@@ -82,6 +87,16 @@ export interface OpportunityAssessment {
   /** Null when there is too little award data, or no amount is known. */
   amountAssessment: AmountAssessment | null;
   effort: EffortEstimate;
+  /**
+   * False when nobody has seen this funder's form yet.
+   *
+   * A pasted fund has no known question set, and `estimateEffort` over empty
+   * features returns the base hour for reading the guidance. Presented as a
+   * real estimate that becomes "£30,000 for about 1 hour of work" — a
+   * spectacular value-per-hour derived entirely from ignorance. The interface
+   * must say it does not know instead.
+   */
+  effortKnown: boolean;
   recommendation: RecommendationResult;
   /** One line answering "is this worth my time?". */
   headline: string;
@@ -175,12 +190,15 @@ export function describeFreshness(freshness: Freshness, retrievedAt: string): No
 
 function buildHeadline(
   amountGbp: number | null,
-  effort: EffortEstimate,
+  effort: EffortEstimate | null,
   eligibility: EligibilityVerdict,
 ): string {
   const money =
     amountGbp === null ? 'An unknown amount' : `£${amountGbp.toLocaleString('en-GB')}`;
-  const hours = `about ${effort.hours} ${effort.hours === 1 ? 'hour' : 'hours'} of work`;
+  const hours =
+    effort === null
+      ? 'an unknown amount of work'
+      : `about ${effort.hours} ${effort.hours === 1 ? 'hour' : 'hours'} of work`;
 
   // A verdict of 'ineligible' always carries at least one failure, so keying
   // off the failure rather than the verdict avoids an unreachable fallback.
@@ -214,11 +232,21 @@ export function assessOpportunity(input: AssessmentInput): OpportunityAssessment
   }
 
   const effort = estimateEffort(input.features, input.drafting ?? 'unassisted');
-  const recommendation = recommend(
-    eligibility.verdict,
-    input.project.amountSoughtGbp,
-    effort,
-  );
+  const effortKnown = input.featuresKnown ?? true;
+
+  // With no form to size, there is no honest value-per-hour. Eligibility still
+  // decides — being ruled out does not become uncertain just because we do not
+  // know how long the form is.
+  const recommendation: RecommendationResult = effortKnown
+    ? recommend(eligibility.verdict, input.project.amountSoughtGbp, effort)
+    : eligibility.verdict === 'ineligible'
+      ? recommend(eligibility.verdict, input.project.amountSoughtGbp, effort)
+      : {
+          recommendation: 'conditional',
+          valuePerHour: null,
+          reason:
+            "Nobody has seen this funder's form yet, so there is no honest way to weigh what it would cost you. Start an application and paste their questions in.",
+        };
 
   return {
     opportunityId: input.opportunity.id,
@@ -226,8 +254,13 @@ export function assessOpportunity(input: AssessmentInput): OpportunityAssessment
     funderBehaviour,
     amountAssessment,
     effort,
+    effortKnown,
     recommendation,
-    headline: buildHeadline(input.project.amountSoughtGbp, effort, eligibility),
+    headline: buildHeadline(
+      input.project.amountSoughtGbp,
+      effortKnown ? effort : null,
+      eligibility,
+    ),
     openQuestions: eligibility.unknowns.map(toOpenQuestion),
     deadlineNotice: describeDeadline(
       input.opportunity.deadline,

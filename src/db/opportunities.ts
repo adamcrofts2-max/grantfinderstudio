@@ -10,7 +10,7 @@
  * anybody's eligibility.
  */
 
-import type { AnalystOutput } from '../ai/agents/analyst.js';
+import { paramsForKind, type AnalystOutput } from '../ai/agents/analyst.js';
 import type { Queryable } from './client.js';
 
 export interface StoredOpportunity {
@@ -106,7 +106,9 @@ export async function createPastedOpportunity(
         id,
         criterion.kind,
         criterion.label,
-        JSON.stringify(criterion.params),
+        // Narrowed to the keys this kind uses, so the criteria mapper sees
+        // exactly the shape it validates and nothing else.
+        JSON.stringify(paramsForKind(criterion.kind, criterion.params)),
         criterion.kind === 'legal_form' ? criterion.cicTreatment : null,
         criterion.sourceSpan,
       ],

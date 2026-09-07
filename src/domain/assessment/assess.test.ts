@@ -283,3 +283,48 @@ describe('headline edge cases', () => {
     expect(a.headline).not.toContain('1 hours');
   });
 });
+
+describe('an opportunity whose form nobody has seen', () => {
+  it('reports the effort as unknown rather than as one hour', () => {
+    // A pasted fund has no known question set. estimateEffort over empty
+    // features returns the base hour for reading the guidance, and presenting
+    // that as real produced "£30,000 for about 1 hour of work" — a spectacular
+    // value-per-hour derived entirely from ignorance.
+    const result = assessOpportunity(input({ featuresKnown: false }));
+    expect(result.effortKnown).toBe(false);
+    expect(result.headline).toContain('an unknown amount of work');
+    expect(result.headline).not.toMatch(/about \d+ hours?/u);
+  });
+
+  it('makes no claim about value per hour', () => {
+    const result = assessOpportunity(input({ featuresKnown: false }));
+    expect(result.recommendation.valuePerHour).toBeNull();
+    expect(result.recommendation.reason).toContain('no honest way to weigh');
+    expect(result.recommendation.reason).not.toMatch(/per hour/u);
+  });
+
+  it('still rules out a fund the applicant cannot apply for', () => {
+    // Not knowing how long the form is does not make a hard exclusion
+    // uncertain. Eligibility decides regardless.
+    const ineligible = assessOpportunity(
+      input({
+        featuresKnown: false,
+        criteria: [
+          {
+            kind: 'legal_form',
+            id: 'c_charity',
+            label: 'Registered charities only',
+            cicTreatment: 'charity_only',
+            permittedForms: null,
+          },
+        ],
+      }),
+    );
+    expect(ineligible.eligibility.verdict).toBe('ineligible');
+    expect(ineligible.recommendation.recommendation).toBe('not_recommended');
+  });
+
+  it('treats a known form as known, which is the default', () => {
+    expect(assessOpportunity(input()).effortKnown).toBe(true);
+  });
+});

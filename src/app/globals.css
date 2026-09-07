@@ -427,6 +427,34 @@ textarea.input { resize: vertical; min-height: 8rem; font-family: var(--font-mon
 .btn-warn { background: var(--caution); color: #fff; }
 .btn-warn:hover { background: var(--caution); filter: brightness(0.92); color: #fff; }
 
+/* ---------- Lists, definition pairs and quoted source ---------------------
+   Added when the documents and fund-review screens needed them; both were
+   referencing classes that did not exist and falling back to browser
+   defaults. */
+
+.list { margin: 0; padding-left: 1.15rem; color: var(--ink-soft); font-size: var(--t-sm); }
+.list li { margin-bottom: var(--s-2); }
+.list li:last-child { margin-bottom: 0; }
+
+.kv { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: var(--s-2) var(--s-4); margin: 0; }
+.kv dt { color: var(--ink-soft); font-size: var(--t-sm); font-weight: 600; }
+.kv dd { margin: 0; font-size: var(--t-sm); }
+
+/* The funder's own sentence, which is what makes verification honest work. */
+.quote {
+  margin: 0; padding: var(--s-3) var(--s-4);
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-sunken);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--ink); font-size: var(--t-sm);
+}
+.quote q { font-style: italic; }
+
+@media (max-width: 560px) {
+  .kv { grid-template-columns: 1fr; gap: var(--s-1) 0; }
+  .kv dd { margin-bottom: var(--s-2); }
+}
+
 /* ---------- Form controls on small screens -------------------------------
    iOS Safari zooms the viewport whenever a focused form control is under
    16px, which throws the layout sideways mid-typing and does not undo itself.

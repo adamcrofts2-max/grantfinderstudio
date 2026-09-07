@@ -90,13 +90,18 @@ government only; 360Giving is awarded grants by design; incumbents use human
 researchers. So the opportunity pipeline starts with the applicant pasting the
 funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
 
-- [ ] Paste a funder's guidance and turn it into an assessable opportunity
-- [ ] Analyst agent proposing eligibility criteria from that guidance
-- [ ] Every proposed criterion verified by a person before the engine uses it
-      (`eligibility_criteria.verified_by` is the gate, and is currently unused)
-- [ ] Opportunity provenance: user-supplied is a source type, never dressed up
+- [x] Paste a funder's guidance and turn it into an assessable opportunity
+- [x] Analyst agent proposing eligibility criteria from that guidance
+- [x] Every proposed criterion verified by a person before the engine uses it
+      (`loadCriteria` filters on `verified_at`; that filter is the gate)
+- [x] Opportunity provenance: user-supplied is a source type, never dressed up
       as a verified register entry
-- [ ] Deadline and amounts extracted, with `deadline_kind` set honestly
+- [x] Deadline and amounts extracted, with `deadline_kind` set honestly
+- [x] A pasted fund is private to the organisation that added it (RLS)
+- [x] Effort reported as unknown when nobody has seen the funder's form
+- [x] Preferences are not proposed as criteria — only stated requirements
+- [ ] Edit a proposed criterion rather than only accepting or rejecting it
+- [ ] Re-read a fund when its guidance changes, diffing against what is verified
 - [ ] 360Giving as a prospect engine: which funders fund work like mine, at
       what size, and do they fund CICs
 - [ ] Charity Commission API for funder financials and filing status

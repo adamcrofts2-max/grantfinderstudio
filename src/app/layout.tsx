@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 
 const NAV = [
   { href: '/', label: 'Opportunities', icon: '◎' },
+  { href: '/opportunities/add', label: 'Add a fund', icon: '＋' },
   { href: '/tracker', label: 'Tracker', icon: '◷' },
   { href: '/applications', label: 'Applications', icon: '✎' },
   { href: '/organisation', label: 'Your organisation', icon: '⌂' },

@@ -59,6 +59,9 @@ export default async function OpportunityPage({
         criteria,
         awards,
         features: DEMO_APPLICATION_FEATURES[opportunity.id] ?? NO_FEATURES,
+        // A fund the applicant pasted in has no known form. Saying so beats an
+        // estimate derived from an empty feature set.
+        featuresKnown: DEMO_APPLICATION_FEATURES[opportunity.id] !== undefined,
         drafting: drafting.mode,
         asOf,
       }),
@@ -164,13 +167,23 @@ export default async function OpportunityPage({
       </Card>
 
       <Card title="3 · What applying would cost you">
-        <p style={{ fontSize: 'var(--t-lg)', fontWeight: 660, marginBottom: 'var(--s-3)' }}>
-          About {assessment.effort.hours} hours{' '}
-          <span style={{ color: 'var(--ink-faint)', fontWeight: 500, fontSize: 'var(--t-base)' }}>
-            · {assessment.effort.band} effort
-          </span>
-        </p>
-        <ul className="drivers">
+        {assessment.effortKnown ? null : (
+          <p className="notice notice-neutral">
+            <span>
+              Nobody has seen this funder’s form yet, so we cannot tell you what it would cost.
+              Start an application and paste their questions in, and this fills itself in.
+            </span>
+          </p>
+        )}
+        {assessment.effortKnown ? (
+          <p style={{ fontSize: 'var(--t-lg)', fontWeight: 660, marginBottom: 'var(--s-3)' }}>
+            About {assessment.effort.hours} hours{' '}
+            <span style={{ color: 'var(--ink-faint)', fontWeight: 500, fontSize: 'var(--t-base)' }}>
+              · {assessment.effort.band} effort
+            </span>
+          </p>
+        ) : null}
+        <ul className="drivers" hidden={!assessment.effortKnown}>
           {assessment.effort.drivers.map((driver) => (
             <li key={driver.label}>
               <span>{driver.label}</span>

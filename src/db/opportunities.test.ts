@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { AnalystOutput } from '../ai/agents/analyst.js';
+import type { AnalystOutput, CriterionParams } from '../ai/agents/analyst.js';
 import { loadCriteria, loadProposedCriteria } from './queries.js';
 import {
   createPastedOpportunity,
@@ -31,6 +31,22 @@ afterEach(async () => {
   await t.close();
 });
 
+/** Every key present, as the model must return them; override what matters. */
+function params(overrides: Partial<CriterionParams> = {}): CriterionParams {
+  return {
+    permittedForms: null,
+    permitted: null,
+    permittedRegions: null,
+    anyOf: null,
+    minGbp: null,
+    maxGbp: null,
+    minMonths: null,
+    maxMonths: null,
+    required: null,
+    ...overrides,
+  };
+}
+
 function analysis(overrides: Partial<AnalystOutput> = {}): AnalystOutput {
   return {
     title: 'Somerset Youth Opportunities Fund',
@@ -45,7 +61,7 @@ function analysis(overrides: Partial<AnalystOutput> = {}): AnalystOutput {
       {
         kind: 'legal_form',
         label: 'Registered charities only',
-        params: { permittedForms: ['charity'] },
+        params: params({ permittedForms: ['charity'] }),
         cicTreatment: 'charity_only',
         sourceSpan: 'We fund registered charities only.',
         confidence: 'high',
@@ -53,7 +69,7 @@ function analysis(overrides: Partial<AnalystOutput> = {}): AnalystOutput {
       {
         kind: 'amount',
         label: 'Between £5,000 and £25,000',
-        params: { minGbp: 5000, maxGbp: 25000 },
+        params: params({ minGbp: 5000, maxGbp: 25000 }),
         cicTreatment: null,
         sourceSpan: 'Grants of between £5,000 and £25,000.',
         confidence: 'high',

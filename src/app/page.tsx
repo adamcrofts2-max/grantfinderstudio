@@ -45,6 +45,15 @@ export default async function HomePage() {
             No organisation profile yet. Add one to see opportunities assessed against it.
           </p>
         )}
+        <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+          <a className="btn btn-secondary" href="/opportunities/add">
+            Add a fund you have found
+          </a>
+          <span className="hint">
+            No public register lists what UK trusts have open, so bring us the funder’s page and
+            we will read it with you.
+          </span>
+        </div>
       </header>
 
       {sorted.map(({ opportunity, assessment }) => (
