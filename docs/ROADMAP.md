@@ -83,6 +83,25 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [ ] Natural-language intake (needs the AI layer)
 - [ ] Saving and filtering opportunities
 
+### Phase 6a — The applicant brings the fund (Sept 2026 research pass)
+Research finding: no machine-readable source of open UK trust and foundation
+calls exists, and none is coming. Find a Grant is ~120 grants and central
+government only; 360Giving is awarded grants by design; incumbents use human
+researchers. So the opportunity pipeline starts with the applicant pasting the
+funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
+
+- [ ] Paste a funder's guidance and turn it into an assessable opportunity
+- [ ] Analyst agent proposing eligibility criteria from that guidance
+- [ ] Every proposed criterion verified by a person before the engine uses it
+      (`eligibility_criteria.verified_by` is the gate, and is currently unused)
+- [ ] Opportunity provenance: user-supplied is a source type, never dressed up
+      as a verified register entry
+- [ ] Deadline and amounts extracted, with `deadline_kind` set honestly
+- [ ] 360Giving as a prospect engine: which funders fund work like mine, at
+      what size, and do they fund CICs
+- [ ] Charity Commission API for funder financials and filing status
+- [ ] Find a Grant connector (demoted: small, central government only)
+
 ## Phase 7 — Document intelligence
 - [x] AI provider abstraction; no vendor SDK outside `src/ai/providers`
 - [x] Untrusted-content fencing with a per-call random marker

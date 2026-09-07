@@ -68,6 +68,72 @@ The brief's own instinct is right — §14 (Funding Opportunity Value) and §67 
 | **Companies House API** | Free API key, 600 req/5min | Public data | CIC registration, status, filings | Use for verification/onboarding |
 | **CIC Regulator filings** | Public | OGL | CIC34 community interest reports | Useful later |
 | **Funder websites** | Varies | Usually all rights reserved | Live opportunities | **Only with permission.** Do not scrape |
+| **Charity Commission Register of Charities API** | Free API key + monthly bulk extract | Public data | Funder financials, filing status | **Add.** Most funders are themselves charities |
+
+### 2.3.1 Revision, September 2026 — three needs, two sources
+
+The table above conflated three questions that turn out to have different answers.
+Revisited after a second research pass, the position is:
+
+**"Who am I?" — Companies House. Correct and irreplaceable.** Nothing else can
+confirm CIC status and the statutory asset lock. No change.
+
+**"Which funders fund work like mine?" — 360Giving, and it is a bigger asset
+than this document originally credited.** Over 1 million grants from 330+
+funders — family trusts, community foundations, lottery distributors and
+government departments — representing more than £300bn, updated daily, with a
+free bulk CSV/JSON download alongside the query API. It should power
+*discovery by prospect*, not merely decorate an opportunity page that somehow
+already exists.
+
+**"What is open right now, and can a CIC apply?" — no source exists.** This is
+the finding that matters, and it changes what we build:
+
+- **GOV.UK Find a Grant carries roughly 119–121 grants, central government
+  only.** No trusts, no foundations. For a rural CIC doing youth or
+  environmental work it is close to irrelevant. Demoted from "include" to a
+  later, small win.
+- **360Giving is awarded grants by design.** It will never say what is open.
+- **There is no central register of trust and foundation calls.** ACF's
+  transparency principles are voluntary and unevenly followed; there is no
+  standard process; funders publish deadlines on their own websites.
+- **The commercial incumbents do this with people.** GrantFinder advertises
+  8,500+ live opportunities "verified by expert researchers", daily.
+
+**Consequence 1 — the first commitment is stronger than modesty.** "Do not
+compete on database breadth" is not a positioning choice, it is arithmetic:
+there is no feed to compete with. Matching the incumbents means hiring
+researchers.
+
+**Consequence 2 — a calls list is the wrong primitive anyway.** Much of the
+trust sector accepts applications year round or works by invitation. Modelling
+the world as "open calls with deadlines" misdescribes the sector.
+
+**Consequence 3 — eligibility is confirmed as the wedge.** Nobody publishes
+eligibility criteria machine-readably. Most UK funders restrict applications to
+registered charities; many accept CICs; and the sector's own advice is that you
+must confirm it for every specific fund you consider. That sentence is the
+product. A deterministic per-criterion check with explicit unknowns is the
+thing that cannot be obtained elsewhere.
+
+**So the opportunity pipeline is: the applicant brings the fund.** Paste the
+funder's own guidance and we turn it into an assessable opportunity — criteria
+proposed by AI, verified by a person, then decided by the engine. The same
+shape as every other reframe this product has made: copy/paste is the
+submission mechanism, the user's calendar is the reminder mechanism, and the
+funder's own page is the opportunity database.
+
+**Continuity risk, logged:** 360Giving merged into Funders Together on
+1 February 2026. GrantNav and 360Insights are confirmed as continuing and
+evolving, so this is a watch item rather than a blocker. Separately, the
+Datastore drops a publisher's dataset after 91 days if it becomes invalid or
+unavailable — which is exactly what the `freshness` states exist to represent.
+
+**Verification caveat:** this environment's egress allowlist blocks both
+`find-government-grants.service.gov.uk` and the 360Giving domains, so the
+figures above come from published sources rather than from calling the APIs.
+Re-check the counts from an environment with outbound access before repeating
+them in anything commercial.
 
 **Critical licensing finding:** 360Giving publishers each choose their own open licence. Some are CC-BY, some CC-BY-**SA**. Share-alike propagates to derived datasets. This is not a footnote — it is a schema requirement.
 
@@ -392,4 +458,5 @@ Honest assessment. AI is not a moat; every competitor has the same models.
 - [GOV.UK Find a Grant](https://www.find-government-grants.service.gov.uk/) · [Terms and conditions](https://www.find-government-grants.service.gov.uk/info/terms-and-conditions) · [Reuse GOV.UK content](https://gov.uk/help/reuse-govuk-content)
 - [Companies House API — API Catalogue](https://www.api.gov.uk/ch/companies-house/)
 - [Regulator of Community Interest Companies Annual Report 2024–25](https://assets.publishing.service.gov.uk/media/68809f4f28f29c99778a7504/cic-25-01-community-interest-companies-annual-report-2024-2025.pdf)
-- [GrantFinder (Idox)](https://grantfinder.co.uk/) · [Charity Excellence Funding Finder](https://www.charityexcellence.co.uk/free-grant-funding-finder-directory/)
+- [GrantFinder (Idox)](https://grantfinder.co.uk/) · [Charity Excellence Funding Finder](https://www.charityexcellence.co.uk/free-grant-funding-finder-directory/) · [Grants Online](https://www.grantsonline.org.uk/) · [GrantMatch — grants for CICs](https://www.grantmatch.co.uk/grants/org-type/cic)
+- September 2026 research pass: [360Giving — what data is available](https://www.360giving.org/explore/before-you-start/what-data/) · [GrantNav data and bulk download](https://www.360giving.org/explore/technical/grantnav-data/) · [360Giving uniting with Funders Together](https://www.360giving.org/2026/01/13/360giving-uniting-with-funders-together/) · [Charity Commission API documentation](https://register-of-charities.charitycommission.gov.uk/en/documentation-on-the-api) · [How trusts and foundations fit into the system (Plinth)](https://www.plinth.org.uk/sector-essentials/how-trusts-and-foundations-fit-in) · [Finding funding for charities and voluntary organisations (House of Commons Library)](https://commonslibrary.parliament.uk/research-briefings/cbp-10663/)
