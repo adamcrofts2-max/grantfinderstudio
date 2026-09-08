@@ -1,7 +1,8 @@
 import { EmptyState } from '@/app/illustration/EmptyState';
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadAllFunderAwards, loadOrganisation, loadProject } from '@/db/queries';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { findProspects, type Prospect, type ProspectTier } from '@/domain/prospect/match';
 import { gbp } from '@/app/components';
 import { DistributionBar } from '@/app/viz/DistributionBar';
@@ -101,10 +102,11 @@ function ProspectCard({ prospect, yourAskGbp }: { prospect: Prospect; yourAskGbp
  * shows the grants, so the claim can be checked rather than trusted.
  */
 export default async function FundersPage() {
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
 
-  const page = await database.withTenant(DEMO_ORG_ID, async (tx) => ({
+  const page = await database.withTenant(organisationId, async (tx) => ({
     organisation: await loadOrganisation(tx),
     project: await loadProject(tx),
     funders: await loadAllFunderAwards(tx),

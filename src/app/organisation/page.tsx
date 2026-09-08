@@ -1,6 +1,7 @@
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadFacts } from '@/db/workspace';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { FactList, type FactView } from './FactList';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +15,9 @@ export const dynamic = 'force-dynamic';
  * resting on something nobody checked.
  */
 export default async function OrganisationPage() {
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
-  const facts = await database.withTenant(DEMO_ORG_ID, (tx) => loadFacts(tx));
+  const facts = await database.withTenant(organisationId, (tx) => loadFacts(tx));
 
   const view: FactView[] = facts.map((fact) => ({
     id: fact.id,

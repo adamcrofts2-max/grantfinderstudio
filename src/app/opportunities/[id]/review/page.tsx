@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadOpportunityReview } from '@/db/opportunities';
 import { loadProposedCriteria } from '@/db/queries';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { gbp } from '@/app/components';
 import { formatJurisdiction, type Jurisdiction } from '@/domain/types';
 import { formatDate } from '@/domain/tracker/schedule';
@@ -39,9 +40,10 @@ export default async function ReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
 
-  const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const page = await database.withTenant(organisationId, async (tx) => {
     const review = await loadOpportunityReview(tx, id);
     if (review === null) return null;
     return { review, proposed: await loadProposedCriteria(tx, id) };

@@ -2,8 +2,8 @@
 
 import { redirect } from 'next/navigation';
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { startApplication } from '@/db/workspace';
-import { DEMO_ORG_ID } from '@/demo/seed';
 
 /**
  * Start an application against an opportunity, then go straight to it.
@@ -14,12 +14,13 @@ import { DEMO_ORG_ID } from '@/demo/seed';
  * a person who may know something about the funder that we do not.
  */
 export async function startApplicationAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
   const opportunityId = String(formData.get('opportunityId') ?? '');
   if (opportunityId === '') return;
 
   const database = await getDatabase();
-  const { id } = await database.withTenant(DEMO_ORG_ID, (tx) =>
-    startApplication(tx, DEMO_ORG_ID, opportunityId),
+  const { id } = await database.withTenant(organisationId, (tx) =>
+    startApplication(tx, organisationId, opportunityId),
   );
 
   redirect(`/applications/${id}`);

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { draftFunderEnquiry } from '@/domain/assessment/enquiry';
 import { assessOpportunity } from '@/domain/assessment/assess';
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import {
   loadAwards,
   loadCriteria,
@@ -12,7 +13,7 @@ import {
 import { findApplicationForOpportunity } from '@/db/workspace';
 import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
-import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
+import { DEMO_APPLICATION_FEATURES } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 import { Circled } from '@/app/marks';
 
@@ -34,13 +35,14 @@ export default async function OpportunityPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
 
   // Outside the transaction: see the guard in withAdmin.
   const writerAvailable = await isWriterAvailable();
 
-  const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const page = await database.withTenant(organisationId, async (tx) => {
     const opportunity = await loadOpportunity(tx, id);
     if (!opportunity) return null;
     const organisation = await loadOrganisation(tx);

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
+import { requireOrganisationId, requireUserId } from '@/app/session';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
 import { usableFacts } from '@/domain/provenance/facts';
 import { providerFromStore } from '@/ai/provider-from-store';
@@ -15,7 +16,6 @@ import {
   RED_TEAM,
 } from '@/ai/agents/critic';
 import { loadVerifiedCriteriaLabels } from '@/db/workspace';
-import { DEMO_ORG_ID, DEMO_USER_ID } from '@/demo/seed';
 import { EMPTY_DRAFT, EMPTY_REVIEW, type AddState, type DraftState, type ReviewState } from './state';
 
 /**
@@ -31,6 +31,8 @@ export async function draftAnswerAction(
   _previous: DraftState,
   formData: FormData,
 ): Promise<DraftState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const questionId = String(formData.get('questionId') ?? '');
   const applicationId = String(formData.get('applicationId') ?? '');
   if (questionId === '' || applicationId === '') {
@@ -43,7 +45,7 @@ export async function draftAnswerAction(
   }
 
   const database = await getDatabase();
-  const prepared = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const prepared = await database.withTenant(organisationId, async (tx) => {
     const application = await loadApplication(tx, applicationId);
     return {
       question: application?.questions.find((q) => q.id === questionId) ?? null,
@@ -97,17 +99,17 @@ export async function draftAnswerAction(
 
   const byId = new Map(confirmed.map((fact) => [fact.id, fact]));
 
-  await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  await database.withTenant(organisationId, async (tx) => {
     await saveAnswer(
       tx,
-      DEMO_ORG_ID,
+      organisationId,
       {
         questionId,
         content: checked.text,
         wordCount: checked.wordCount,
         claims: sentences.map((s) => ({ text: s.text, factId: s.factId })),
       },
-      DEMO_USER_ID,
+      userId,
     );
   });
 
@@ -154,6 +156,7 @@ export async function addQuestionsAction(
   _previous: AddState,
   formData: FormData,
 ): Promise<AddState> {
+  const organisationId = await requireOrganisationId();
   const applicationId = String(formData.get('applicationId') ?? '');
   const payload = String(formData.get('questions') ?? '');
   if (applicationId === '' || payload === '') {
@@ -192,8 +195,8 @@ export async function addQuestionsAction(
   }
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) =>
-    addQuestions(tx, DEMO_ORG_ID, applicationId, questions),
+  await database.withTenant(organisationId, (tx) =>
+    addQuestions(tx, organisationId, applicationId, questions),
   );
 
   revalidatePath(`/applications/${applicationId}`);
@@ -218,6 +221,7 @@ export async function reviewApplicationAction(
   _previous: ReviewState,
   formData: FormData,
 ): Promise<ReviewState> {
+  const organisationId = await requireOrganisationId();
   const applicationId = String(formData.get('applicationId') ?? '');
   const mode = formData.get('mode') === 'red_team' ? 'red_team' : 'standard';
   if (applicationId === '') return { ...EMPTY_REVIEW, ok: false, message: 'No application.' };
@@ -226,7 +230,7 @@ export async function reviewApplicationAction(
   if (!provider.available) return { ...EMPTY_REVIEW, ok: false, message: provider.reason };
 
   const database = await getDatabase();
-  const loaded = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const loaded = await database.withTenant(organisationId, async (tx) => {
     const application = await loadApplication(tx, applicationId);
     if (application === null) return null;
     const criteria =

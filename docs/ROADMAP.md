@@ -33,7 +33,7 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] First run works on an empty database: manual profile entry and project
 - [x] Demo-data banner shown only when there is demo data
 - [ ] Deploy and verify Companies House and 360Giving against their real APIs
-- [ ] Deployment protection on, until authentication exists
+- [x] Deployment protection no longer the only thing standing in for auth
 
 ## Phase 2 — Persistence
 - [x] SQL schema covering the MVP tables, with enums and check constraints
@@ -52,7 +52,11 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] RBAC (owner/admin/editor/viewer) with lock-out invariants
 - [x] Per-request tenant context via transaction-local `set_config`
 - [x] Tests proving the context cannot outlive a request
-- [ ] Authentication (sessions, sign-in)
+- [x] Authentication: sign-up, sign-in, sign-out, database-backed sessions
+- [x] Every screen reads its organisation from the session, never a constant
+- [ ] Rate limiting on sign-in (see STATUS — required before real traffic)
+- [ ] Password reset (needs a mailer; there is none yet)
+- [ ] Organisation switcher for someone in more than one
 - [ ] Organisation and membership management endpoints
 - [ ] Audit logging on privileged actions
 

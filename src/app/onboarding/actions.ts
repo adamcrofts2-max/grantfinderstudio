@@ -15,12 +15,11 @@ import { loadMasterKey } from '@/secrets/crypto';
 import { readCredentialSecret } from '@/secrets/store';
 import {
   ensureOrganisation,
-  ensureUser,
   saveProject,
   saveSelfDeclaredProfile,
 } from '@/db/onboarding';
 import { JURISDICTIONS, LEGAL_FORMS, type Jurisdiction, type LegalForm } from '@/domain/types';
-import { DEMO_ORG_ID, DEMO_USER_ID } from '@/demo/seed';
+import { claimOrganisation, commitOrganisation } from '@/app/session';
 
 /** Build a client from the stored operator credential, if there is one. */
 async function buildClient(): Promise<CompaniesHouseClient | null> {
@@ -113,13 +112,13 @@ export async function confirmCompanyAction(
   }
   const profile = result.profile;
 
-  await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
 
+  const orgClaim = await claimOrganisation();
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  await database.withTenant(orgClaim.organisationId, async (tx) => {
     // On a fresh deployment there is no organisation yet, and this UPDATE
     // would silently affect nothing. Both routes in create it first.
-    await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, profile.name);
+    await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, profile.name);
     await tx.query(
       `UPDATE organisation_profiles
          SET legal_name = $2, company_number = $3, form = COALESCE($4, form),
@@ -127,7 +126,7 @@ export async function confirmCompanyAction(
              updated_at = now()
        WHERE organisation_id = $1`,
       [
-        DEMO_ORG_ID,
+        orgClaim.organisationId,
         profile.name,
         profile.companyNumber,
         profile.legalForm,
@@ -153,7 +152,7 @@ export async function confirmCompanyAction(
          VALUES ($1, $2, $3, $4, 'companies_house', $5, now(), 'high')`,
         [
           `ch_${profile.companyNumber}_${claim}`,
-          DEMO_ORG_ID,
+          orgClaim.organisationId,
           claim,
           value,
           `companies-house:${profile.companyNumber}`,
@@ -161,6 +160,7 @@ export async function confirmCompanyAction(
       );
     }
   });
+  await commitOrganisation(orgClaim);
 
   const formNote =
     profile.legalForm === null
@@ -214,15 +214,12 @@ export async function saveManualProfileAction(
   }
 
   try {
-    // The user account is the operator's; everything else belongs to the
-    // tenant and must be written inside its own context, because FORCE ROW
-    // LEVEL SECURITY binds the table owner too.
-    await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
 
+    const orgClaim = await claimOrganisation();
     const database = await getDatabase();
-    await database.withTenant(DEMO_ORG_ID, async (tx) => {
-      await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, legalName);
-      await saveSelfDeclaredProfile(tx, DEMO_ORG_ID, DEMO_USER_ID, {
+    await database.withTenant(orgClaim.organisationId, async (tx) => {
+      await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, legalName);
+      await saveSelfDeclaredProfile(tx, orgClaim.organisationId, orgClaim.userId, {
         legalName,
         companyNumber: companyNumber === '' ? null : companyNumber.toUpperCase(),
         legalForm: legalForm as LegalForm,
@@ -231,6 +228,7 @@ export async function saveManualProfileAction(
         incorporationDate: incorporationDate === '' ? null : incorporationDate,
       });
     });
+    await commitOrganisation(orgClaim);
   } catch {
     return {
       saved: false,
@@ -298,11 +296,11 @@ export async function saveProjectAction(
   }
 
   try {
-    await withAdmin((tx) => ensureUser(tx, DEMO_USER_ID));
+    const orgClaim = await claimOrganisation();
     const database = await getDatabase();
-    await database.withTenant(DEMO_ORG_ID, async (tx) => {
-      await ensureOrganisation(tx, DEMO_ORG_ID, DEMO_USER_ID, name);
-      await saveProject(tx, DEMO_ORG_ID, {
+    await database.withTenant(orgClaim.organisationId, async (tx) => {
+      await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, name);
+      await saveProject(tx, orgClaim.organisationId, {
         name,
         description: description === '' ? null : description,
         amountSoughtGbp,
@@ -311,6 +309,7 @@ export async function saveProjectAction(
         capitalOrRevenue: spend === '' ? null : (spend as 'capital' | 'revenue' | 'both'),
       });
     });
+    await commitOrganisation(orgClaim);
   } catch {
     return {
       saved: false,

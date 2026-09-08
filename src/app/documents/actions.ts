@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import {
   createDocument,
   deleteDocument,
@@ -12,7 +13,7 @@ import {
   saveChunks,
 } from '@/db/documents';
 import { loadFacts } from '@/db/workspace';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { createProvider } from '@/ai/providers/anthropic';
 import { extractorFor, ingestDocument } from '@/documents/ingest';
 import { UPLOAD_LIMITS } from '@/documents/accepted';
@@ -37,6 +38,7 @@ export async function uploadDocumentAction(
   _previous: UploadState,
   formData: FormData,
 ): Promise<UploadState> {
+  const organisationId = await requireOrganisationId();
   const file = formData.get('file');
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, message: 'Choose a file to upload.' };
@@ -60,7 +62,7 @@ export async function uploadDocumentAction(
   if (!created.available) return { ok: false, message: created.reason };
 
   const database = await getDatabase();
-  const existingFacts = await database.withTenant(DEMO_ORG_ID, (tx) => loadFacts(tx));
+  const existingFacts = await database.withTenant(organisationId, (tx) => loadFacts(tx));
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const documentId = `doc_${Date.now().toString(36)}`;
@@ -81,10 +83,10 @@ export async function uploadDocumentAction(
   }
 
   try {
-    await database.withTenant(DEMO_ORG_ID, async (tx) => {
+    await database.withTenant(organisationId, async (tx) => {
       await createDocument(
         tx,
-        DEMO_ORG_ID,
+        organisationId,
         {
           id: documentId,
           filename: file.name,
@@ -96,15 +98,15 @@ export async function uploadDocumentAction(
         },
         null,
       );
-      await saveChunks(tx, DEMO_ORG_ID, documentId, ingested.chunks);
-      await saveCandidateFacts(tx, DEMO_ORG_ID, documentId, ingested.results);
+      await saveChunks(tx, organisationId, documentId, ingested.chunks);
+      await saveCandidateFacts(tx, organisationId, documentId, ingested.results);
       await markExtracted(tx, documentId, ingested.instructionLikeContent);
     });
   } catch {
     // The document row may or may not exist; mark it failed if it does, so a
     // half-written upload is visible rather than silently absent.
     await database
-      .withTenant(DEMO_ORG_ID, (tx) =>
+      .withTenant(organisationId, (tx) =>
         markFailed(tx, documentId, 'Saving what we read from this document failed.'),
       )
       .catch(() => undefined);
@@ -127,11 +129,12 @@ export async function uploadDocumentAction(
 }
 
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
   const id = String(formData.get('documentId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) => deleteDocument(tx, id));
+  await database.withTenant(organisationId, (tx) => deleteDocument(tx, id));
   revalidatePath('/documents');
   revalidatePath('/organisation');
 }

@@ -20,6 +20,11 @@ export interface TestDatabase {
   asTenant<T>(organisationId: string, fn: () => Promise<T>): Promise<T>;
   /** Run with no tenant context set at all, to prove the system fails closed. */
   asNoTenant<T>(fn: () => Promise<T>): Promise<T>;
+  /**
+   * Run as a signed-in user with NO tenant context — the state sign-in is in
+   * when it asks which organisations somebody belongs to.
+   */
+  asUser<T>(userId: string, fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -55,6 +60,12 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     },
     async asNoTenant(fn) {
       await db.exec('RESET app.organisation_id;');
+      await db.exec('RESET app.user_id;');
+      return fn();
+    },
+    async asUser(userId, fn) {
+      await db.exec('RESET app.organisation_id;');
+      await db.query('SELECT set_config($1, $2, false)', ['app.user_id', userId]);
       return fn();
     },
     async close() {

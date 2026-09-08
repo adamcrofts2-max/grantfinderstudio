@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Bricolage_Grotesque } from 'next/font/google';
 import './globals.css';
+import { readSession } from './session';
+import { signOutAction } from './(auth)/actions';
 
 /**
  * The display face.
@@ -37,10 +39,19 @@ const NAV = [
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // The shell is for signed-in people. Every link in it goes somewhere that
+  // requires a session, so showing it to a visitor offers a product they
+  // cannot reach — and reads as a locked door rather than a front door.
+  const session = await readSession();
+
   return (
     <html lang="en-GB" className={display.variable}>
       <body>
+        {session === null ? (
+          children
+        ) : (
+        <>
         <a className="skip-link" href="#main">Skip to main content</a>
         <div className="shell">
           <nav className="sidebar" aria-label="Main">
@@ -61,11 +72,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 </a>
               ))}
             </div>
+            <form action={signOutAction} className="nav-foot">
+              <button className="nav-item nav-signout" type="submit">
+                <span className="nav-icon" aria-hidden="true">⇥</span>
+                Sign out
+              </button>
+            </form>
           </nav>
           <div className="main">
             <main id="main">{children}</main>
           </div>
         </div>
+        </>
+        )}
       </body>
     </html>
   );

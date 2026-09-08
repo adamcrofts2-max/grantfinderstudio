@@ -30,6 +30,7 @@ export const MIGRATIONS = [
   '0004_user_opportunities.sql',
   '0005_project_costs.sql',
   '0006_award_tags.sql',
+  '0007_auth.sql',
 ] as const;
 
 export async function readMigration(name: string): Promise<string> {

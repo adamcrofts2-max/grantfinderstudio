@@ -133,6 +133,12 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
 
+### First account on a new deployment
+
+There is no seeded account in production: the demo data only exists on the
+in-memory development database. Open `/sign-up`, create the first account, and
+onboarding creates its organisation. Nothing else can be reached until it does.
+
 With no `DATABASE_URL` the app runs on PGlite in memory — real PostgreSQL
 compiled to WebAssembly, seeded with fictional demo data, lost on restart. Good
 for development, never for production; the health check says so.

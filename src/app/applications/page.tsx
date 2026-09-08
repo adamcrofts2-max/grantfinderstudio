@@ -1,7 +1,8 @@
 import { EmptyState } from '@/app/illustration/EmptyState';
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadApplications } from '@/db/workspace';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { gbp } from '@/app/components';
 
 export const dynamic = 'force-dynamic';
@@ -18,8 +19,9 @@ function deadlineNote(deadline: string | null, kind: string | null): string {
 }
 
 export default async function ApplicationsPage() {
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
-  const applications = await database.withTenant(DEMO_ORG_ID, (tx) => loadApplications(tx));
+  const applications = await database.withTenant(organisationId, (tx) => loadApplications(tx));
 
   return (
     <div className="page page-narrow">

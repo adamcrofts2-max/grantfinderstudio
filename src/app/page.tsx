@@ -1,7 +1,8 @@
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { assessAll } from '@/db/queries';
 import { readEnvironment } from '@/env';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +14,10 @@ export const dynamic = 'force-dynamic';
 const ORDER = { strong: 0, worth_considering: 1, conditional: 2, not_recommended: 3 };
 
 export default async function HomePage() {
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
-  const { organisation, project, assessed } = await assessAll(database, DEMO_ORG_ID, asOf);
+  const { organisation, project, assessed } = await assessAll(database, organisationId, asOf);
 
   // The demo funds are seeded only into the in-memory dev database. Warning a
   // real deployment that its data is fictional, when there is no fictional

@@ -7,6 +7,7 @@ import { createProvider } from '@/ai/providers/anthropic';
 import { ANALYST, analystOutputSchema, buildAnalystPrompt } from '@/ai/agents/analyst';
 import { runAgent } from '@/ai/run';
 import { getDatabase, withAdmin } from '@/db';
+import { requireOrganisationId, requireUserId } from '@/app/session';
 import {
   createPastedOpportunity,
   deletePastedOpportunity,
@@ -14,7 +15,7 @@ import {
   rejectCriterion,
   verifyCriterion,
 } from '@/db/opportunities';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { isWriterAvailable } from '@/app/drafting';
 import type { AddState } from './state';
 
@@ -34,6 +35,7 @@ export async function addOpportunityAction(
   _previous: AddState,
   formData: FormData,
 ): Promise<AddState> {
+  const organisationId = await requireOrganisationId();
   const guidance = String(formData.get('guidance') ?? '').trim();
   const sourceUrlRaw = String(formData.get('sourceUrl') ?? '').trim();
 
@@ -88,13 +90,13 @@ export async function addOpportunityAction(
   }
 
   // Funders are shared reference data, so this insert takes the admin path.
-  const funderId = await withAdmin((tx) => ensureFunder(tx, analysis.funderName, DEMO_ORG_ID));
+  const funderId = await withAdmin((tx) => ensureFunder(tx, analysis.funderName, organisationId));
 
   const database = await getDatabase();
   let opportunityId: string;
   try {
-    const stored = await database.withTenant(DEMO_ORG_ID, (tx) =>
-      createPastedOpportunity(tx, DEMO_ORG_ID, {
+    const stored = await database.withTenant(organisationId, (tx) =>
+      createPastedOpportunity(tx, organisationId, {
         analysis,
         funderId,
         sourceText: guidance,
@@ -111,34 +113,39 @@ export async function addOpportunityAction(
 }
 
 export async function verifyCriterionAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const id = String(formData.get('criterionId') ?? '');
   const opportunityId = String(formData.get('opportunityId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) => verifyCriterion(tx, id, 'demo-user'));
+  await database.withTenant(organisationId, (tx) => verifyCriterion(tx, id, userId));
   revalidatePath(`/opportunities/${opportunityId}/review`);
   revalidatePath(`/opportunities/${opportunityId}`);
 }
 
 export async function rejectCriterionAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const id = String(formData.get('criterionId') ?? '');
   const opportunityId = String(formData.get('opportunityId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) => rejectCriterion(tx, id, 'demo-user'));
+  await database.withTenant(organisationId, (tx) => rejectCriterion(tx, id, userId));
   revalidatePath(`/opportunities/${opportunityId}/review`);
   revalidatePath(`/opportunities/${opportunityId}`);
 }
 
 export async function deleteOpportunityAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
   const id = String(formData.get('opportunityId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) =>
-    deletePastedOpportunity(tx, id, DEMO_ORG_ID),
+  await database.withTenant(organisationId, (tx) =>
+    deletePastedOpportunity(tx, id, organisationId),
   );
   revalidatePath('/');
   redirect('/');

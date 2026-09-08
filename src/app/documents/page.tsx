@@ -1,6 +1,7 @@
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadDocuments } from '@/db/documents';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { isWriterAvailable } from '@/app/drafting';
 
 import { deleteDocumentAction } from './actions';
@@ -26,8 +27,9 @@ function describe(pageCount: number | null, characterCount: number | null): stri
 }
 
 export default async function DocumentsPage() {
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
-  const documents = await database.withTenant(DEMO_ORG_ID, (tx) => loadDocuments(tx));
+  const documents = await database.withTenant(organisationId, (tx) => loadDocuments(tx));
   const writerAvailable = await isWriterAvailable();
 
   const pending = documents.reduce((total, doc) => total + doc.pendingFacts, 0);

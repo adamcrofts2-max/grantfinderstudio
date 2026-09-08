@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { markSubmitted, unmarkSubmitted } from '@/db/tracker';
-import { DEMO_ORG_ID } from '@/demo/seed';
 
 /**
  * Record that an application went in.
@@ -14,22 +14,24 @@ import { DEMO_ORG_ID } from '@/demo/seed';
  * reading, and a tracker people stop reading is worse than none.
  */
 export async function markSubmittedAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
   const id = String(formData.get('applicationId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) => markSubmitted(tx, id));
+  await database.withTenant(organisationId, (tx) => markSubmitted(tx, id));
   revalidatePath('/tracker');
   revalidatePath('/applications');
 }
 
 /** Undo a submission recorded by mistake. Restarts the clock. */
 export async function unmarkSubmittedAction(formData: FormData): Promise<void> {
+  const organisationId = await requireOrganisationId();
   const id = String(formData.get('applicationId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(DEMO_ORG_ID, (tx) => unmarkSubmitted(tx, id));
+  await database.withTenant(organisationId, (tx) => unmarkSubmitted(tx, id));
   revalidatePath('/tracker');
   revalidatePath('/applications');
 }

@@ -1,4 +1,5 @@
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import {
   loadCriteriaFor,
@@ -6,7 +7,7 @@ import {
   type TrackedApplication,
   type TrackedOpportunity,
 } from '@/db/tracker';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import type { DraftingMode } from '@/domain/effort/model';
 import { isWriterAvailable, readDrafting } from '@/app/drafting';
@@ -264,13 +265,14 @@ function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
 }
 
 export default async function TrackerPage() {
+  const organisationId = await requireOrganisationId();
   const now = today();
   const database = await getDatabase();
   // Resolved before the tenant transaction opens: it takes the operator
   // connection, and asking for that while a tenant transaction is held is a
   // deadlock.
   const writerAvailable = await isWriterAvailable();
-  const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const page = await database.withTenant(organisationId, async (tx) => {
     const tracker = await loadTracker(tx);
     const ids = [
       ...tracker.applications.map((a) => a.opportunityId).filter((id) => id !== null),

@@ -54,13 +54,6 @@ export default function OnboardingPage() {
           , and any eligibility check that depends on them will say so rather than sounding
           more certain than it is.
         </p>
-        <p className="notice notice-caution" style={{ marginTop: 'var(--s-4)' }}>
-          <span aria-hidden="true">⚠</span>
-          <span>
-            Manual entry is not built yet. It is the next piece of onboarding — see
-            docs/ROADMAP.md.
-          </span>
-        </p>
       </section>
 
       <section className="card">

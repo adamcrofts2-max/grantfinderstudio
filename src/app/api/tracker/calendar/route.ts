@@ -1,7 +1,8 @@
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import { loadCriteriaFor, loadTracker } from '@/db/tracker';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { toCalendarEvents, toIcs, type CalendarSource } from '@/domain/tracker/calendar';
@@ -24,13 +25,14 @@ export const dynamic = 'force-dynamic';
  * unauthenticated token for tenant data is not a decision to make in passing.
  */
 export async function GET(): Promise<Response> {
+  const organisationId = await requireOrganisationId();
   const now = new Date();
   const day = now.toISOString().slice(0, 10);
 
   const database = await getDatabase();
   // Outside the transaction: see the guard in withAdmin.
   const writerAvailable = await isWriterAvailable();
-  const loaded = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const loaded = await database.withTenant(organisationId, async (tx) => {
     const tracker = await loadTracker(tx);
     const ids = [
       ...tracker.applications.map((a) => a.opportunityId).filter((id) => id !== null),

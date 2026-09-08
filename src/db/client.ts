@@ -92,4 +92,27 @@ export class TenantDatabase {
       return OPEN_TENANT_TRANSACTION.run(true, () => fn(tx));
     });
   }
+
+  /**
+   * Run `fn` as a signed-in USER rather than as a tenant.
+   *
+   * Exactly one thing needs this: finding which organisations somebody belongs
+   * to, at sign-in, before there is a tenant to be. That read cannot go
+   * through `withTenant` — it is what decides the tenant — and it must not go
+   * through `withAdmin`, which would read every membership on the platform to
+   * answer a question about one person.
+   *
+   * So it runs unprivileged, with `app.user_id` set transaction-locally, and
+   * the `own_memberships` policy in 0007 lets it see that user's rows and
+   * nothing else. `app.organisation_id` is deliberately NOT set, so every
+   * tenant-scoped table stays empty in here: this context can answer "which
+   * organisations are mine" and no other question.
+   */
+  async withUser<T>(userId: string, fn: (tx: Queryable) => Promise<T>): Promise<T> {
+    assertValidTenantId(userId);
+    return this.db.transaction(async (tx) => {
+      await tx.query('SELECT set_config($1, $2, true)', ['app.user_id', userId]);
+      return OPEN_TENANT_TRANSACTION.run(true, () => fn(tx));
+    });
+  }
 }

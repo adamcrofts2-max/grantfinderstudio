@@ -12,9 +12,25 @@
  */
 
 import type { Queryable } from '../db/client.js';
+import { hashPassword } from '../auth/password.js';
 
 export const DEMO_ORG_ID = 'demo_org';
 export const DEMO_USER_ID = 'demo_user';
+export const DEMO_EMAIL = 'demo@example.org';
+
+/**
+ * The development sign-in.
+ *
+ * There is deliberately no bypass — no "skip auth in dev" branch, no
+ * auto-signed-in default. Development signs in through the same form, against
+ * the same hash, as production, because a code path that only runs in
+ * development is a code path nobody tests.
+ *
+ * This is safe because this module is only ever reached by the in-memory
+ * development database: a real deployment sets DATABASE_URL, which takes the
+ * Postgres path, which never seeds any of this.
+ */
+export const DEMO_PASSWORD = 'demonstration account';
 
 export async function seedDemoData(db: Queryable): Promise<void> {
   await db.query(`
@@ -22,6 +38,15 @@ export async function seedDemoData(db: Queryable): Promise<void> {
     VALUES ('${DEMO_USER_ID}', 'demo@example.org', 'Demo User')
     ON CONFLICT (id) DO NOTHING
   `);
+
+  // Hashed at seed time rather than pasted in as a constant, so the password
+  // above stays the single readable source of truth for it.
+  await db.query(
+    `INSERT INTO user_passwords (user_id, password_hash)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [DEMO_USER_ID, await hashPassword(DEMO_PASSWORD)],
+  );
 
   await db.query(`
     INSERT INTO organisations (id, name)

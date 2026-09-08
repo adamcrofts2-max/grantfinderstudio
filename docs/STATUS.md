@@ -296,6 +296,68 @@ Colour on the timeline *is* status, so the semantic colours are the right ones
 there. The validated four-slot categorical palette in `globals.css` is reserved
 for the effort composition chart and is not used yet.
 
+## Authentication (Phase 3)
+
+Email and password, database-backed sessions, no dependency added. scrypt from
+Node's own crypto rather than a library: it is a memory-hard KDF in the
+standard library, so there is one fewer supply-chain surface on the path where
+a compromise is worst, and no native build to fail on a deploy.
+
+**Everything auth-related is admin scope, and that is the design.** A session
+is read BEFORE the tenant is known — reading it is what ESTABLISHES the tenant
+— so it cannot be protected by a policy that depends on the tenant already
+being set. `sessions` and `user_passwords` are therefore revoked from PUBLIC
+and never granted to `app_user`, exactly like the operator credentials in 0002.
+There is a test that proves the tenant role gets `permission denied` rather
+than an empty result.
+
+The password hash does NOT live on `users`. Migration 0001 ends with
+`GRANT SELECT ON users TO app_user` and that table carries no policy, so a hash
+column there would be readable by every signed-in customer of the platform.
+
+**The one puzzle worth recording.** Resolving which organisation somebody
+belongs to means reading `memberships`, which is under `FORCE ROW LEVEL
+SECURITY` keyed on the tenant — the very thing the read is trying to establish.
+Two halves solve it:
+
+- A second, SELECT-only policy on `memberships` keyed on `app.user_id`, set
+  transaction-locally the same way `app.organisation_id` is. `TenantDatabase.withUser`
+  opens that context and deliberately does NOT set an organisation, so it can
+  answer "which organisations are mine" and no other question. Tested: it
+  returns your rows, nobody else's, nothing when unset, and opens no other
+  table.
+- The session row then RECORDS its organisation, so the per-request lookup is
+  one query against a table the tenant role cannot see. The cost is that
+  revoking a membership must also delete that person's sessions for it —
+  `deleteSessionsForMembership` exists for exactly that, because revocation is
+  an event rather than something re-checked on every request.
+
+**Fail closed, with no exceptions.** `requireOrganisationId()` is the only way
+to get an organisation id, and there is no default and no demo fallback. All 46
+hardwired `DEMO_ORG_ID` call sites are gone, along with the `DEMO_USER_ID` and
+`'demo-user'` strings that were being written into audit fields — a trail
+naming a constant is not a trail.
+
+**No development bypass.** Development signs in through the same form against
+the same hash as production; the demo account simply has a password
+(`DEMO_PASSWORD` in `src/demo/seed.ts`). A code path that only runs in
+development is a code path nobody tests. It is safe because that module is
+reached only by the in-memory dev database — a real deployment sets
+DATABASE_URL and never seeds any of it.
+
+**Account enumeration.** Sign-in returns one message for both "no such account"
+and "wrong password", and when there is no account it still runs scrypt against
+`ABSENT_ACCOUNT_HASH` so the two take the same time. Measured through the
+browser: 348ms against a real account, 346ms against one that does not exist. A
+malformed constant there would be rejected before doing any work and would look
+identical from outside, so there is a test that it is a real hash at current
+parameters. Sign-UP does reveal that an address is taken; there is no way
+around that without a mailer, and it is recorded rather than glossed.
+
+**Not done, and needed before real traffic:** rate limiting on sign-in. scrypt
+at ~200ms an attempt makes online guessing slow, but slow is not stopped. There
+is no password reset either, because there is no mailer.
+
 ## Visual identity (Phase 12)
 
 Settled by drawing it: the tracker and a landing hero, each as three

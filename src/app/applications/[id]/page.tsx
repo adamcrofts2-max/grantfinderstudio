@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import { getDatabase } from '@/db';
+import { requireOrganisationId } from '@/app/session';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
 import { usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
-import { DEMO_ORG_ID } from '@/demo/seed';
+
 import { Workspace, type QuestionView } from './Workspace';
 import { PasteQuestions } from './PasteQuestions';
 import { ReviewPanel } from './ReviewPanel';
@@ -17,9 +18,10 @@ export default async function ApplicationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const organisationId = await requireOrganisationId();
   const database = await getDatabase();
 
-  const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
+  const page = await database.withTenant(organisationId, async (tx) => {
     const application = await loadApplication(tx, id);
     if (!application) return null;
     const facts = await loadFacts(tx);
