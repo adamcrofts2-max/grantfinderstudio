@@ -863,6 +863,133 @@ summary:focus-visible {
 }
 
 /* ---------- Getting started ----------------------------------------------
+   One thing to do, and what comes after it. Somebody who has never applied for
+   funding does not want five tasks; they want to know what to do now. */
+
+.setup {
+  border-color: var(--accent-line);
+  background: linear-gradient(var(--accent-bg), var(--accent-bg)) no-repeat top / 100% 4px,
+    var(--surface);
+}
+.setup-position { color: var(--accent); }
+.setup-hero {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-xl); font-weight: 800; letter-spacing: -0.02em;
+  margin: var(--s-2) 0 0;
+}
+.setup-why {
+  margin: var(--s-3) 0 0; color: var(--ink-soft); max-width: 44rem;
+  font-size: var(--t-md); line-height: 1.6;
+}
+.setup-go {
+  margin-top: var(--s-5); padding: 0.75rem var(--s-5); font-size: var(--t-md);
+}
+.setup-after {
+  margin: var(--s-4) 0 0; color: var(--ink-faint); font-size: var(--t-sm);
+}
+.setup-after-label {
+  font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--t-xs); color: var(--ink-faint);
+}
+
+/* The rest, folded away. Nobody is trapped; nobody is confronted either. */
+.setup-all { margin-top: var(--s-5); border-top: 1px solid var(--line); padding-top: var(--s-4); }
+.setup-all > summary {
+  cursor: pointer; color: var(--accent); font-size: var(--t-sm); font-weight: 600;
+  list-style: none;
+}
+.setup-all > summary::-webkit-details-marker { display: none; }
+.setup-all > summary::before { content: '▸ '; }
+.setup-all[open] > summary::before { content: '▾ '; }
+
+.setup-steps {
+  list-style: none; margin: var(--s-4) 0 0; padding: 0;
+  display: grid; gap: var(--s-3);
+}
+.setup-step { display: grid; grid-template-columns: 24px 1fr; gap: var(--s-3); align-items: center; }
+.setup-mark {
+  width: 24px; height: 24px; border-radius: var(--r-full);
+  display: grid; place-items: center;
+  font-size: var(--t-xs); font-weight: 700;
+  background: var(--surface-sunken); color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+.setup-step.is-next .setup-mark { background: var(--accent); color: #fff; border-color: var(--accent); }
+.setup-step.is-done .setup-mark {
+  background: var(--positive-bg); color: var(--positive); border-color: var(--positive-line);
+}
+.setup-step-title { font-size: var(--t-sm); }
+.setup-step.is-done .setup-step-title { color: var(--ink-faint); }
+.setup-done-label { color: var(--positive); font-weight: 650; }
+
+/* ---------- The shell while somebody is still settling in -----------------
+   The menu is folded away rather than removed: the same links are one tap
+   under "All sections", so nobody who knows where they are going is stopped. */
+
+.nav-progress {
+  display: flex; align-items: baseline; gap: var(--s-2); margin: 0;
+  font-size: var(--t-sm); color: var(--ink-soft);
+}
+.nav-progress-count {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-lg); font-weight: 800; color: var(--accent);
+  letter-spacing: -0.02em;
+}
+.nav-more > summary {
+  cursor: pointer; list-style: none;
+  font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft);
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
+}
+.nav-more > summary::-webkit-details-marker { display: none; }
+.nav-more > summary::before { content: '▸ '; }
+.nav-more[open] > summary::before { content: '▾ '; }
+.nav-more > summary:hover { background: var(--surface-sunken); color: var(--ink); }
+.nav-more .nav { margin-top: var(--s-2); }
+
+/* On a phone the sidebar stacks above the page, so a nine-item menu was the
+   entire first screen. Folded and laid out as one row, the header costs about
+   70px and the first thing anyone sees is the one thing they have to do. */
+@media (max-width: 820px) {
+  .shell-guided .sidebar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'brand progress' 'more more';
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    padding: var(--s-3) var(--s-4);
+  }
+  .shell-guided .brand { grid-area: brand; }
+  /* One line: two is a masthead, and this is a strip. */
+  .shell-guided .brand br { display: none; }
+  .shell-guided .brand-sub { margin-left: var(--s-2); }
+  .shell-guided .nav-progress { grid-area: progress; }
+  .shell-guided .nav-more { grid-area: more; }
+}
+
+/* ---------- Signed out -----------------------------------------------------
+   A centred panel rather than the app shell. Everything in the sidebar needs a
+   session, so offering it here would be a locked door dressed as a front
+   door. */
+
+.auth-shell {
+  min-height: 100vh; display: grid; place-items: center;
+  padding: var(--s-6) var(--s-4); background: var(--canvas);
+}
+.auth-panel {
+  width: 100%; max-width: 26rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+  padding: var(--s-6);
+}
+.auth-panel .page-title { font-size: var(--t-xl); }
+
+.nav-foot { margin-top: auto; padding-top: var(--s-4); }
+.nav-signout {
+  width: 100%; background: none; border: 0; cursor: pointer;
+  font: inherit; text-align: left;
+}
+
+/* ---------- Getting started ----------------------------------------------
    The path through the product for an account that has not finished setting
    up. It is the first thing anyone sees, so it carries the annotation type and
    the accent, and it removes itself the moment it is finished. */

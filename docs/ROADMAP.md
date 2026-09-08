@@ -246,6 +246,10 @@ rendered as a sentence.
 - [ ] Button hierarchy by consequence
 - [ ] Real drop zones on the two upload screens
 - [x] Guided setup on the home page, derived from real state rather than flags
+- [x] One step at a time — the guide shows the next thing to do, the rest
+      folded behind "See all 5 steps"
+- [x] Fold the nine-item navigation away until setup is finished, so the
+      first screen after signing up is one instruction, not a menu
 - [ ] First-run moment on onboarding
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no
       opportunities — those are seeded only by the demo module. Every chart is

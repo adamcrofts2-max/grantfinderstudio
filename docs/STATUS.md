@@ -4,7 +4,7 @@
 
 ## What exists
 
-**852 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**954 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -471,6 +471,42 @@ both need it, and those are steps 4 and 5. Setting `ANTHROPIC_API_KEY` in the
 hosting environment provides it for everyone; leaving it unset means each
 organisation must bring their own through Settings, which for a small CIC is
 effectively a wall.
+
+### One step, not five — and no menu
+
+The first version still failed the test it was built for. On a phone the
+sidebar stacks above the content, so the first screen after signing up was
+nine navigation items and a sign-out button: a filing cabinet handed to
+somebody who has never applied for funding. Measured at 390×844, the header
+alone took ~450 of 844 pixels.
+
+Two changes, both about what a newcomer is asked to hold in their head:
+
+- **The guide shows one step.** `SetupGuide` renders the next step as the whole
+  card — position ("Step 2 of 5"), title, why it matters, one primary button,
+  and a quiet line naming what comes after so the path is visible without being
+  a list. The other four sit behind `<details>See all 5 steps</details>`.
+- **The navigation folds away while `stillSettingIn`.** The layout replaces the
+  nav with a progress count ("2/5 set up") and an `<details>All sections</details>`
+  holding the same nine links plus sign-out. Nobody is trapped — every
+  destination is one tap away — but nothing asks to be read.
+
+Folded, never removed, and never guessed at: `readSetupProgress` returns `null`
+when it cannot tell (no session, no organisation, a failed query) and `null`
+means show everything. Hiding the menu from somebody who has finished is a much
+worse failure than showing it to somebody who has not.
+
+`src/app/setup.ts` memoises the read with React `cache`, because the layout and
+the home page both ask and that must not be two round trips. Home also drops
+its "Your funding opportunities" header while setting up with nothing to list —
+two empty states competing for the same moment is worse than either.
+
+Verified with Playwright at 390×844: **0 navigation items on the first screen**,
+header down to 100px, and the visible elements are only the progress count,
+"All sections", the step, its button and "See all 5 steps". Worth recording how
+the first measurement lied: `getBoundingClientRect().height > 0` is non-zero
+for children of a *closed* `<details>` in Chromium, which reported nine visible
+nav items when there were none. `checkVisibility()` is the honest test.
 
 ## Visual identity (Phase 12)
 

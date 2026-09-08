@@ -4,6 +4,7 @@ import { Bricolage_Grotesque } from 'next/font/google';
 import './globals.css';
 import { readSession } from './session';
 import { signOutAction } from './(auth)/actions';
+import { readSetupProgress } from './setup';
 
 /**
  * The display face.
@@ -45,45 +46,88 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // cannot reach — and reads as a locked door rather than a front door.
   const session = await readSession();
 
+  // Nine destinations mean nothing to someone who has never applied for
+  // funding, and meeting them with a menu is how you lose them on the first
+  // screen. So until setup is finished the navigation is folded away and the
+  // page carries the single next thing to do.
+  //
+  // Folded, not removed. Nobody is trapped: the same links are one tap under
+  // "All sections", and anyone who already knows where they are going can go.
+  // Null means we could not tell, and then the menu is shown — hiding it from
+  // somebody who has finished would be far worse than showing it to somebody
+  // who has not.
+  const progress = await readSetupProgress();
+  const stillSettingIn = progress !== null && !progress.complete;
+
   return (
     <html lang="en-GB" className={display.variable}>
       <body>
         {session === null ? (
           children
         ) : (
-        <>
-        <a className="skip-link" href="#main">Skip to main content</a>
-        <div className="shell">
-          <nav className="sidebar" aria-label="Main">
-            <a className="brand" href="/">
-              <span className="brand-mark" aria-hidden="true">GF</span>
-              <span>
-                <span className="brand-name">Grant Finder</span>
-                <br />
-                <span className="brand-sub">Studio</span>
-              </span>
-            </a>
-            <div className="nav">
-              <span className="nav-label">Funding</span>
-              {NAV.map((item) => (
-                <a key={item.href} className="nav-item" href={item.href}>
-                  <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                  {item.label}
+          <>
+            <a className="skip-link" href="#main">Skip to main content</a>
+            <div className={stillSettingIn ? 'shell shell-guided' : 'shell'}>
+              <nav className="sidebar" aria-label="Main">
+                <a className="brand" href="/">
+                  <span className="brand-mark" aria-hidden="true">GF</span>
+                  <span>
+                    <span className="brand-name">Grant Finder</span>
+                    <br />
+                    <span className="brand-sub">Studio</span>
+                  </span>
                 </a>
-              ))}
+                {stillSettingIn ? (
+                  <>
+                    <p className="nav-progress">
+                      <span className="nav-progress-count">
+                        {progress.done}/{progress.total}
+                      </span>
+                      <span>set up</span>
+                    </p>
+                    <details className="nav-more">
+                      <summary>All sections</summary>
+                      <div className="nav">
+                        {NAV.map((item) => (
+                          <a key={item.href} className="nav-item" href={item.href}>
+                            <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                            {item.label}
+                          </a>
+                        ))}
+                        <form action={signOutAction}>
+                          <button className="nav-item nav-signout" type="submit">
+                            <span className="nav-icon" aria-hidden="true">⇥</span>
+                            Sign out
+                          </button>
+                        </form>
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    <div className="nav">
+                      <span className="nav-label">Funding</span>
+                      {NAV.map((item) => (
+                        <a key={item.href} className="nav-item" href={item.href}>
+                          <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                          {item.label}
+                        </a>
+                      ))}
+                    </div>
+                    <form action={signOutAction} className="nav-foot">
+                      <button className="nav-item nav-signout" type="submit">
+                        <span className="nav-icon" aria-hidden="true">⇥</span>
+                        Sign out
+                      </button>
+                    </form>
+                  </>
+                )}
+              </nav>
+              <div className="main">
+                <main id="main">{children}</main>
+              </div>
             </div>
-            <form action={signOutAction} className="nav-foot">
-              <button className="nav-item nav-signout" type="submit">
-                <span className="nav-icon" aria-hidden="true">⇥</span>
-                Sign out
-              </button>
-            </form>
-          </nav>
-          <div className="main">
-            <main id="main">{children}</main>
-          </div>
-        </div>
-        </>
+          </>
         )}
       </body>
     </html>

@@ -1,82 +1,86 @@
-import type { SetupProgress } from '@/domain/setup/progress';
+import type { SetupProgress, SetupStep } from '@/domain/setup/progress';
 
 /**
- * The path through the product, for an organisation that has not finished
- * setting up.
+ * One thing to do, and what comes after it.
  *
- * Shown on the home page, which is otherwise an empty list for a new account —
- * and an empty list with no route out of it is where people leave. It
- * disappears on its own once every step is done, because a checklist that
- * stays after it is finished is nagging.
+ * Someone who has never applied for funding does not want five tasks and nine
+ * menu items; they want to know what to do now. So the next step is the whole
+ * card, the rest is folded away, and the navigation stays out of the way until
+ * they have finished (see the layout).
  *
- * Each step says WHY it matters rather than what it does. "Confirm your facts"
- * means nothing; "below five the Writer will not draft at all" is a reason.
+ * It removes itself once everything is done — a checklist that outstays its
+ * usefulness is nagging.
  */
 export function SetupGuide({ progress }: { progress: SetupProgress }) {
-  if (progress.complete) return null;
-  const pct = Math.round((progress.done / progress.total) * 100);
+  const next = progress.next;
+  if (progress.complete || next === null) return null;
+
+  const position = progress.steps.findIndex((step) => step.id === next.id);
+  const after = progress.steps[position + 1] ?? null;
 
   return (
     <section className="card setup" aria-labelledby="setup-heading">
-      <div className="row-between" style={{ alignItems: 'center' }}>
-        <div>
-          <h2 className="card-title" id="setup-heading">
-            Getting set up
-          </h2>
-          <p className="card-sub" style={{ marginTop: 'var(--s-1)' }}>
-            {progress.done} of {progress.total} done. Nothing here is locked — you can jump
-            ahead and come back.
-          </p>
-        </div>
-        <span className="setup-count" aria-hidden="true">
-          {progress.done}/{progress.total}
-        </span>
-      </div>
+      <p className="eyebrow setup-position">
+        Step {position + 1} of {progress.total}
+      </p>
+      <h2 className="setup-hero" id="setup-heading">
+        {next.title}
+      </h2>
+      <p className="setup-why">{next.why}</p>
 
-      <div
-        className="setup-bar"
-        role="img"
-        aria-label={`${progress.done} of ${progress.total} steps done`}
-      >
-        <div className="setup-bar-fill" style={{ width: `${pct}%` }} />
-      </div>
+      {next.blocked === null ? null : (
+        <p className="notice notice-caution">
+          <span aria-hidden="true">⚠</span>
+          <span>{next.blocked}</span>
+        </p>
+      )}
 
-      <ol className="setup-steps">
-        {progress.steps.map((step, index) => {
-          const isNext = step.id === progress.next?.id;
-          return (
-            <li
+      <a className="btn btn-primary setup-go" href={next.href}>
+        {next.action}
+      </a>
+
+      {after === null ? null : (
+        <p className="setup-after">
+          <span className="setup-after-label">Then</span> {after.title.toLowerCase()}
+        </p>
+      )}
+
+      <details className="setup-all">
+        <summary>See all {progress.total} steps</summary>
+        <ol className="setup-steps">
+          {progress.steps.map((step, index) => (
+            <SmallStep
               key={step.id}
-              className={step.done ? 'setup-step is-done' : isNext ? 'setup-step is-next' : 'setup-step'}
-            >
-              <span className="setup-mark" aria-hidden="true">
-                {step.done ? '✓' : index + 1}
-              </span>
-              <div className="setup-body">
-                <h3 className="setup-title">
-                  {step.title}
-                  {step.done ? <span className="setup-done-label"> · done</span> : null}
-                </h3>
-                {step.done ? null : <p className="setup-why">{step.why}</p>}
-                {step.blocked === null ? null : (
-                  <p className="notice notice-caution setup-blocked">
-                    <span aria-hidden="true">⚠</span>
-                    <span>{step.blocked}</span>
-                  </p>
-                )}
-                {step.done ? null : (
-                  <a
-                    className={isNext ? 'btn btn-primary' : 'btn btn-secondary'}
-                    href={step.href}
-                  >
-                    {step.action}
-                  </a>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+              step={step}
+              index={index}
+              isNext={step.id === next.id}
+            />
+          ))}
+        </ol>
+      </details>
     </section>
+  );
+}
+
+function SmallStep({
+  step,
+  index,
+  isNext,
+}: {
+  step: SetupStep;
+  index: number;
+  isNext: boolean;
+}) {
+  const state = step.done ? 'is-done' : isNext ? 'is-next' : '';
+  return (
+    <li className={`setup-step ${state}`.trim()}>
+      <span className="setup-mark" aria-hidden="true">
+        {step.done ? '✓' : index + 1}
+      </span>
+      <span className="setup-step-title">
+        {step.done ? step.title : <a href={step.href}>{step.title}</a>}
+        {step.done ? <span className="setup-done-label"> · done</span> : null}
+      </span>
+    </li>
   );
 }

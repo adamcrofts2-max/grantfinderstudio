@@ -4,9 +4,7 @@ import { assessAll } from '@/db/queries';
 import { readEnvironment } from '@/env';
 
 import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
-import { readSetupCounts } from '@/db/setup';
-import { setupProgress } from '@/domain/setup/progress';
-import { isWriterAvailable } from '@/app/drafting';
+import { readSetupProgress } from '@/app/setup';
 import { SetupGuide } from '@/app/SetupGuide';
 import { EmptyState } from '@/app/illustration/EmptyState';
 
@@ -25,9 +23,8 @@ export default async function HomePage() {
   const { organisation, project, assessed } = await assessAll(database, organisationId, asOf);
 
   // Outside the tenant transaction: it takes the operator connection.
-  const writerAvailable = await isWriterAvailable();
-  const counts = await database.withTenant(organisationId, (tx) => readSetupCounts(tx));
-  const progress = setupProgress({ ...counts, writerAvailable });
+  const progress = await readSetupProgress();
+  const stillSettingIn = progress !== null && !progress.complete;
 
   // The demo funds are seeded only into the in-memory dev database. Warning a
   // real deployment that its data is fictional, when there is no fictional
@@ -52,43 +49,45 @@ export default async function HomePage() {
         </div>
       ) : null}
 
-      <SetupGuide progress={progress} />
+      {progress === null ? null : <SetupGuide progress={progress} />}
 
-      <header className="page-head">
-        <h1 className="page-title">Your funding opportunities</h1>
-        {organisation && project ? (
-          <p className="page-sub">
-            For <strong>{organisation.name}</strong> — {project.name}
-            {project.amountSoughtGbp === null ? null : `, seeking ${gbp(project.amountSoughtGbp)}`}
-            {project.durationMonths === null ? null : ` over ${project.durationMonths} months`}.
-          </p>
-        ) : organisation === null ? (
-          <p className="page-sub">
-            We do not know who you are yet.{' '}
-            <a href="/onboarding">Tell us about your organisation</a> and every fund below gets
-            checked against it.
-          </p>
-        ) : (
-          <p className="page-sub">
-            We know who you are, but not what you are trying to fund.{' '}
-            <a href="/onboarding">Add your project</a> — the amount, the length and who benefits
-            are what most eligibility rules turn on.
-          </p>
-        )}
-        <div className="row" style={{ marginTop: 'var(--s-4)' }}>
-          <a className="btn btn-secondary" href="/opportunities/add">
-            Add a fund you have found
-          </a>
-          <span className="hint">
-            No public register lists what UK trusts have open, so bring us the funder’s page and
-            we will read it with you.
-          </span>
-        </div>
-      </header>
+      {stillSettingIn && sorted.length === 0 ? null : (
+        <header className="page-head">
+          <h1 className="page-title">Your funding opportunities</h1>
+          {organisation && project ? (
+            <p className="page-sub">
+              For <strong>{organisation.name}</strong> — {project.name}
+              {project.amountSoughtGbp === null ? null : `, seeking ${gbp(project.amountSoughtGbp)}`}
+              {project.durationMonths === null ? null : ` over ${project.durationMonths} months`}.
+            </p>
+          ) : organisation === null ? (
+            <p className="page-sub">
+              We do not know who you are yet.{' '}
+              <a href="/onboarding">Tell us about your organisation</a> and every fund below gets
+              checked against it.
+            </p>
+          ) : (
+            <p className="page-sub">
+              We know who you are, but not what you are trying to fund.{' '}
+              <a href="/onboarding">Add your project</a> — the amount, the length and who benefits
+              are what most eligibility rules turn on.
+            </p>
+          )}
+          <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+            <a className="btn btn-secondary" href="/opportunities/add">
+              Add a fund you have found
+            </a>
+            <span className="hint">
+              No public register lists what UK trusts have open, so bring us the funder’s page and
+              we will read it with you.
+            </span>
+          </div>
+        </header>
+      )}
 
       {/* Only when the guide is gone — two empty states competing for the same
           moment is worse than either. */}
-      {sorted.length === 0 && progress.complete ? (
+      {sorted.length === 0 && progress?.complete === true ? (
         <EmptyState
           title="No funds to weigh up yet"
           action={<a className="btn btn-primary" href="/opportunities/add">Add a fund</a>}
