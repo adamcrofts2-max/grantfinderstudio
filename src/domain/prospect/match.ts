@@ -23,7 +23,12 @@
  * have done, which is a different claim and the only one the data supports.
  */
 
-import { MIN_AWARDS_TO_CHARACTERISE, percentile, type Award } from '../funder/behaviour.js';
+import {
+  MIN_AWARDS_TO_CHARACTERISE,
+  percentile,
+  type AmountSummary,
+  type Award,
+} from '../funder/behaviour.js';
 import type { Jurisdiction } from '../types.js';
 
 export const PROSPECT_CONSTANTS = {
@@ -99,6 +104,12 @@ export interface Prospect {
   amountFit: AmountFit;
   /** Null when there are too few awards to characterise. */
   medianAwardGbp: number | null;
+  /**
+   * The full spread, for the distribution chart. Null for the same reason the
+   * median is: below the floor we decline to describe the funder at all, and a
+   * chart drawn over three grants would imply a shape that is not there.
+   */
+  amounts: AmountSummary | null;
   lastAwardedOn: string | null;
   monthsSinceLastAward: number | null;
   /** True when nothing has been published for a long time. Reported, not used to exclude. */
@@ -220,16 +231,26 @@ export function assessProspect(
       matchingAwards: [],
       amountFit: 'unknown',
       medianAwardGbp: null,
+      amounts: null,
       reasons: [
-        `Only ${plural(awards.length, 'published grant', 'published grants')} — too few to say anything about what this funder does.`,
+        awards.length === 0
+          ? 'They publish no grants at all, so there is nothing to go on.'
+          : `Only ${plural(awards.length, 'published grant', 'published grants')} — too few to say anything about what this funder does.`,
       ],
     };
   }
 
-  const amounts = awards.map((a) => a.amountGbp).toSorted((a, b) => a - b);
-  const medianAwardGbp = percentile(amounts, 0.5);
-  const lower = percentile(amounts, 0.25);
-  const upper = percentile(amounts, 0.75);
+  const sorted = awards.map((a) => a.amountGbp).toSorted((a, b) => a - b);
+  const medianAwardGbp = percentile(sorted, 0.5);
+  const lower = percentile(sorted, 0.25);
+  const upper = percentile(sorted, 0.75);
+  const amounts: AmountSummary = {
+    min: sorted[0] as number,
+    lowerQuartile: lower,
+    median: medianAwardGbp,
+    upperQuartile: upper,
+    max: sorted.at(-1) as number,
+  };
 
   const amountFit: AmountFit =
     applicant.amountSoughtGbp === null
@@ -308,6 +329,7 @@ export function assessProspect(
     matchingAwards: bothAwards.length > 0 ? bothAwards : causeAwards.length > 0 ? causeAwards : areaAwards,
     amountFit,
     medianAwardGbp,
+    amounts,
     reasons,
   };
 }

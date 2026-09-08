@@ -322,3 +322,32 @@ describe('area wording is as precise as the evidence', () => {
     expect(result.reasons[0]).toBe('2 grants to work like yours, in your area.');
   });
 });
+
+describe('a funder that publishes nothing', () => {
+  it('says so plainly rather than counting to zero', () => {
+    const result = assessProspect(funder([]), applicant(), ASOF);
+    expect(result.tier).toBe('not_characterised');
+    expect(result.reasons[0]).toBe('They publish no grants at all, so there is nothing to go on.');
+    expect(result.reasons[0]).not.toContain('Only 0');
+  });
+
+  it('still reports no amounts, so no chart is drawn over nothing', () => {
+    const result = assessProspect(funder([]), applicant(), ASOF);
+    expect(result.amounts).toBeNull();
+    expect(result.medianAwardGbp).toBeNull();
+  });
+
+  it('gives a characterised funder a full spread for the chart', () => {
+    const awards = [10_000, 15_000, 20_000, 25_000, 30_000].map((amountGbp) =>
+      award({ amountGbp }),
+    );
+    const result = assessProspect(funder(awards), applicant(), ASOF);
+    expect(result.amounts).toEqual({
+      min: 10_000,
+      lowerQuartile: 15_000,
+      median: 20_000,
+      upperQuartile: 25_000,
+      max: 30_000,
+    });
+  });
+});

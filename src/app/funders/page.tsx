@@ -3,6 +3,7 @@ import { loadAllFunderAwards, loadOrganisation, loadProject } from '@/db/queries
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { findProspects, type Prospect, type ProspectTier } from '@/domain/prospect/match';
 import { gbp } from '@/app/components';
+import { DistributionBar } from '@/app/viz/DistributionBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,13 +37,23 @@ const TIER = {
 
 const ORDER: ProspectTier[] = ['area_and_cause', 'cause', 'area', 'no_overlap', 'not_characterised'];
 
-function ProspectCard({ prospect }: { prospect: Prospect }) {
+function ProspectCard({ prospect, yourAskGbp }: { prospect: Prospect; yourAskGbp: number | null }) {
   const badge = TIER[prospect.tier].badge;
   return (
     <section className="card">
       <div className="row-between">
         <div style={{ flex: '1 1 20rem', minWidth: 0 }}>
           <h3 className="opportunity-title">{prospect.funderName}</h3>
+          {prospect.amounts === null ? null : (
+            <div style={{ margin: 'var(--s-3) 0 var(--s-4)' }}>
+              <DistributionBar
+                amounts={prospect.amounts}
+                yourAskGbp={yourAskGbp}
+                funderName={prospect.funderName}
+              />
+            </div>
+          )}
+
           <ul className="list" style={{ marginTop: 'var(--s-2)' }}>
             {prospect.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
@@ -167,8 +178,12 @@ export default async function FundersPage() {
               {TIER[tier].blurb}
             </p>
             <div className="stack">
-              {group.map((prospect) => (
-                <ProspectCard key={prospect.funderId} prospect={prospect} />
+              {group.map((p) => (
+                <ProspectCard
+                  key={p.funderId}
+                  prospect={p}
+                  yourAskGbp={project?.amountSoughtGbp ?? null}
+                />
               ))}
             </div>
           </section>

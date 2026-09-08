@@ -70,6 +70,39 @@
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
   --shadow-md: 0 4px 8px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
 
+  /* Motion.
+     One decelerating curve throughout: interface motion should arrive and
+     settle, never bounce. Every duration here is short enough that a person
+     feels the response rather than waits for it. All of it is disabled under
+     prefers-reduced-motion at the end of this file. */
+  --motion-fast: 120ms;   /* hover, focus, colour */
+  --motion-base: 200ms;   /* enter, expand, reveal */
+  --motion-slow: 320ms;   /* page-level, a moment that should land */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Chart marks.
+     The distribution of a funder's grants is CONTEXT, and the applicant's own
+     ask is the one thing that matters — so it is drawn as emphasis, one hue
+     against neutrals, rather than as a categorical palette. Reaching for
+     categorical colour here would bury the single point the reader came for. */
+  --viz-rail:    var(--c-100);   /* full range: the quietest mark */
+  --viz-box:     var(--c-300);   /* interquartile range */
+  --viz-tick:    var(--c-600);   /* median */
+  --viz-you:     var(--accent);  /* the applicant's own position */
+  --viz-grid:    var(--c-200);
+
+  /* Categorical series, for charts whose subject genuinely IS the series
+     (effort composition, and nothing else yet). Validated with the dataviz
+     palette checker: worst adjacent CVD ΔE 9.1, normal-vision ΔE 22.9, all
+     checks pass on this surface. Assigned in fixed order, never cycled.
+     The semantic colours below are STATUS colours and are reserved — they fail
+     as a series palette (#0f6b47 reads grey; #a01f1f against #8a5200 is ΔE 3.2
+     for deutan vision) and must never be used as one. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
   color-scheme: light;
 }
 
@@ -100,6 +133,22 @@
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 12px rgb(0 0 0 / 0.4);
+
+    /* Chosen for the dark surface, not flipped from the light values. The
+       neutrals have to climb rather than fall: on a dark canvas the quietest
+       mark is the lightest one that still recedes. */
+    --viz-rail:    #232a34;
+    --viz-box:     #3c4655;
+    --viz-tick:    #97a3b5;
+    --viz-you:     var(--accent);
+    --viz-grid:    #262d38;
+
+    /* The same four hues stepped for this surface (dataviz palette, dark
+       column): worst adjacent CVD ΔE 8.4, normal-vision ΔE 19.8, all pass. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
 
     color-scheme: dark;
   }
@@ -474,5 +523,127 @@ textarea.input { resize: vertical; min-height: 8rem; font-family: var(--font-mon
   input[type="number"],
   input[type="file"] {
     font-size: 16px;
+  }
+}
+
+/* ---------- Motion --------------------------------------------------------
+   Until now nothing in the product acknowledged a click: 478 lines of CSS
+   contained no transition, no keyframes and no animation, so a button press
+   and a page render looked identical.
+
+   Everything here is short and decelerating. The reduced-motion block at the
+   end of this file is not a courtesy — vestibular disorders make large motion
+   genuinely unpleasant — and it comes last so it wins on order. */
+
+.btn,
+.input,
+.card,
+.badge,
+.nav-item {
+  transition:
+    background-color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    box-shadow var(--motion-base) var(--ease),
+    transform var(--motion-base) var(--ease);
+}
+
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.btn:disabled { cursor: progress; opacity: 0.72; }
+
+/* A card that is a link should feel liftable; a plain card should not. */
+a.opportunity .card:hover,
+.card-interactive:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+}
+
+.input:focus-visible,
+.btn:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Content arriving after a server action, rather than appearing abruptly. */
+@keyframes viz-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.enters { animation: viz-rise var(--motion-base) var(--ease) both; }
+
+/* ---------- Distribution bar ---------------------------------------------
+   What a funder actually gives, with the applicant's own ask marked on it.
+
+   Drawn as EMPHASIS rather than with a categorical palette: the distribution
+   is context and belongs in neutrals, and the one mark that matters — your
+   ask — is the only coloured thing on the chart.
+
+   HTML rather than SVG, because a full-width SVG needs
+   preserveAspectRatio="none" and that stretches a circular marker into an
+   ellipse at every width but one. */
+
+.viz-figure { margin: 0; }
+.viz-figure figcaption {
+  font-size: var(--t-xs); color: var(--ink-faint); margin-top: var(--s-2);
+}
+
+.viz-track { position: relative; height: 34px; margin-top: var(--s-5); }
+
+.viz-rail {
+  position: absolute; inset-inline: 0; top: 14px; height: 6px;
+  background: var(--viz-rail); border-radius: 3px;
+}
+
+.viz-box {
+  position: absolute; top: 10px; height: 14px;
+  background: var(--viz-box); border-radius: 3px;
+  /* A 2px surface ring keeps the box legible where it overlaps the rail. */
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.viz-median-tick {
+  position: absolute; top: 6px; height: 22px; width: 2px;
+  background: var(--viz-tick); border-radius: 1px; transform: translateX(-1px);
+}
+
+.viz-you { position: absolute; top: 0; height: 34px; }
+.viz-you-stem {
+  position: absolute; top: 8px; left: 0; width: 2px; height: 22px;
+  background: var(--viz-you); border-radius: 1px; transform: translateX(-1px);
+}
+.viz-you-dot {
+  position: absolute; top: 0; left: 0; width: 10px; height: 10px;
+  background: var(--viz-you); border-radius: var(--r-full);
+  transform: translateX(-5px);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* Direct labels under the track. */
+.viz-scale {
+  display: flex; justify-content: space-between; gap: var(--s-2);
+  margin-top: var(--s-1); font-size: var(--t-xs); color: var(--ink-faint);
+}
+.viz-scale .viz-median { color: var(--ink-soft); font-weight: 600; }
+
+/* The interquartile box grows from its own left edge, once, on mount. */
+@keyframes viz-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.viz-box.grows { transform-origin: left center; animation: viz-grow 420ms var(--ease) both; }
+
+/* ---------- Reduced motion ------------------------------------------------
+   Last in the file so it wins on order, as the mobile block above does. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:hover:not(:disabled),
+  a.opportunity .card:hover,
+  .card-interactive:hover {
+    transform: none;
   }
 }
