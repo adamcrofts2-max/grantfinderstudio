@@ -1,5 +1,6 @@
 import { checkConfiguration, readEnvironment } from '@/env';
 import { getDatabase } from '@/db';
+import { checkIsolation } from '@/db/isolation';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,12 +29,33 @@ export async function GET(): Promise<Response> {
     database = env.databaseUrl === null ? 'in-memory' : 'unreachable';
   }
 
+  // Checked on every call rather than once at deploy: a privilege granted by
+  // hand later would otherwise turn every tenant policy off without changing
+  // anything anyone would notice.
+  let isolation: 'enforced' | 'NOT ENFORCED' | 'unknown' = 'unknown';
+  if (database === 'ok') {
+    try {
+      const report = await checkIsolation();
+      isolation = report.enforced ? 'enforced' : 'NOT ENFORCED';
+      problems.push(
+        ...report.problems.map((problem) => ({
+          variable: 'app_user',
+          problem,
+          fix: 'Tenant isolation is not in force until this is resolved.',
+        })),
+      );
+    } catch {
+      isolation = 'unknown';
+    }
+  }
+
   const healthy = problems.length === 0 && database !== 'unreachable';
 
   return Response.json(
     {
       status: healthy ? 'ok' : 'attention',
       database,
+      isolation,
       persistent: env.databaseUrl !== null,
       problems,
     },

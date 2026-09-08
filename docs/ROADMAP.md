@@ -36,6 +36,9 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
       (the build environment can reach neither, nor Neon nor Vercel — this is
       the step that unblocks live verification of both)
 - [x] Migrations serialised across cold-starting instances by an advisory lock
+- [x] `/api/health` asserts Row-Level Security is actually in force, because a
+      managed host's owner role carries BYPASSRLS and a policy that has stopped
+      applying looks exactly like one that works
 - [ ] Investigate an intermittent PGlite timeout: one test failed once across
       three full runs and did not reproduce. Load-related, not yet pinned
 - [x] Deployment protection no longer the only thing standing in for auth

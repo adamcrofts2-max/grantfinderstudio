@@ -133,31 +133,38 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
 
-### Neon: check the owner can create a role, before you deploy
+### Neon needs no setup
 
-Migration 0001 creates the unprivileged `app_user` role that every Row-Level
-Security policy depends on. If the database owner cannot create roles, the very
-first migration fails and takes the deployment with it — and it fails loudly on
-purpose, because without that role there is no tenant isolation. Paste this
-into the Neon SQL editor first:
+Nothing has to be run by hand. Migration 0001 creates the unprivileged
+`app_user` role that every Row-Level Security policy depends on, and the role
+Neon gives you (`neondb_owner`) inherits `neon_superuser`, which carries
+CREATEROLE. Point the app at the connection string and the first request does
+the rest.
 
-```sql
--- Expect rolcreaterole = true, directly or through a granted role.
-SELECT rolname, rolcreaterole, rolsuper FROM pg_roles WHERE rolname = current_user;
-SELECT r.rolname AS granted_role, r.rolcreaterole
-  FROM pg_auth_members m
-  JOIN pg_roles r ON r.oid = m.roleid
-  JOIN pg_roles u ON u.oid = m.member
- WHERE u.rolname = current_user;
-```
-
-If none of those can create roles, create it once by hand as a Neon admin and
-the migration's `IF NOT EXISTS` guard will step over it:
+If a deploy ever does fail on `permission denied to create role`, the fix is
+two lines in the Neon SQL editor, and the migration's guard steps over it
+afterwards:
 
 ```sql
 CREATE ROLE app_user NOLOGIN;
 GRANT app_user TO neondb_owner;
 ```
+
+### Check isolation is actually in force after the first deploy
+
+`neon_superuser` also carries BYPASSRLS. That is harmless as things stand —
+tenant queries run after `SET LOCAL ROLE app_user`, and BYPASSRLS belongs to
+the role in effect, not the one that logged in — but if `app_user` ever
+acquired it, every policy in the schema would stop applying and nothing else
+would look any different. Silence is the danger, so `/api/health` asserts it on
+every call:
+
+```
+{ "status": "ok", "database": "ok", "isolation": "enforced", ... }
+```
+
+`"isolation": "NOT ENFORCED"` means tenant data is readable across
+organisations and the listed fix should be applied before anyone signs up.
 
 ### The pooled connection string is the right one
 
