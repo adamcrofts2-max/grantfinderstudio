@@ -95,3 +95,32 @@ describe('migrate', () => {
     }
   });
 });
+
+describe('when another instance wins the race', () => {
+  it('skips what was claimed while we were waiting for the lock', async () => {
+    // On a serverless host several instances cold start together, all read an
+    // empty schema_migrations, and all queue on the advisory lock. Whoever
+    // waited has to look AGAIN once it holds the lock: repeating the work
+    // fails on CREATE TYPE and can leave instances on different subsets.
+    //
+    // Modelled as a stale read — the table is fully migrated, but this caller
+    // saw it before the winner committed, which is exactly the race.
+    await migrate(queryable, inTransaction);
+
+    const stale: MigrationExecutor = {
+      async query(sql, params) {
+        const preLoopRead =
+          sql.includes('SELECT name FROM schema_migrations') && !sql.includes('WHERE');
+        if (preLoopRead) return { rows: [] as never[] };
+        return queryable.query(sql, params);
+      },
+      exec: (sql) => queryable.exec(sql),
+    };
+
+    const outcome = await migrate(stale, inTransaction);
+
+    // Nothing re-applied, nothing thrown, everything accounted for.
+    expect(outcome.applied).toEqual([]);
+    expect(outcome.skipped).toEqual([...MIGRATIONS]);
+  }, 180_000);
+});

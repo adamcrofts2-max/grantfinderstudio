@@ -45,10 +45,31 @@ export interface MigrationOutcome {
 }
 
 /**
+ * The advisory lock migrations serialise on.
+ *
+ * An arbitrary constant; it only has to be the same in every instance and
+ * unlikely to collide with another application's lock on a shared cluster.
+ */
+const MIGRATION_LOCK_KEY = 360_197_401;
+
+/**
  * Bring the database up to date.
  *
  * Each migration runs in its own transaction, so a failure leaves earlier ones
  * applied and the failing one rolled back entirely.
+ *
+ * SERIALISED ACROSS INSTANCES. On a serverless host several instances cold
+ * start at once, all read an empty `schema_migrations`, and all try to apply
+ * the first migration together — which fails on the second one to reach
+ * `CREATE TYPE`, and can leave different instances having applied different
+ * subsets. So each migration takes an advisory lock before it looks, and looks
+ * AGAIN once it holds it: whoever waited discovers the work is already done
+ * rather than repeating it.
+ *
+ * The lock is transaction-scoped (`pg_advisory_xact_lock`, not
+ * `pg_advisory_lock`) because it has to survive a connection pooler in
+ * transaction mode, where a session-scoped lock would be taken on one backend
+ * and released by whichever unrelated request borrowed it next.
  */
 export async function migrate(
   db: MigrationExecutor,
@@ -73,11 +94,23 @@ export async function migrate(
       continue;
     }
     const sql = await readMigration(name);
+    let ranHere = false;
     await runInTransaction(async (tx) => {
+      // Wait for any other instance mid-migration, then re-check: the set we
+      // read before the loop is stale by the time we hold the lock.
+      await tx.query('SELECT pg_advisory_xact_lock($1)', [MIGRATION_LOCK_KEY]);
+      const claimed = await tx.query<{ name: string }>(
+        'SELECT name FROM schema_migrations WHERE name = $1',
+        [name],
+      );
+      if (claimed.rows.length > 0) return;
+
       await tx.exec(sql);
       await tx.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
+      ranHere = true;
     });
-    applied.push(name);
+    if (ranHere) applied.push(name);
+    else skipped.push(name);
   }
 
   return { applied, skipped };

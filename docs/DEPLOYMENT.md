@@ -133,6 +133,56 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
 
+### Neon: check the owner can create a role, before you deploy
+
+Migration 0001 creates the unprivileged `app_user` role that every Row-Level
+Security policy depends on. If the database owner cannot create roles, the very
+first migration fails and takes the deployment with it — and it fails loudly on
+purpose, because without that role there is no tenant isolation. Paste this
+into the Neon SQL editor first:
+
+```sql
+-- Expect rolcreaterole = true, directly or through a granted role.
+SELECT rolname, rolcreaterole, rolsuper FROM pg_roles WHERE rolname = current_user;
+SELECT r.rolname AS granted_role, r.rolcreaterole
+  FROM pg_auth_members m
+  JOIN pg_roles r ON r.oid = m.roleid
+  JOIN pg_roles u ON u.oid = m.member
+ WHERE u.rolname = current_user;
+```
+
+If none of those can create roles, create it once by hand as a Neon admin and
+the migration's `IF NOT EXISTS` guard will step over it:
+
+```sql
+CREATE ROLE app_user NOLOGIN;
+GRANT app_user TO neondb_owner;
+```
+
+### The pooled connection string is the right one
+
+Neon's `-pooler` host runs PgBouncer in transaction mode, and everything this
+app does is transaction-scoped by design: `SET LOCAL ROLE app_user`,
+`set_config('app.organisation_id', …, true)` and `pg_advisory_xact_lock` for
+migrations. A session-scoped equivalent of any of those would be taken on one
+backend and released to whichever unrelated request borrowed it next, which is
+why none of them are session-scoped. No named prepared statements either.
+
+So use the pooler URL, which is what serverless wants. There is no need for a
+separate direct endpoint for migrations.
+
+`channel_binding=require` in a Neon connection string is a libpq directive.
+node-postgres 8.23 does implement SCRAM channel binding, so the connection
+should negotiate it, but this could not be tested from the build environment —
+if the first deploy fails to authenticate, drop that parameter and retry before
+looking anywhere else.
+
+### Migrations apply themselves
+
+The first request after a deploy runs any outstanding migrations, inside an
+advisory lock so that several cold-starting instances cannot race each other.
+There is no migrate step to run by hand.
+
 ### The per-origin rate limit depends on your proxy
 
 Sign-in and sign-up are limited by origin as well as by address, and the origin

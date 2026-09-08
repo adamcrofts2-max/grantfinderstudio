@@ -296,6 +296,33 @@ Colour on the timeline *is* status, so the semantic colours are the right ones
 there. The validated four-slot categorical palette in `globals.css` is reserved
 for the effort composition chart and is not used yet.
 
+## Deploying (what the build environment cannot do)
+
+This sandbox reaches Anthropic and GitHub and nothing else that matters. Neon,
+Vercel, 360Giving and Companies House are all refused — Postgres on 5432 has no
+route out at all, and HTTPS to those hosts is refused by the egress proxy. So
+the deploy has to be driven from outside, and it is the step that unblocks live
+verification of the two ingestion APIs.
+
+Two things were found by reading the code against a real Neon setup rather than
+by running it:
+
+**Migrations had no concurrency guard.** On a serverless host several instances
+cold start at once, all read an empty `schema_migrations`, and all try to apply
+the first migration together — which fails on the second one to reach `CREATE
+TYPE`, and can leave instances on different subsets of the schema. Each
+migration now takes `pg_advisory_xact_lock` and re-reads the table once it
+holds it, so whoever waited finds the work already done. The lock is
+transaction-scoped, not session-scoped, because a session lock would be taken
+on one backend and released to whichever unrelated request borrowed it next
+through a pooler.
+
+**The pooled connection string is the right one to use.** Everything the
+adapter does is already transaction-scoped by design — `SET LOCAL ROLE`,
+`set_config(…, true)`, and now the migration lock — which is exactly what
+PgBouncer transaction mode requires. No named prepared statements either. So
+there is no need for a separate direct endpoint.
+
 ## Authentication (Phase 3)
 
 Email and password, database-backed sessions, no dependency added. scrypt from

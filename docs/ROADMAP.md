@@ -33,6 +33,11 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] First run works on an empty database: manual profile entry and project
 - [x] Demo-data banner shown only when there is demo data
 - [ ] Deploy and verify Companies House and 360Giving against their real APIs
+      (the build environment can reach neither, nor Neon nor Vercel — this is
+      the step that unblocks live verification of both)
+- [x] Migrations serialised across cold-starting instances by an advisory lock
+- [ ] Investigate an intermittent PGlite timeout: one test failed once across
+      three full runs and did not reproduce. Load-related, not yet pinned
 - [x] Deployment protection no longer the only thing standing in for auth
 
 ## Phase 2 — Persistence
