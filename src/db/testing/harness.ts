@@ -7,11 +7,9 @@
  * policies rather than asserting them.
  */
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 // Shared with production so dev, tests and deployment cannot drift apart.
-import { MIGRATIONS } from '../migrate.js';
+import { MIGRATIONS, readMigration } from '../migrate.js';
 
 
 export interface TestDatabase {
@@ -29,10 +27,10 @@ export interface TestDatabase {
 }
 
 async function applyMigrations(db: PGlite): Promise<void> {
-  // Migrations are ordered and must be applied one at a time.
+  // Through `readMigration`, so tests exercise the same inlined SQL that a
+  // deployment runs rather than reading the .sql files the deployment cannot.
   for (const name of MIGRATIONS) {
-    const path = fileURLToPath(new URL(`../migrations/${name}`, import.meta.url));
-    await db.exec(await readFile(path, 'utf8'));
+    await db.exec(await readMigration(name));
   }
 }
 

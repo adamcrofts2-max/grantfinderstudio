@@ -36,6 +36,10 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
       (the build environment can reach neither, nor Neon nor Vercel — this is
       the step that unblocks live verification of both)
 - [x] Migrations serialised across cold-starting instances by an advisory lock
+- [x] Migration SQL inlined so it survives serverless bundling (the first real
+      deploy failed on ENOENT; no test could have caught it, since tests run
+      with a real filesystem)
+- [x] `/api/health` reports the driver's own error and the fix for it
 - [x] `/api/health` asserts Row-Level Security is actually in force, because a
       managed host's owner role carries BYPASSRLS and a policy that has stopped
       applying looks exactly like one that works

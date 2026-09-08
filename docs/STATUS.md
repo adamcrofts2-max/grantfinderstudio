@@ -298,6 +298,22 @@ for the effort composition chart and is not used yet.
 
 ## Deploying (what the build environment cannot do)
 
+**Migration SQL is inlined, not read from disk.** The first real deploy failed
+with `ENOENT: no such file or directory, open
+'/vercel/path0/src/db/migrations/0001_init.sql'`. A serverless bundle contains
+only files something statically refers to, and these filenames are assembled
+from `MIGRATIONS` at runtime — so the .sql files were in the repository and
+absent from the deployed function. Every test passed throughout, because tests
+run in Node with a real filesystem: this was invisible to the whole suite by
+construction, the same way FORCE RLS was invisible under superuser seeding.
+
+The .sql files remain the source of truth. `npm run migrations:generate` inlines
+them into `src/db/migrations.generated.ts`, which is committed and regenerated
+by `prebuild`; `migrations.generated.test.ts` fails if the two drift. Production,
+the dev database and the test harness all read through the same `readMigration`,
+so none of them can be exercising different SQL from the others.
+
+
 This sandbox reaches Anthropic and GitHub and nothing else that matters. Neon,
 Vercel, 360Giving and Companies House are all refused — Postgres on 5432 has no
 route out at all, and HTTPS to those hosts is refused by the egress proxy. So

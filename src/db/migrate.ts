@@ -7,8 +7,6 @@
  * those policies are the security boundary.
  */
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import type { Queryable } from './client.js';
 
 /**
@@ -23,6 +21,8 @@ export interface MigrationExecutor extends Queryable {
 }
 
 /** Order matters. Append only; never renumber or edit an applied file. */
+import { MIGRATION_SQL } from './migrations.generated.js';
+
 export const MIGRATIONS = [
   '0001_init.sql',
   '0002_credentials.sql',
@@ -34,9 +34,24 @@ export const MIGRATIONS = [
   '0008_auth_throttle.sql',
 ] as const;
 
+/**
+ * The SQL for a migration.
+ *
+ * From an inlined module rather than the filesystem. A serverless bundle
+ * contains only files something statically refers to, and these filenames are
+ * assembled from MIGRATIONS at runtime — so on Vercel the .sql files were
+ * simply absent, and the first request that touched data failed with ENOENT.
+ * The .sql files remain the source of truth; `npm run migrations:generate`
+ * turns them into `migrations.generated.ts`, and a test fails if the two drift.
+ */
 export async function readMigration(name: string): Promise<string> {
-  const path = fileURLToPath(new URL(`./migrations/${name}`, import.meta.url));
-  return readFile(path, 'utf8');
+  const sql = MIGRATION_SQL[name];
+  if (sql === undefined) {
+    throw new Error(
+      `No SQL for migration "${name}". Run: npm run migrations:generate`,
+    );
+  }
+  return sql;
 }
 
 export interface MigrationOutcome {

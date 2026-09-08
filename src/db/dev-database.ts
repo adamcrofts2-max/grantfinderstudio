@@ -11,11 +11,9 @@
  * because everything above it depends only on the TransactionCapable interface.
  */
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 // Shared with production so dev, tests and deployment cannot drift apart.
-import { MIGRATIONS } from './migrate.js';
+import { MIGRATIONS, readMigration } from './migrate.js';
 import { seedDemoApplication, seedDemoData } from '../demo/seed.js';
 import { TenantDatabase, type Queryable, type TransactionCapable } from './client.js';
 
@@ -36,8 +34,7 @@ async function build(): Promise<TenantDatabase> {
   const db = new PGlite();
 
   for (const name of MIGRATIONS) {
-    const path = fileURLToPath(new URL(`./migrations/${name}`, import.meta.url));
-    await db.exec(await readFile(path, 'utf8'));
+    await db.exec(await readMigration(name));
   }
 
   // Seeding runs as the owning role, before dropping privileges, so the
