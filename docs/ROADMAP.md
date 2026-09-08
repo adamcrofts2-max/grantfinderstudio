@@ -107,8 +107,15 @@ funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
 - [x] Preferences are not proposed as criteria — only stated requirements
 - [ ] Edit a proposed criterion rather than only accepting or rejecting it
 - [ ] Re-read a fund when its guidance changes, diffing against what is verified
-- [ ] 360Giving as a prospect engine: which funders fund work like mine, at
-      what size, and do they fund CICs
+- [x] 360Giving as a prospect engine: which funders fund work like mine, at
+      what size, and how recently
+- [x] Tiers with stated, countable definitions rather than a similarity score
+- [x] Every tier earned by grants the user can open and read
+- [x] Award classification tags stored, so cause matching can actually fire
+- [ ] Ingest real 360Giving data into funder_awards (connector exists; blocked
+      on egress here, so first run is on deployment)
+- [ ] "Is this funder open?" — targeted search against a named prospect, fetched
+      on demand and fed into the existing paste-a-fund review screen
 - [ ] Charity Commission API for funder financials and filing status
 - [ ] Find a Grant connector (demoted: small, central government only)
 
@@ -210,6 +217,24 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Security review
 - [ ] AI evaluation suite
 - [ ] Performance
+
+### Discovery: what we will not build
+Established by the September 2026 research, and by a second look at the legal
+position:
+
+- **No crawled index of funder pages.** The UK kept the sui generis database
+  right; systematic extraction of a substantial part infringes even when each
+  extraction is small and the data is factual. Most funder terms prohibit
+  automated access. The text-and-data-mining exception (s29A CDPA) is
+  non-commercial research only, so a commercial product is outside it.
+- **What is defensible instead:** a licensed search index, a page fetched on
+  demand for the user who asked, extracted facts and a link rather than a copy,
+  kept private to that tenant. The last part is already true of a pasted fund —
+  built as a privacy decision, and it turns out to be the copyright-safe shape.
+- **No merged "best list"** across 360Giving and an AI search. They have
+  opposite reliability profiles — evidenced but historical, current but
+  unverified — and averaging them hides the difference. 360Giving targets the
+  search; it does not sit beside it.
 
 ## Explicitly out of MVP
 Billing · push/email notifications (superseded in part: the tracker exports to the user's own

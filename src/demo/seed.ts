@@ -86,9 +86,9 @@ export async function seedDemoData(db: Queryable): Promise<void> {
     await db.query(
       `INSERT INTO funder_awards
          (id, funder_id, recipient_name, amount_gbp, awarded_on, description,
-          jurisdiction, region, source_dataset_id)
+          jurisdiction, region, tags, source_dataset_id)
        VALUES ($1, 'f_youth', $2, $3, $4, 'Fictional award record',
-               'england', $5, 'demo_ds')
+               'england', $5, $6, 'demo_ds')
        ON CONFLICT (id) DO NOTHING`,
       [
         `aw_${index}`,
@@ -96,6 +96,11 @@ export async function seedDemoData(db: Queryable): Promise<void> {
         amount,
         `2025-0${index + 1}-01`,
         index < 3 ? 'Somerset' : 'Devon',
+        // Classification titles as 360Giving publishers write them, so the
+        // prospect engine's cause matching has something realistic to work on.
+        index % 2 === 0
+          ? ['Children and young people', 'Education and training']
+          : ['Children and young people', 'Environment and conservation'],
       ],
     );
   }

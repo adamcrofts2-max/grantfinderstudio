@@ -174,6 +174,7 @@ export async function loadOpportunity(
 }
 
 interface AwardRow {
+  tags: string[];
   id: string;
   amount_gbp: string;
   awarded_on: string;
@@ -185,7 +186,7 @@ interface AwardRow {
 export async function loadAwards(tx: Queryable, funderId: string): Promise<Award[]> {
   const r = await tx.query<AwardRow>(
     `SELECT id, amount_gbp::text AS amount_gbp, awarded_on::text AS awarded_on,
-            recipient_name, jurisdiction, region
+            recipient_name, jurisdiction, region, tags
      FROM funder_awards WHERE funder_id = $1`,
     [funderId],
   );
@@ -196,7 +197,7 @@ export async function loadAwards(tx: Queryable, funderId: string): Promise<Award
     recipientName: row.recipient_name,
     jurisdiction: row.jurisdiction,
     region: row.region,
-    tags: [],
+    tags: row.tags ?? [],
   }));
 }
 
@@ -317,4 +318,50 @@ export async function assessAll(
     }
     return { organisation, project, assessed };
   });
+}
+
+/**
+ * Every funder with its published awards, for prospect research.
+ *
+ * One query rather than one per funder: prospect research asks about the whole
+ * register at once, and a query per funder would make the most valuable screen
+ * the slowest. Funders with no published awards are included, because "we know
+ * of them but they publish nothing" is itself an answer the interface shows.
+ */
+export async function loadAllFunderAwards(
+  tx: Queryable,
+): Promise<Array<{ funderId: string; funderName: string; awards: Award[] }>> {
+  const r = await tx.query<
+    AwardRow & { funder_id: string; funder_name: string; award_id: string | null }
+  >(
+    `SELECT f.id AS funder_id, f.name AS funder_name,
+            a.id AS award_id, a.amount_gbp::text AS amount_gbp,
+            a.awarded_on::text AS awarded_on, a.recipient_name,
+            a.jurisdiction, a.region, a.tags
+     FROM funders f
+     LEFT JOIN funder_awards a ON a.funder_id = f.id
+     ORDER BY f.name, a.awarded_on`,
+  );
+
+  const byFunder = new Map<string, { funderId: string; funderName: string; awards: Award[] }>();
+  for (const row of r.rows) {
+    const entry = byFunder.get(row.funder_id) ?? {
+      funderId: row.funder_id,
+      funderName: row.funder_name,
+      awards: [],
+    };
+    if (row.award_id !== null) {
+      entry.awards.push({
+        id: row.award_id,
+        amountGbp: Number(row.amount_gbp),
+        awardedOn: row.awarded_on,
+        recipientName: row.recipient_name,
+        jurisdiction: row.jurisdiction,
+        region: row.region,
+        tags: row.tags ?? [],
+      });
+    }
+    byFunder.set(row.funder_id, entry);
+  }
+  return [...byFunder.values()];
 }

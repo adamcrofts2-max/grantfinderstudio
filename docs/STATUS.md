@@ -80,6 +80,17 @@ opportunities, licences) readable by all tenants and writable only by the ingest
   match funding and the funder's budget template are untouched by drafting help, and on a form
   with real paperwork they become the majority of the remaining cost. That is what an applicant
   should be planning around, and the effort drivers are sorted to make it visible.
+- **Prospect research is tiers, not a similarity score.** `findProspects` sorts funders into
+  named tiers whose definitions are stated and countable — funded your cause in your area, your
+  cause elsewhere, your area for other things, no overlap, too few grants to say. Ordering within
+  a tier is lexicographic and visible (dormancy, then evidence count, then recency), so the order
+  is checkable rather than trusted. Every tier carries the actual grants that earned it.
+- **"In your area" is claimed only for grants made in it.** A nation-level match is real evidence
+  but a weaker claim, and describing a grant made 80 miles away as local is the kind of small
+  dishonesty that costs all the trust the moment someone opens the list and looks.
+- **A gap in publishing is not a gap in funding.** Publishers update 360Giving at very different
+  rates, so a funder with nothing since 2021 may have stopped giving or stopped publishing. The
+  date is shown and the ambiguity stated; it is never used to exclude anyone.
 - **The Critic reads what only a reader of the whole form can see.** Word limits, fabricated
   fact ids, unsupported claims and repeated facts are already decided exactly by `checkDraft`;
   asking a model to re-find them would be slower, dearer, less reliable, and would bury the
@@ -339,6 +350,22 @@ Also fixed here: `providerFromStore` checked only the encrypted stored credentia
 reviewing and then reported that encryption was not configured. Both routes now count, and the
 stored key wins where both exist because entering one in Settings is a deliberate choice about
 which account pays.
+
+## Prospect research (Phase 6a)
+
+`src/domain/prospect/match.ts` answers the half of "search" that can honestly be built. There is
+no register of open UK trust calls, but there is a public record of what funders have already
+done, and it answers a better question: who has a track record of funding this, at roughly this
+size, near here.
+
+Cause matching is token overlap rather than string equality, because funders publish "Children
+and young people" where an applicant writes "young people". It is loose in one direction only —
+a shared meaningful token is enough — because the user sees the matching grants and can dismiss
+a bad match in a glance, whereas a missed match silently costs them a funder.
+
+Building it surfaced the same shape of hole as `capital_or_revenue` did during deploy prep:
+`loadAwards` returned a hard-coded empty `tags` array because `funder_awards` had no column for
+them, so cause matching could never have fired against the database. Migration 0006 adds it.
 
 ## Next task
 
