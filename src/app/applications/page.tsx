@@ -1,3 +1,4 @@
+import { EmptyState } from '@/app/illustration/EmptyState';
 import { getDatabase } from '@/db';
 import { loadApplications } from '@/db/workspace';
 import { DEMO_ORG_ID } from '@/demo/seed';
@@ -33,16 +34,13 @@ export default async function ApplicationsPage() {
       </header>
 
       {applications.length === 0 ? (
-        <section className="card">
-          <h2 className="card-title">Nothing started yet</h2>
-          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
-            Open an opportunity and choose <strong>Start an application</strong>. You can then
-            paste the funder’s questions straight in.
-          </p>
-          <a className="btn btn-primary" href="/" style={{ marginTop: 'var(--s-4)' }}>
-            See your opportunities
-          </a>
-        </section>
+        <EmptyState
+          title="Nothing started yet"
+          action={<a className="btn btn-primary" href="/">See your opportunities</a>}
+        >
+          Open an opportunity and choose <strong>Start an application</strong>. You can then paste
+          the funder’s questions straight in.
+        </EmptyState>
       ) : null}
 
       {applications.map((application) => (

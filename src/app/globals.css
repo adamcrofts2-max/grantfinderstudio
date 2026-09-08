@@ -103,6 +103,27 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
 
+  /* Annotation marks.
+     The product's visual signature: what a bid writer does to your draft.
+     The HIGHLIGHTER is decorative and lives on page titles and marketing only.
+     It never enters a card that carries a status badge — a yellow wash beside
+     an amber "Behind" badge starts reading as a warning, and the four status
+     colours have to keep meaning exactly one thing. Inside working screens the
+     marks are drawn in INK instead (--mark), which is the accent and therefore
+     already spoken for as "the product worked this out for you". */
+  --hl:     #ffe14d;
+  --hl-ink: #161b23;   /* text on the swipe is always dark, in both modes */
+  --mark:   var(--accent);
+
+  /* Illustration.
+     Named separately from the ink so a drawing can never be tied to a literal
+     colour: every value indirects through a token that already flips for dark
+     mode, so the line art inverts on its own. */
+  --fig-line:   var(--ink);
+  --fig-fill:   var(--surface);
+  --fig-accent: var(--accent);
+  --fig-muted:  var(--line-strong);
+
   color-scheme: light;
 }
 
@@ -130,6 +151,9 @@
     --accent-hover:#a8c3f8;
     --accent-bg:   #15213a;
     --accent-line: #25375c;
+
+    /* A full-saturation swipe is too loud against a near-black page. */
+    --hl: #e3c53d;
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 12px rgb(0 0 0 / 0.4);
@@ -240,7 +264,10 @@ a:hover { color: var(--accent-hover); }
 .page-narrow { max-width: 44rem; }
 
 .page-head { margin-bottom: var(--s-5); }
-.page-title { font-size: var(--t-2xl); font-weight: 680; }
+.page-title {
+  font-size: var(--t-2xl); font-weight: 800; letter-spacing: -0.03em;
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+}
 .page-sub { color: var(--ink-soft); margin-top: var(--s-2); max-width: 46rem; }
 
 .eyebrow {
@@ -256,7 +283,14 @@ a:hover { color: var(--accent-hover); }
   padding: var(--s-5); margin-bottom: var(--s-4);
 }
 .card-head { margin-bottom: var(--s-4); }
-.card-title { font-size: var(--t-md); font-weight: 620; }
+/* Headings are display type, body copy is the system stack. One rule, so the
+   voice cannot drift screen by screen. Body stays on the system face because
+   it is set at 15px and read for long stretches, which is what that face is
+   for. */
+.card-title {
+  font-size: var(--t-md); font-weight: 700; letter-spacing: -0.015em;
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+}
 .card-sub { color: var(--ink-soft); font-size: var(--t-sm); margin-top: var(--s-1); }
 .card-foot {
   margin-top: var(--s-4); padding-top: var(--s-4);
@@ -721,6 +755,89 @@ summary:focus-visible {
 
 /* The work block grows from the day it starts towards the deadline. */
 .tl-work.grows { transform-origin: left center; animation: viz-grow var(--motion-slow) var(--ease) both; }
+
+/* ---------- Annotation marks ----------------------------------------------
+   The product's signature. A bid writer reads your draft with a highlighter
+   and a pen; the interface does the same to your own situation, marking the
+   one thing it worked out for you rather than leaving it as another sentence
+   in a paragraph of sentences.
+
+   Two registers, and the split is deliberate:
+     HIGHLIGHTER (yellow) — page titles and marketing. Decorative. Never
+       inside a card that carries a status badge.
+     INK (--mark) — inside working screens. It is the accent, which already
+       means "the product established this", so the mark inherits that meaning
+       rather than inventing a sixth colour. */
+
+.display {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+/* A highlighter swipe behind a run of text. The path is deliberately uneven —
+   a perfect rectangle reads as a background colour, not as a mark someone
+   made. */
+.hl-wrap { position: relative; display: inline-block; }
+.hl {
+  position: absolute; left: -0.28em; top: 8%;
+  width: calc(100% + 0.56em); height: 84%;
+  z-index: 0; pointer-events: none;
+}
+.hl-t { position: relative; z-index: 1; color: var(--hl-ink); }
+
+/* A pen circle around the value the reader came for. Stretched to fit the
+   text, which is what a hand-drawn ring around a phrase does anyway. */
+.circled { position: relative; display: inline-block; white-space: nowrap; }
+.circled svg {
+  position: absolute; left: -0.5em; top: -0.42em;
+  width: calc(100% + 1em); height: calc(100% + 0.84em);
+  z-index: 0; pointer-events: none;
+}
+.circled-t { position: relative; z-index: 1; font-weight: 700; }
+
+/* The margin note the circle points at. Small caps rather than a handwriting
+   face: the DRAWN mark carries the annotation feel, and a fake hand on top of
+   it would tip the whole thing into novelty. */
+.annot {
+  display: flex; align-items: center; gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--mark);
+}
+.annot-arrow { width: 34px; height: 15px; flex: 0 0 auto; }
+/* Anchored at the other end, with the arrow mirrored to match. */
+.annot-end { flex-direction: row-reverse; justify-content: flex-start; }
+.annot-end .annot-arrow { transform: scaleX(-1); }
+
+/* ---------- Illustration --------------------------------------------------
+   Line characters, at the front door and in empty states only. They never
+   appear beside a number: a figure next to the award-distribution chart makes
+   the chart look like a stock photograph of a chart.
+
+   Every colour indirects through a token that already flips for dark mode, so
+   the line art inverts on its own rather than staying black-on-black. */
+
+.figure { display: block; width: 100%; height: auto; }
+.figure-stage {
+  position: relative; display: grid; place-items: center;
+  width: 100%; max-width: 260px; aspect-ratio: 1;
+  margin-inline: auto;
+}
+.figure-disc {
+  position: absolute; inset: 0; border-radius: var(--r-full);
+  background: var(--accent-bg); border: 1px solid var(--accent-line);
+}
+.figure-art { position: relative; width: 62%; }
+
+/* An empty state built around a figure rather than an apologetic paragraph. */
+.empty {
+  display: grid; grid-template-columns: 220px 1fr; gap: var(--s-6);
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .empty { grid-template-columns: 1fr; gap: var(--s-4); }
+  .figure-stage { max-width: 200px; }
+}
 /* ---------- Reduced motion ------------------------------------------------
    Last in the file so it wins on order, as the mobile block above does. */
 @media (prefers-reduced-motion: reduce) {

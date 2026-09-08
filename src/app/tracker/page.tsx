@@ -19,6 +19,8 @@ import {
 } from '@/domain/tracker/schedule';
 import { horizonFor, timeline, type Horizon } from '@/domain/tracker/timeline';
 import { Timeline } from '@/app/viz/Timeline';
+import { Highlight, MarginNote } from '@/app/marks';
+import { EmptyState } from '@/app/illustration/EmptyState';
 import { gbp } from '@/app/components';
 
 import { markSubmittedAction, unmarkSubmittedAction } from './actions';
@@ -175,6 +177,28 @@ function RowTimeline({ row, horizon }: { row: Row; horizon: Horizon | null }) {
   );
 }
 
+/**
+ * The margin note pointing at the timeline's start tick.
+ *
+ * It annotates the CHART, not the sentence above it. The sentence already
+ * names the date; circling it there would print the same date twice, and a
+ * mark that repeats what is beside it is decoration.
+ */
+function StartNote({ row, horizon }: { row: Row; horizon: Horizon | null }) {
+  if (row.verdict === 'ineligible' || horizon === null) return null;
+  const drawn = timeline(row.schedule, horizon.days);
+  if (drawn === null || drawn.workUnknown || drawn.overdue) return null;
+  if (drawn.overruns) return <MarginNote>this should already be running</MarginNote>;
+  if (row.schedule.latestStart === null) return null;
+  // The note sits at whichever end of the track the start tick is nearest, so
+  // its arrow points at the mark rather than away from it.
+  return (
+    <MarginNote align={drawn.worksFrom >= 50 ? 'end' : 'start'}>
+      the last day you can still start
+    </MarginNote>
+  );
+}
+
 function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
   const ruledOut = row.verdict === 'ineligible';
   const badge = ruledOut ? RULED_OUT_BADGE : STATE_LABEL[row.schedule.state];
@@ -195,6 +219,7 @@ function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
               : row.schedule.reason}
           </p>
           <RowTimeline row={row} horizon={horizon} />
+          <StartNote row={row} horizon={horizon} />
           {row.verdict === 'unknown' ? (
             <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
               <span aria-hidden="true">⚠</span>
@@ -300,9 +325,13 @@ export default async function TrackerPage() {
       <header className="page-head">
         <p className="eyebrow">Tracker</p>
         <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>
-          {attention.length === 0
-            ? 'Nothing is slipping'
-            : `${attention.length} ${attention.length === 1 ? 'thing needs' : 'things need'} your attention`}
+          {/* The one title in the product that reports a FINDING rather than
+              naming a screen, which is what earns it the highlighter. */}
+          <Highlight>
+            {attention.length === 0
+              ? 'Nothing is slipping'
+              : `${attention.length} ${attention.length === 1 ? 'thing needs' : 'things need'} your attention`}
+          </Highlight>
         </h1>
         <p className="page-sub">
           A deadline on its own tells you nothing you did not already know. What matters is the
@@ -322,15 +351,13 @@ export default async function TrackerPage() {
       </header>
 
       {rows.length === 0 ? (
-        <section className="card">
-          <h2 className="card-title">Nothing to track yet</h2>
-          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
-            Once there are opportunities to look at, their deadlines appear here.
-          </p>
-          <a className="btn btn-primary" href="/" style={{ marginTop: 'var(--s-4)' }}>
-            See your opportunities
-          </a>
-        </section>
+        <EmptyState
+          title="Nothing to track yet"
+          action={<a className="btn btn-primary" href="/">See your opportunities</a>}
+        >
+          Once there are opportunities to look at, their deadlines appear here — each one worked
+          back to the last day you could still start it.
+        </EmptyState>
       ) : null}
 
       {GROUPS.map((group) => {

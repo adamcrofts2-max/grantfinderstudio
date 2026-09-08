@@ -296,6 +296,46 @@ Colour on the timeline *is* status, so the semantic colours are the right ones
 there. The validated four-slot categorical palette in `globals.css` is reserved
 for the effort composition chart and is not used yet.
 
+## Visual identity (Phase 12)
+
+Settled by drawing it: the tracker and a landing hero, each as three
+directions, and the middle one picked apart against the other two. The answer
+was **both** of the live options, split by surface.
+
+**Characters at the front door.** Line art — black line, white fill, one
+accent — in empty states and (when it exists) the landing page. Never beside a
+number: a figure next to the award-distribution chart makes the chart look like
+a stock photograph of a chart. `src/app/illustration/Figure.tsx` is PLACEHOLDER
+art drawn in-session; it holds the slot and proves the direction survives dark
+mode, and wants a real illustrator before anyone sees it.
+
+**Annotation inside the working screens.** What a bid writer does to your
+draft: a highlighter, a pen circle, a note in the margin. Ownable in a way the
+line characters are not — that style is the default of every SaaS since 2020 —
+and true to what the product is for.
+
+Two rules keep it from fighting the status system:
+
+- The HIGHLIGHTER is decorative and stays on page titles and marketing. It
+  never enters a card carrying a status badge: a yellow wash beside an amber
+  "Behind" badge starts reading as a warning.
+- Inside working screens the marks are drawn in INK (`--mark`, which is the
+  accent). The accent already means "the product established this", so a mark
+  inherits that meaning instead of inventing a sixth colour.
+
+A mark must be removable without losing information — that is the test for
+whether it has earned its place, and why all three are `aria-hidden`. Placed
+so far: the highlighter on the tracker title (the only title in the product
+that reports a finding rather than naming a screen), a circle around the hours
+estimate on an opportunity (the number the card exists to produce), and a
+margin note labelling the timeline's start tick — anchored at whichever end of
+the track the tick is nearest, so its arrow points at the mark rather than away
+from it.
+
+Type: headings are the display face, body copy stays on the system stack. The
+rule lives on `.page-title` and `.card-title` in `globals.css` rather than at
+twelve call sites, so the voice cannot drift screen by screen.
+
 ## The tracker (Phase 10)
 
 `src/domain/tracker/schedule.ts` is pure scheduling arithmetic: `remainingHours` sizes the

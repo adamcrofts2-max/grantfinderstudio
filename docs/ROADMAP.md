@@ -229,6 +229,20 @@ rendered as a sentence.
 - [ ] Real drop zones on the two upload screens
 - [ ] First-run moment on onboarding
 
+### Visual identity — chosen 2026-09-08
+Direction settled against three drawn options (tracker + landing hero, each as
+today / line characters / annotation): **characters at the front door,
+annotation inside the working screens.**
+
+- [x] Display typeface on headings (Bricolage Grotesque, self-hosted)
+- [x] Annotation marks — highlighter, ink circle, margin note — both schemes
+- [x] Line-character figure and empty states on tracker, applications, funders
+- [ ] Replace the placeholder figure with real illustration
+- [ ] More than one figure — one drawing across three empty states will wear thin
+- [ ] Landing page (does not exist yet; the hero was only ever a mockup)
+- [ ] A title that reports a finding on more screens than the tracker — today it
+      is the only one that earns a highlighter
+
 ### Found while building Phase 12
 - [x] Fix the deadlock: `withAdmin` inside `withTenant` hung `/tracker`,
       `/opportunities/[id]` and the calendar export forever whenever

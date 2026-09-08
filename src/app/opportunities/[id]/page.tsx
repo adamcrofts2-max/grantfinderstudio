@@ -14,6 +14,7 @@ import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
+import { Circled } from '@/app/marks';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,7 +181,10 @@ export default async function OpportunityPage({
         )}
         {assessment.effortKnown ? (
           <p style={{ fontSize: 'var(--t-lg)', fontWeight: 660, marginBottom: 'var(--s-3)' }}>
-            About {assessment.effort.hours} hours{' '}
+            {/* The number the whole card exists to produce, and the one that
+                decides whether this is worth twenty evenings. One circle per
+                card — a page with four circled things has circled nothing. */}
+            About <Circled>{assessment.effort.hours} hours</Circled>{' '}
             <span style={{ color: 'var(--ink-faint)', fontWeight: 500, fontSize: 'var(--t-base)' }}>
               · {assessment.effort.band} effort
             </span>

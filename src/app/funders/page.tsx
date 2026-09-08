@@ -1,3 +1,4 @@
+import { EmptyState } from '@/app/illustration/EmptyState';
 import { getDatabase } from '@/db';
 import { loadAllFunderAwards, loadOrganisation, loadProject } from '@/db/queries';
 import { DEMO_ORG_ID } from '@/demo/seed';
@@ -140,16 +141,13 @@ export default async function FundersPage() {
       </header>
 
       {organisation === null ? (
-        <section className="card">
-          <h2 className="card-title">We do not know who you are yet</h2>
-          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
-            Tell us your area and what you do, and we can match it against what funders have
-            actually given.
-          </p>
-          <a className="btn btn-primary" href="/onboarding" style={{ marginTop: 'var(--s-4)' }}>
-            Add your organisation
-          </a>
-        </section>
+        <EmptyState
+          title="We do not know who you are yet"
+          action={<a className="btn btn-primary" href="/onboarding">Add your organisation</a>}
+        >
+          Tell us your area and what you do, and we can match it against what funders have
+          actually given.
+        </EmptyState>
       ) : null}
 
       {organisation !== null && (project?.beneficiaryGroups.length ?? 0) === 0 ? (

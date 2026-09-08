@@ -1,6 +1,23 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { Bricolage_Grotesque } from 'next/font/google';
 import './globals.css';
+
+/**
+ * The display face.
+ *
+ * Self-hosted through next/font rather than a stylesheet link: the file is
+ * served from our own origin, so there is no third-party request on every page
+ * load and no flash of the fallback while it arrives. Body copy stays on the
+ * system stack — it is set at 15px and read for long stretches, and the system
+ * face is better at that than anything we would ship.
+ */
+const display = Bricolage_Grotesque({
+  subsets: ['latin'],
+  display: 'swap',
+  weight: ['600', '700', '800'],
+  variable: '--font-display',
+});
 
 export const metadata: Metadata = {
   title: 'Grant Finder Studio',
@@ -22,7 +39,7 @@ const NAV = [
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en-GB">
+    <html lang="en-GB" className={display.variable}>
       <body>
         <a className="skip-link" href="#main">Skip to main content</a>
         <div className="shell">
