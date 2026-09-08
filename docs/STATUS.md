@@ -437,6 +437,41 @@ per-origin limit is only worth anything where the platform OVERWRITES
 that does not, that axis can be evaded by forging the header and only the
 per-address limit stands up.
 
+## Guided setup
+
+A new account lands on an empty list, because `funders`, `funder_awards` and
+`opportunities` are seeded only by the demo module, which never runs in
+production. The charts are not missing — there is nothing in the world for them
+to draw yet. That is the honest state of the deployed product and it is why the
+home page now leads with a path rather than an empty heading.
+
+Five steps, each **derived from the database rather than a stored flag**. A
+flag drifts the moment somebody deletes their project, and then the product is
+confidently telling someone they have done something they have not. Deriving it
+costs one query and cannot lie.
+
+The steps are ordered but not locked: anyone who wants to add a fund before
+confirming their facts may, and a wizard that traps you is a wizard you resent.
+Each says WHY it matters rather than what it does — "confirm your facts" means
+nothing, "below five the Writer will not draft at all" is a reason. A step that
+cannot be done yet says what is missing, and the guide removes itself once
+everything is done.
+
+Two bugs this found, both only visible by running it:
+
+- The setup query named `legal_form`, which is the TYPE; the column is `form`.
+  It reached a browser as a 500. `src/db/setup.test.ts` now runs the query
+  against the real schema.
+- A step could read "done" and carry a blocker at the same time — "Add a fund ·
+  done" beside "this needs an Anthropic key" — which is the product
+  contradicting itself. Blockers are now cleared on completed steps.
+
+**The Anthropic key is the live blocker.** Adding a fund and drafting an answer
+both need it, and those are steps 4 and 5. Setting `ANTHROPIC_API_KEY` in the
+hosting environment provides it for everyone; leaving it unset means each
+organisation must bring their own through Settings, which for a small CIC is
+effectively a wall.
+
 ## Visual identity (Phase 12)
 
 Settled by drawing it: the tracker and a landing hero, each as three

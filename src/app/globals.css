@@ -861,6 +861,60 @@ summary:focus-visible {
   width: 100%; background: none; border: 0; cursor: pointer;
   font: inherit; text-align: left;
 }
+
+/* ---------- Getting started ----------------------------------------------
+   The path through the product for an account that has not finished setting
+   up. It is the first thing anyone sees, so it carries the annotation type and
+   the accent, and it removes itself the moment it is finished. */
+
+.setup { border-color: var(--accent-line); }
+.setup-count {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-lg); font-weight: 800; color: var(--accent);
+  letter-spacing: -0.02em; flex: 0 0 auto;
+}
+
+.setup-bar {
+  height: 6px; border-radius: 3px; background: var(--c-100);
+  margin: var(--s-4) 0 var(--s-5); overflow: hidden;
+}
+.setup-bar-fill {
+  height: 100%; background: var(--accent); border-radius: 3px;
+  transform-origin: left center;
+  animation: viz-grow var(--motion-slow) var(--ease) both;
+}
+
+.setup-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-5); }
+
+.setup-step { display: grid; grid-template-columns: 28px 1fr; gap: var(--s-4); }
+
+/* The number, or a tick once it is behind you. */
+.setup-mark {
+  width: 28px; height: 28px; border-radius: var(--r-full);
+  display: grid; place-items: center; flex: 0 0 auto;
+  font-size: var(--t-sm); font-weight: 700;
+  background: var(--surface-sunken); color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+.setup-step.is-next .setup-mark { background: var(--accent); color: #fff; border-color: var(--accent); }
+.setup-step.is-done .setup-mark {
+  background: var(--positive-bg); color: var(--positive); border-color: var(--positive-line);
+}
+
+.setup-body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.setup-title {
+  margin: 0; font-size: var(--t-base); font-weight: 700;
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+}
+.setup-step.is-done .setup-title { color: var(--ink-soft); font-weight: 600; }
+.setup-done-label { color: var(--positive); font-weight: 650; font-size: var(--t-sm); }
+.setup-why { margin: 0; color: var(--ink-soft); font-size: var(--t-sm); max-width: 44rem; }
+.setup-blocked { margin: 0; }
+
+@media (max-width: 640px) {
+  .setup-step { grid-template-columns: 24px 1fr; gap: var(--s-3); }
+  .setup-mark { width: 24px; height: 24px; }
+}
 /* ---------- Reduced motion ------------------------------------------------
    Last in the file so it wins on order, as the mobile block above does. */
 @media (prefers-reduced-motion: reduce) {

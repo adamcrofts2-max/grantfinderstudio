@@ -16,7 +16,13 @@ import { checkConfiguration, readEnvironment } from '@/env';
  * operator is actually looking.
  */
 export async function deploymentProblem(): Promise<string | null> {
-  const problems = checkConfiguration(readEnvironment());
+  // ONLY the configuration signing in actually depends on. A missing
+  // APP_ENCRYPTION_KEY stops API keys being stored — it has nothing to do with
+  // creating an account, and blocking sign-up on it locked people out of a
+  // deployment that was otherwise working. /api/health still reports it.
+  const problems = checkConfiguration(readEnvironment()).filter(
+    (problem) => problem.variable === 'DATABASE_URL',
+  );
   if (problems.length > 0) {
     console.error(
       '[grantfinderstudio] configuration is incomplete:',

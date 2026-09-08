@@ -245,7 +245,12 @@ rendered as a sentence.
 - [ ] Icon set replacing the single-character glyphs
 - [ ] Button hierarchy by consequence
 - [ ] Real drop zones on the two upload screens
+- [x] Guided setup on the home page, derived from real state rather than flags
 - [ ] First-run moment on onboarding
+- [ ] **Nothing to find.** A real deployment has no funders, no awards and no
+      opportunities — those are seeded only by the demo module. Every chart is
+      empty by construction until either 360Giving ingestion lands or funds are
+      added by hand, and adding by hand needs an Anthropic key
 
 ### Visual identity — chosen 2026-09-08
 Direction settled against three drawn options (tracker + landing hero, each as

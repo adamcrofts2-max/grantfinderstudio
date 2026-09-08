@@ -4,6 +4,11 @@ import { assessAll } from '@/db/queries';
 import { readEnvironment } from '@/env';
 
 import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
+import { readSetupCounts } from '@/db/setup';
+import { setupProgress } from '@/domain/setup/progress';
+import { isWriterAvailable } from '@/app/drafting';
+import { SetupGuide } from '@/app/SetupGuide';
+import { EmptyState } from '@/app/illustration/EmptyState';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +23,11 @@ export default async function HomePage() {
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
   const { organisation, project, assessed } = await assessAll(database, organisationId, asOf);
+
+  // Outside the tenant transaction: it takes the operator connection.
+  const writerAvailable = await isWriterAvailable();
+  const counts = await database.withTenant(organisationId, (tx) => readSetupCounts(tx));
+  const progress = setupProgress({ ...counts, writerAvailable });
 
   // The demo funds are seeded only into the in-memory dev database. Warning a
   // real deployment that its data is fictional, when there is no fictional
@@ -41,6 +51,8 @@ export default async function HomePage() {
           </span>
         </div>
       ) : null}
+
+      <SetupGuide progress={progress} />
 
       <header className="page-head">
         <h1 className="page-title">Your funding opportunities</h1>
@@ -73,6 +85,19 @@ export default async function HomePage() {
           </span>
         </div>
       </header>
+
+      {/* Only when the guide is gone — two empty states competing for the same
+          moment is worse than either. */}
+      {sorted.length === 0 && progress.complete ? (
+        <EmptyState
+          title="No funds to weigh up yet"
+          action={<a className="btn btn-primary" href="/opportunities/add">Add a fund</a>}
+        >
+          Bring us a funder’s own guidance page and we will read it into an eligibility check, a
+          deadline and an estimate of the work — so you can see whether it is worth your evenings
+          before you spend them.
+        </EmptyState>
+      ) : null}
 
       {sorted.map(({ opportunity, assessment }) => (
         <a className="opportunity" key={opportunity.id} href={`/opportunities/${opportunity.id}`}>
