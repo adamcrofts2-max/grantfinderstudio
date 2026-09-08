@@ -4,7 +4,7 @@
 
 ## What exists
 
-**954 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**965 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -507,6 +507,82 @@ header down to 100px, and the visible elements are only the progress count,
 the first measurement lied: `getBoundingClientRect().height > 0` is non-zero
 for children of a *closed* `<details>` in Chromium, which reported nine visible
 nav items when there were none. `checkVisibility()` is the honest test.
+
+### Then the same journey was walked in a browser, and most of it was wrong
+
+Signing up as a real newcomer on a 390×844 phone, following only what the
+product said to do, found nine defects. Six of them were invisible to a passing
+test suite; three would have been invisible in production too, and one was a
+fabricated impression of a data leak that cost real time to rule out. What the
+walk actually showed:
+
+- **The fold missed the only screen that mattered most.** `readSetupProgress`
+  returned `null` for an account with no organisation, and `null` means "show
+  everything" — so `/onboarding`, the literal first screen after sign-up, was
+  the one page still opening with nine menu items and a sign-out button. A
+  signed-in account with no organisation is not an unknown case: it has done
+  none of the five steps by definition.
+- **The guide's one button did not go where it said.** "Add your project"
+  landed at the top of `/onboarding` — heading "Let's find your organisation",
+  a Companies House search already finished with, three cards of prose, and the
+  project form collapsed ~1,900px down behind a small "Open" link. The page and
+  the instruction disagreed. Onboarding now reads what is already answered:
+  once the organisation exists the heading becomes "Now — what are you trying
+  to fund?" and the project form is open and first, with `#project` as the
+  anchor the guide points at.
+- **Step 3 was a dead end.** "Confirm the facts about your organisation →
+  Confirm the rest" sent you to a page reading **"Everything is checked"** with
+  nothing on it. Facts are extracted from documents and then confirmed; they
+  are never typed. With no document and no key there was no path to five, and
+  the counter could never move. The step now counts what is *pending*, says
+  where facts come from, and points the button at the real blocker — Settings
+  when there is no key, not Documents, which is the same wall one door along.
+- **Step 4 was ticked off by other people's funds.** `readSetupCounts` counted
+  every visible opportunity, and shared reference rows are visible to everyone.
+  Harmless while that table is empty; true of every new account the day a
+  shared catalogue lands. It now counts `added_by_organisation_id` = this
+  tenant.
+- **Two numbers that looked like one.** The shell said "2/5 set up" (a count)
+  beside a card reading "Step 2 of 5" (a position). They agree only by
+  coincidence and stop agreeing the moment somebody does step 4 before step 3.
+  The card now says "Your next step".
+- **"Read this fund" was enabled with no key**, under a notice saying it needed
+  one. It now disables, and says which button turns it on.
+- **A fact read `cic_limited_by_guarantee`.** Facts are prose that ends up
+  quoted in an application. `describeLegalForm` puts the words in.
+- **The lookup that cannot work led the page.** With no
+  `COMPANIES_HOUSE_BASE_URL` the search fails every time, and the form that
+  does work was a collapsed row below it. When lookup is unconfigured the
+  manual form is now the page, and the heading says so.
+- **"Open" stayed "Open" on an open panel.** A `<details>` is toggled by the
+  browser without telling React, so the label has to come from CSS.
+
+### The development database was not isolating tenants
+
+The walk appeared to show a brand-new account being shown the demonstration
+organisation's turnover, staff count and programme. That is the worst thing
+this product could do, so it was run to ground before anything else.
+
+The policies were fine — a tenant sees 0 of the demo organisation's 9 facts.
+The dev database was not. PGlite has **one connection**. It raised the role to
+`app_user` once at startup, and `withAdmin` did `RESET ROLE … SET ROLE` around
+every operator call — so any tenant query that *overlapped* an operator call
+ran as the owner, with RLS bypassed. Guiding the layout made this far more
+likely: the layout now asks an operator question while the page reads tenant
+data, in the same render.
+
+Production was never affected. `PostgresDatabase.transaction` takes its own
+pooled client and issues `SET LOCAL ROLE app_user` inside the transaction, so
+there is no ambient role to lose. The dev adapter now does exactly the same,
+and serialises every operation on the single connection so the two paths cannot
+interleave on it at all.
+
+`src/db/dev-database.test.ts` covers it, and the middle test is the one that
+matters: a tenant read and an operator call issued together with
+`Promise.all`. Against the old code it reports **"expected 9 to be +0"**.
+Nothing in the previous suite could have caught it — every isolation test
+exercised one thing at a time, which is precisely the condition the bug needed
+to hide.
 
 ## Visual identity (Phase 12)
 

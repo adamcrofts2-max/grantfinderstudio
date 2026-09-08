@@ -250,6 +250,28 @@ rendered as a sentence.
       folded behind "See all 5 steps"
 - [x] Fold the nine-item navigation away until setup is finished, so the
       first screen after signing up is one instruction, not a menu
+- [x] Fold it on the FIRST screen too — an account with no organisation yet was
+      the one case still shown the whole menu
+- [x] Onboarding knows what is already answered: the project form opens where
+      the guide's button lands, and the page leads with the step you are on
+- [x] Lead with the form that works when Companies House lookup is not
+      configured, instead of a search that can only fail
+- [x] Count only funds THIS organisation added — shared reference rows were
+      ticking off "add a fund" for people who had never added one
+- [x] The facts step says where facts come from when nothing is waiting to be
+      checked, instead of "confirm the rest" against an empty page
+- [x] Disable "Read this fund" when there is no key, rather than spending a
+      paste and a wait to say so
+- [x] Store the legal form in words — a fact read `cic_limited_by_guarantee`
+- [x] Fix the development database's tenant isolation: an operator call left
+      the single shared connection un-roled, so any tenant query overlapping it
+      ran as the owner and saw every other tenant's rows
+- [ ] Landing page: a stranger at the root is sent to Sign in and never told
+      what the product is
+- [ ] `/organisation` is 18 buttons in one column on a phone — the step the
+      guide sends people to is its heaviest screen
+- [ ] Let somebody add a fact by hand, so five confirmed facts is reachable
+      without a document reader
 - [ ] First-run moment on onboarding
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no
       opportunities — those are seeded only by the demo module. Every chart is

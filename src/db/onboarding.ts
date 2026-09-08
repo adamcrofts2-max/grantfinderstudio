@@ -9,7 +9,7 @@
  * screen work.
  */
 
-import type { Jurisdiction, LegalForm } from '../domain/types.js';
+import { describeLegalForm, type Jurisdiction, type LegalForm } from '../domain/types.js';
 import type { Queryable } from './client.js';
 
 /**
@@ -115,7 +115,8 @@ export async function saveSelfDeclaredProfile(
   const facts: Array<[string, string | null]> = [
     ['legal_name', profile.legalName],
     ['company_number', profile.companyNumber],
-    ['legal_form', profile.legalForm],
+    // The words, not our identifier: a fact is read by people.
+    ['legal_form', describeLegalForm(profile.legalForm)],
     ['area_of_operation', profile.region],
     ['incorporation_date', profile.incorporationDate],
   ];

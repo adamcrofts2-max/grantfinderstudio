@@ -1,3 +1,6 @@
+import { readEnvironment } from '@/env';
+import { readSetupProgress } from '@/app/setup';
+
 import { CompanySearch } from './CompanySearch';
 import { ManualProfile } from './ManualProfile';
 import { ProjectForm } from './ProjectForm';
@@ -20,41 +23,91 @@ export const dynamic = 'force-dynamic';
  * Lookup is nonetheless a convenience, never a gate: every failure path leaves
  * the manual route open, and anything entered by hand is recorded as
  * self-declared rather than verified.
+ *
+ * The page knows what has already been answered. Somebody who has saved their
+ * organisation and been sent here to add their project used to arrive at a
+ * heading reading "Let's find your organisation", a search box they had
+ * already finished with, and their actual task collapsed behind a small
+ * "Open" link near the bottom. The instruction and the page disagreed, which
+ * is the fastest way to lose a person who is not sure they belong here.
  */
-export default function OnboardingPage() {
+export default async function OnboardingPage() {
+  const progress = await readSetupProgress();
+  const organisationDone = progress?.steps.find((step) => step.id === 'organisation')?.done === true;
+  const projectDone = progress?.steps.find((step) => step.id === 'project')?.done === true;
+
+  // Once we know who they are, the project is the job. The lookup that got
+  // them here stays available, below, rather than in the way.
+  const onTheProject = organisationDone && !projectDone;
+
+  // No lookup configured means the search can only ever fail. Leading with a
+  // box that cannot work, and hiding the one that can behind a disclosure, is
+  // a maze — so when it is unavailable the manual form is the page.
+  const lookupAvailable = readEnvironment().companiesHouseBaseUrl !== null;
+
   return (
     <div className="page page-narrow">
       <header className="page-head">
         <p className="eyebrow">Set up</p>
         <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>
-          Let’s find your organisation
+          {onTheProject
+            ? 'Now — what are you trying to fund?'
+            : lookupAvailable
+              ? 'Let’s find your organisation'
+              : 'Tell us about your organisation'}
         </h1>
         <p className="page-sub">
-          We’ll look you up on the Companies House register so you don’t have to type your
-          details — and so we get your legal form exactly right. It decides which funds you
-          can apply to.
+          {onTheProject ? (
+            <>
+              We know who you are. The amount you need, how long for and who it is for are
+              what most eligibility rules actually turn on — and what puts your ask on the
+              charts beside what each funder really gives.
+            </>
+          ) : lookupAvailable ? (
+            <>
+              We’ll look you up on the Companies House register so you don’t have to type your
+              details — and so we get your legal form exactly right. It decides which funds you
+              can apply to.
+            </>
+          ) : (
+            <>
+              Your legal form and where you are based decide which funds you can apply to at
+              all, so these few answers are what make every eligibility check worth trusting.
+              It takes about a minute.
+            </>
+          )}
         </p>
       </header>
 
-      <section className="card">
-        <CompanySearch />
-      </section>
+      {onTheProject ? <ProjectForm open /> : null}
 
-      <section className="card">
-        <h2 className="card-title">Can’t find it, or not registered?</h2>
-        <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
-          You can enter your details yourself. We’ll mark them as{' '}
-          <span className="provenance provenance-declared">
-            <span aria-hidden="true">◐</span> self-declared
-          </span>{' '}
-          rather than{' '}
-          <span className="provenance provenance-verified">
-            <span aria-hidden="true">✓</span> verified
-          </span>
-          , and any eligibility check that depends on them will say so rather than sounding
-          more certain than it is.
-        </p>
-      </section>
+      {onTheProject || !lookupAvailable ? null : (
+        <section className="card">
+          <CompanySearch />
+        </section>
+      )}
+
+      {lookupAvailable && !onTheProject ? (
+        <section className="card">
+          <h2 className="card-title">Can’t find it, or not registered?</h2>
+          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+            You can enter your details yourself. We’ll mark them as{' '}
+            <span className="provenance provenance-declared">
+              <span aria-hidden="true">◐</span> self-declared
+            </span>{' '}
+            rather than{' '}
+            <span className="provenance provenance-verified">
+              <span aria-hidden="true">✓</span> verified
+            </span>
+            , and any eligibility check that depends on them will say so rather than sounding
+            more certain than it is.
+          </p>
+        </section>
+      ) : null}
+
+      <ManualProfile open={!organisationDone && !lookupAvailable} />
+
+      {onTheProject ? null : <ProjectForm open={projectDone === false && organisationDone} />}
 
       <section className="card">
         <h2 className="card-title">Why we ask</h2>
@@ -79,10 +132,6 @@ export default function OnboardingPage() {
           </li>
         </ul>
       </section>
-
-      <ManualProfile />
-
-      <ProjectForm />
     </div>
   );
 }

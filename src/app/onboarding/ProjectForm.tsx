@@ -13,15 +13,18 @@ import { BENEFICIARY_CHOICES, EMPTY_PROJECT, SPEND_CHOICES } from './state';
  * per application. Without them a fund can only ever be judged on legal form,
  * which is most of the way to no answer at all.
  */
-export function ProjectForm() {
+export function ProjectForm({ open = false }: { open?: boolean }) {
   const [state, save, saving] = useActionState(saveProjectAction, EMPTY_PROJECT);
   const error = (field: string): string | undefined => state.errors[field];
 
   return (
-    <details className="card">
+    // Open when this is the step the guide just sent them to. A newcomer told
+    // "add your project" and handed a collapsed row labelled "Open" has been
+    // let go of at exactly the moment they were being led.
+    <details className="card" id="project" open={open}>
       <summary className="paste-summary">
         <span>What you are trying to fund</span>
-        <span className="chev" aria-hidden="true">Open</span>
+        <span className="chev chev-toggle" aria-hidden="true" />
       </summary>
 
       <form className="paste-body" action={save}>

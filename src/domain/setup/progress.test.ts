@@ -11,6 +11,7 @@ const nothing: SetupFacts = {
   hasOrganisation: false,
   hasProject: false,
   confirmedFacts: 0,
+  pendingFacts: 0,
   opportunities: 0,
   applications: 0,
   writerAvailable: true,
@@ -101,5 +102,46 @@ describe('steps that cannot be done yet say so', () => {
     );
     expect(step?.done).toBe(false);
     expect(step?.blocked).toContain('Anthropic key');
+  });
+});
+
+describe('the facts step, when there is nothing waiting to be checked', () => {
+  // The dead end this was written for: the guide said "confirm the rest", the
+  // page it pointed at said "Everything is checked", and the counter could
+  // never move. A step you cannot finish must say why, not repeat itself.
+  const stuck = facts({ hasOrganisation: true, hasProject: true, confirmedFacts: 2, pendingFacts: 0 });
+
+  it('does not tell you to confirm what does not exist', () => {
+    const step = setupSteps(stuck).find((s) => s.id === 'facts');
+    expect(step?.action).not.toBe('Confirm the rest');
+    expect(step?.href).toBe('/documents');
+  });
+
+  it('says where facts come from, and how many are still needed', () => {
+    const step = setupSteps(stuck).find((s) => s.id === 'facts');
+    expect(step?.blocked).toContain('documents');
+    expect(step?.blocked).toContain(`2 of ${CONFIRMED_FACTS_NEEDED}`);
+  });
+
+  it('names the key as the blocker when there is no writer, and points at it', () => {
+    const step = setupSteps({ ...stuck, writerAvailable: false }).find((s) => s.id === 'facts');
+    expect(step?.blocked).toContain('Anthropic key');
+    // Not Documents: that page cannot do anything either without the key.
+    expect(step?.href).toBe('/settings');
+  });
+
+  it('sends you to the checking page when something IS waiting', () => {
+    const step = setupSteps({ ...stuck, pendingFacts: 4 }).find((s) => s.id === 'facts');
+    expect(step?.href).toBe('/organisation');
+    expect(step?.action).toBe('Confirm the rest');
+    expect(step?.blocked).toBeNull();
+  });
+
+  it('is not blocked once it is done, however few are waiting', () => {
+    const step = setupSteps({ ...stuck, confirmedFacts: CONFIRMED_FACTS_NEEDED }).find(
+      (s) => s.id === 'facts',
+    );
+    expect(step?.done).toBe(true);
+    expect(step?.blocked).toBeNull();
   });
 });

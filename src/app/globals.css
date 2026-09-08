@@ -491,6 +491,11 @@ a:hover { color: var(--accent-hover); }
 }
 .paste-summary::-webkit-details-marker { display: none; }
 .paste-summary .chev { color: var(--accent); font-size: var(--t-sm); font-weight: 600; }
+/* The label has to follow the state, and it has to do it in CSS: a details
+   element is toggled by the browser without telling React, so a label rendered
+   from a prop reads "Open" on an open panel for the rest of the session. */
+.paste-summary .chev-toggle::after { content: 'Open'; }
+details[open] > .paste-summary .chev-toggle::after { content: 'Close'; }
 .paste-body { padding: 0 var(--s-5) var(--s-5); }
 
 textarea.input { resize: vertical; min-height: 8rem; font-family: var(--font-mono); font-size: var(--t-sm); }

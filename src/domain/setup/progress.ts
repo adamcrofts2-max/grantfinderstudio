@@ -18,6 +18,8 @@ export interface SetupFacts {
   hasProject: boolean;
   /** Confirmed facts. The Writer drafts from these and nothing else. */
   confirmedFacts: number;
+  /** Facts waiting to be checked. Zero means there is nothing to confirm. */
+  pendingFacts: number;
   opportunities: number;
   applications: number;
   /** Whether the Writer can run at all. Two steps need it. */
@@ -77,18 +79,41 @@ function build(facts: SetupFacts): SetupStep[] {
       title: 'Say what you are trying to fund',
       why: 'The amount you need, how long for and who it is for are checked against every fund’s rules — and marked on the charts, so you can see whether your ask is the size that funder actually gives.',
       done: facts.hasProject,
-      href: '/onboarding',
+      href: '/onboarding#project',
       action: facts.hasProject ? 'Review' : 'Add your project',
       blocked: null,
     },
+    // Facts are not typed in — they are extracted from what you already have
+    // and then checked. So when there is nothing waiting, "confirm the rest"
+    // is an instruction with nothing behind it: the page it sends you to says
+    // "Everything is checked" and the counter never moves. Say where facts
+    // come from instead, and point at the door that produces them.
     {
       id: 'facts',
       title: 'Confirm the facts about your organisation',
       why: `The Writer drafts only from facts you have confirmed. Below ${CONFIRMED_FACTS_NEEDED} it will not draft at all, and every answer stays yours to write from a blank box.`,
       done: facts.confirmedFacts >= CONFIRMED_FACTS_NEEDED,
-      href: '/organisation',
-      action: facts.confirmedFacts === 0 ? 'Add your facts' : 'Confirm the rest',
-      blocked: null,
+      // The button goes wherever the work actually is. Sending somebody to
+      // Documents when the reader cannot run is the same dead end one door
+      // further along.
+      href:
+        facts.pendingFacts > 0 ? '/organisation'
+        : facts.writerAvailable ? '/documents'
+        : '/settings',
+      action:
+        facts.pendingFacts > 0
+          ? facts.confirmedFacts === 0
+            ? 'Check what we know'
+            : 'Confirm the rest'
+          : facts.writerAvailable
+            ? 'Add a document'
+            : 'Add a key in Settings',
+      blocked:
+        facts.pendingFacts > 0
+          ? null
+          : facts.writerAvailable
+            ? `You have ${facts.confirmedFacts} of ${CONFIRMED_FACTS_NEEDED}, and nothing is waiting to be checked. Facts come from documents you already have — a constitution, last year’s accounts, a policy.`
+            : `You have ${facts.confirmedFacts} of ${CONFIRMED_FACTS_NEEDED}, and nothing is waiting to be checked. Facts are read out of documents you already have, and that needs an Anthropic key.`,
     },
     {
       id: 'opportunity',

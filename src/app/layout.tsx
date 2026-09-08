@@ -81,9 +81,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   <>
                     <p className="nav-progress">
                       <span className="nav-progress-count">
-                        {progress.done}/{progress.total}
+                        {progress.done} of {progress.total}
                       </span>
-                      <span>set up</span>
+                      <span>done</span>
                     </p>
                     <details className="nav-more">
                       <summary>All sections</summary>

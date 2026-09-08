@@ -20,9 +20,12 @@ export function SetupGuide({ progress }: { progress: SetupProgress }) {
 
   return (
     <section className="card setup" aria-labelledby="setup-heading">
-      <p className="eyebrow setup-position">
-        Step {position + 1} of {progress.total}
-      </p>
+      {/* Deliberately not a number. The shell already carries "2 of 5 done",
+          and a card reading "Step 2 of 5" beside it invites the reader to
+          treat a POSITION and a COUNT as the same figure — which they are
+          only by coincidence, and stop being the moment somebody does step 4
+          before step 3. */}
+      <p className="eyebrow setup-position">Your next step</p>
       <h2 className="setup-hero" id="setup-heading">
         {next.title}
       </h2>

@@ -13,7 +13,7 @@ import { IDLE } from './state';
  * fund is the design rather than a gap in it. Saying so plainly is better than
  * an empty search box that implies a database we do not have.
  */
-export function AddOpportunity() {
+export function AddOpportunity({ ready = true }: { ready?: boolean }) {
   const [state, add, adding] = useActionState(addOpportunityAction, IDLE);
   const [guidance, setGuidance] = useState('');
 
@@ -69,14 +69,22 @@ export function AddOpportunity() {
         </p>
       ) : null}
 
+      {/* An enabled primary button that cannot possibly work is worse than a
+          disabled one: it spends somebody's paste, their wait and their trust
+          before telling them what the page already knew. */}
       <button
         className="btn btn-primary"
         type="submit"
-        disabled={adding || guidance.trim().length < 200}
+        disabled={!ready || adding || guidance.trim().length < 200}
         style={{ marginTop: 'var(--s-4)' }}
       >
         {adding ? 'Reading the guidance…' : 'Read this fund'}
       </button>
+      {ready ? null : (
+        <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+          Add an Anthropic key in <a href="/settings">Settings</a> and this button turns on.
+        </p>
+      )}
 
       {adding ? (
         <p className="hint" style={{ marginTop: 'var(--s-3)' }}>

@@ -32,7 +32,7 @@ export default async function AddOpportunityPage() {
         </p>
       )}
 
-      <AddOpportunity />
+      <AddOpportunity ready={writerAvailable} />
 
       <section className="card" style={{ marginTop: 'var(--s-5)' }}>
         <h2 className="card-title">What happens to it</h2>

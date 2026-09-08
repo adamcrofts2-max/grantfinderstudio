@@ -16,15 +16,15 @@ import { EMPTY_MANUAL, JURISDICTION_CHOICES, LEGAL_FORM_CHOICES } from './state'
  * form is the criterion most funders decide on, so a value the applicant
  * asserted must never be presentable as one verified against the register.
  */
-export function ManualProfile() {
+export function ManualProfile({ open = false }: { open?: boolean }) {
   const [state, save, saving] = useActionState(saveManualProfileAction, EMPTY_MANUAL);
   const error = (field: string): string | undefined => state.errors[field];
 
   return (
-    <details className="card">
+    <details className="card" id="organisation" open={open}>
       <summary className="paste-summary">
         <span>Enter your details yourself</span>
-        <span className="chev" aria-hidden="true">Open</span>
+        <span className="chev chev-toggle" aria-hidden="true" />
       </summary>
 
       <form className="paste-body" action={save}>
@@ -103,7 +103,14 @@ export function ManualProfile() {
             Date you were set up <span className="hint">(optional)</span>
           </label>
           <input id="incorporationDate" className="input" type="date" name="incorporationDate" />
-          <p className="hint">Some funders require you to have existed for a minimum time.</p>
+          {/* A native date input renders in the BROWSER's locale, not the
+              page's, so a UK user can be shown mm/dd/yyyy. Saying so costs a
+              line and saves a wrong date on a "must have traded two years"
+              check. */}
+          <p className="hint">
+            Some funders require you to have existed for a minimum time. Use the calendar
+            button — the typed order follows your browser, not ours.
+          </p>
           {error('incorporationDate') ? (
             <p className="hint" style={{ color: 'var(--negative)' }}>{error('incorporationDate')}</p>
           ) : null}

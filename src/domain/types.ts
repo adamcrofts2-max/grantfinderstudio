@@ -46,6 +46,31 @@ export function isCic(form: LegalForm): boolean {
 }
 
 /**
+ * The legal form as a person would write it on a form.
+ *
+ * The identifiers above are ours. A fact is prose that ends up quoted in an
+ * application and read back by the person it describes, so a fact must never
+ * carry `cic_limited_by_guarantee` — nobody has ever described themselves that
+ * way, and seeing it makes the product look like a database with a website in
+ * front of it.
+ */
+const LEGAL_FORM_WORDS: Record<LegalForm, string> = {
+  cic_limited_by_guarantee: 'community interest company, limited by guarantee',
+  cic_limited_by_shares: 'community interest company, limited by shares',
+  charity: 'registered charity',
+  charitable_incorporated_organisation: 'charitable incorporated organisation',
+  community_benefit_society: 'community benefit society',
+  company_limited_by_guarantee: 'company limited by guarantee',
+  company_limited_by_shares: 'company limited by shares',
+  unincorporated_association: 'unincorporated association',
+  other: 'another legal form',
+};
+
+export function describeLegalForm(form: LegalForm): string {
+  return LEGAL_FORM_WORDS[form];
+}
+
+/**
  * How a funder treats the CIC legal form.
  *
  * This is the product's wedge. Funders exclude or admit CICs in distinct
