@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-09-08
 
 ## What exists
 
-**530 tests, lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**852 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -37,6 +37,13 @@ opportunities, licences) readable by all tenants and writable only by the ingest
 
 ## Design decisions worth remembering
 
+- **Never open an operator connection inside a tenant transaction.** `withAdmin`
+  needs a second connection while `withTenant` still holds the first: the
+  development database has exactly one, so it waits on itself forever, and a
+  production pool under load exhausts itself the same way. `src/db/client.ts`
+  tracks the open transaction in an `AsyncLocalStorage` and `withAdmin` throws
+  rather than hanging, because a request that silently never returns gives you
+  no error, no log line and no stack.
 - **Eligibility is a pure function.** AI proposes criteria; a human verifies; the engine
   decides. A wrong verdict is the worst failure mode, so it is the most-tested code here.
 - **`evaluateEligibility` returns `unknown` for an empty criteria set.** Knowing nothing about
@@ -251,6 +258,43 @@ the dates in your own calendar → mark it submitted, which stops its clock.
 
 What is missing from that line: document upload (the Extractor exists but
 nothing feeds it), budgets, outcomes, and DOCX export.
+
+## The visual pass (Phase 12)
+
+Brief: `docs/DESIGN_BRIEF.md`. Shipped so far — motion, and the first two charts.
+
+**Motion.** Three durations (`--motion-fast/base/slow`) on one decelerating
+curve, applied to buttons, inputs, cards, badges and nav items. A
+`prefers-reduced-motion` block sits last in `globals.css` so it wins on order.
+
+**Funder award distribution** (`src/app/viz/DistributionBar.tsx`, on `/funders`).
+Min→max rail, interquartile box, median tick, and the applicant's own ask
+marked. Drawn as *emphasis* — neutrals plus one accent — not with the
+categorical palette: the reader comes with one question and four competing
+colours would bury the mark that answers it. Built in HTML rather than SVG
+because a full-width SVG needs `preserveAspectRatio="none"`, which stretches x
+independently of y and turns the circular marker into an ellipse at every width
+but one.
+
+**Tracker timeline** (`src/domain/tracker/timeline.ts` +
+`src/app/viz/Timeline.tsx`, on `/tracker`). Today at the left post, the deadline
+along the track, and the writing still to do as a block ending at it — the
+block's *left edge* is the latest start date, which the tracker previously only
+ever said in a sentence. Two decisions worth keeping:
+
+- **One axis per group, not per row.** Scaling each track to its own deadline
+  makes a fund due on Friday and one due in three months exactly the same
+  width, which defeats the point of drawing them. A deadline more than
+  `maxHorizonDays` out does not get to set the scale; it is drawn as a taper at
+  the end of the axis instead.
+- **An overrun is drawn past the deadline, not clamped to it.** Clamping the
+  block to end at the date renders a perfect fit, which is the exact opposite of
+  what has happened. When the work no longer fits, the block runs from today to
+  where it would actually finish, hatched beyond the deadline mark.
+
+Colour on the timeline *is* status, so the semantic colours are the right ones
+there. The validated four-slot categorical palette in `globals.css` is reserved
+for the effort composition chart and is not used yet.
 
 ## The tracker (Phase 10)
 

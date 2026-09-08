@@ -47,10 +47,22 @@ export interface Drafting extends DraftingCapability {
   reason: ReturnType<typeof unassistedReason>;
 }
 
-/** The full picture, for a page that must both use it and explain it. */
-export async function readDrafting(tx: Queryable): Promise<Drafting> {
+/**
+ * The full picture, for a page that must both use it and explain it.
+ *
+ * `writerAvailable` is passed in rather than read here, and that is not an
+ * inconvenience to route around. Whether a key exists is operator-scoped and
+ * needs `withAdmin`; the fact count is tenant-scoped and needs an open tenant
+ * transaction. Doing both inside one transaction deadlocks — see the guard in
+ * `withAdmin`. So the caller resolves availability first, outside, and hands
+ * it over.
+ */
+export async function readDrafting(
+  tx: Queryable,
+  writerAvailable: boolean,
+): Promise<Drafting> {
   const capability: DraftingCapability = {
-    writerAvailable: await isWriterAvailable(),
+    writerAvailable,
     usableFacts: await countUsableFacts(tx),
   };
   return {

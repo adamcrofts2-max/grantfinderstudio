@@ -9,7 +9,7 @@ import {
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import type { DraftingMode } from '@/domain/effort/model';
-import { readDrafting } from '@/app/drafting';
+import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import {
   needsAttention,
   remainingHours,
@@ -17,6 +17,8 @@ import {
   SCHEDULE_CONSTANTS,
   type Schedule,
 } from '@/domain/tracker/schedule';
+import { horizonFor, timeline, type Horizon } from '@/domain/tracker/timeline';
+import { Timeline } from '@/app/viz/Timeline';
 import { gbp } from '@/app/components';
 
 import { markSubmittedAction, unmarkSubmittedAction } from './actions';
@@ -27,6 +29,7 @@ import {
   relativeDays,
   RULED_OUT_BADGE,
   STATE_LABEL,
+  STATE_TONE,
   today,
   type Group,
 } from './state';
@@ -143,7 +146,36 @@ function DeadlineLine({ row }: { row: Row }) {
   );
 }
 
-function TrackerRow({ row }: { row: Row }) {
+/**
+ * The track under a row, or nothing.
+ *
+ * Ruled-out funds get no timeline: there is nothing to schedule, and drawing
+ * urgency for a fund you cannot apply to would have the card argue with its
+ * own heading. Rolling funds and submitted work have no position in time and
+ * the domain returns null for them.
+ */
+function RowTimeline({ row, horizon }: { row: Row; horizon: Horizon | null }) {
+  if (row.verdict === 'ineligible' || horizon === null) return null;
+  const drawn = timeline(row.schedule, horizon.days);
+  if (drawn === null) return null;
+  const remaining = row.schedule.daysRemaining;
+  return (
+    <Timeline
+      timeline={drawn}
+      tone={STATE_TONE[row.schedule.state]}
+      description={row.schedule.reason}
+      endLabel={
+        drawn.beyond
+          ? `over ${horizon.days} days away`
+          : remaining === null
+            ? ''
+            : relativeDays(remaining)
+      }
+    />
+  );
+}
+
+function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
   const ruledOut = row.verdict === 'ineligible';
   const badge = ruledOut ? RULED_OUT_BADGE : STATE_LABEL[row.schedule.state];
   const app = row.application;
@@ -162,6 +194,7 @@ function TrackerRow({ row }: { row: Row }) {
               ? 'The eligibility check rules you out of this one, so there is nothing here to schedule. Open it to see which rule fails.'
               : row.schedule.reason}
           </p>
+          <RowTimeline row={row} horizon={horizon} />
           {row.verdict === 'unknown' ? (
             <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
               <span aria-hidden="true">⚠</span>
@@ -208,6 +241,10 @@ function TrackerRow({ row }: { row: Row }) {
 export default async function TrackerPage() {
   const now = today();
   const database = await getDatabase();
+  // Resolved before the tenant transaction opens: it takes the operator
+  // connection, and asking for that while a tenant transaction is held is a
+  // deadlock.
+  const writerAvailable = await isWriterAvailable();
   const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
     const tracker = await loadTracker(tx);
     const ids = [
@@ -219,7 +256,7 @@ export default async function TrackerPage() {
       criteria: await loadCriteriaFor(tx, ids),
       organisation: await loadOrganisation(tx),
       project: await loadProject(tx),
-      drafting: await readDrafting(tx),
+      drafting: await readDrafting(tx, writerAvailable),
     };
   });
 
@@ -299,6 +336,9 @@ export default async function TrackerPage() {
       {GROUPS.map((group) => {
         const items = sorted.filter((row) => row.group === group.id);
         if (items.length === 0) return null;
+        // One axis for the whole group, so track lengths are comparable down
+        // the page rather than each row being scaled to its own deadline.
+        const horizon = horizonFor(items.map((row) => row.schedule));
         return (
           <section key={group.id} style={{ marginTop: 'var(--s-6)' }}>
             <h2 className="card-title">
@@ -312,7 +352,7 @@ export default async function TrackerPage() {
             </p>
             <div className="stack">
               {items.map((row) => (
-                <TrackerRow key={row.key} row={row} />
+                <TrackerRow key={row.key} row={row} horizon={horizon} />
               ))}
             </div>
           </section>

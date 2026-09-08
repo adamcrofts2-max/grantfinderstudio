@@ -14,7 +14,12 @@
  */
 
 import { readEnvironment } from '../env.js';
-import { TenantDatabase, type Queryable, type TransactionCapable } from './client.js';
+import {
+  inTenantTransaction,
+  TenantDatabase,
+  type Queryable,
+  type TransactionCapable,
+} from './client.js';
 import { migrate } from './migrate.js';
 import { createPool, PostgresDatabase } from './postgres.js';
 
@@ -85,7 +90,21 @@ export async function getDatabase(): Promise<TenantDatabase> {
  *
  * Only for the platform's own service credentials. Keep the callers countable
  * on one hand.
+ *
+ * Never from inside a tenant transaction. That needs a second connection while
+ * the first is still held: the development database has only one and waits on
+ * itself forever, and a production pool under load exhausts itself the same
+ * way. The check below turns a request that silently never returns into an
+ * error with a stack trace pointing at the call.
  */
 export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  if (inTenantTransaction()) {
+    throw new Error(
+      'withAdmin was called inside withTenant. That deadlocks: it needs a ' +
+        'second connection while the first is still open. Resolve whatever ' +
+        'the operator connection is for before opening the tenant ' +
+        'transaction, and pass the result in.',
+    );
+  }
   return (await (cached() ?? cache(build()))).admin(fn);
 }

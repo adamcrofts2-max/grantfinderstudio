@@ -13,6 +13,7 @@ import {
   type UnassistedReason,
 } from '@/domain/effort/model';
 import type { TrackerState } from '@/domain/tracker/schedule';
+import type { TimelineTone } from '@/app/viz/Timeline';
 
 export const STATE_LABEL = {
   overdue: { label: 'Deadline passed', className: 'badge badge-negative', mark: '✕' },
@@ -23,6 +24,23 @@ export const STATE_LABEL = {
   no_clock: { label: 'No deadline', className: 'badge badge-neutral', mark: '·' },
   submitted: { label: 'Submitted', className: 'badge badge-accent', mark: '✓' },
 } as const satisfies Record<TrackerState, { label: string; className: string; mark: string }>;
+
+/**
+ * Which status colour a timeline track wears.
+ *
+ * Deliberately the same four colours as the badge beside it: a row that says
+ * "Behind" in amber and draws its track in green would be the product
+ * disagreeing with itself, and the reader would trust neither.
+ */
+export const STATE_TONE = {
+  overdue: 'negative',
+  start_now: 'negative',
+  behind: 'caution',
+  effort_unknown: 'caution',
+  on_track: 'positive',
+  no_clock: 'neutral',
+  submitted: 'neutral',
+} as const satisfies Record<TrackerState, TimelineTone>;
 
 export type Group = 'attention' | 'ahead' | 'open' | 'watching' | 'ruled_out' | 'done';
 

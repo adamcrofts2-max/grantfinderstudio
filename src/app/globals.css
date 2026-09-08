@@ -630,6 +630,97 @@ summary:focus-visible {
 @keyframes viz-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .viz-box.grows { transform-origin: left center; animation: viz-grow 420ms var(--ease) both; }
 
+
+/* ---------- Tracker timeline ---------------------------------------------
+   One track per tracked fund: today at the left post, the deadline as a
+   vertical bar, and the work that must happen before it as a block ending
+   there. The block's left edge is the latest start date — the thing the
+   tracker exists to tell you.
+
+   Colour here is STATUS, which is what the semantic colours are for. Every
+   track in a group shares one axis, so a fund due on Friday is visibly
+   shorter than one due in three months. */
+
+.tl { margin-top: var(--s-3); }
+
+.tl-track { position: relative; height: 20px; }
+
+.tl-rail {
+  position: absolute; inset-inline: 0; top: 7px; height: 6px;
+  background: var(--viz-rail); border-radius: 3px;
+}
+
+/* The stretch of writing still to do. */
+.tl-work {
+  position: absolute; top: 7px; height: 6px;
+  border-radius: 3px; background: var(--tl-fill);
+  min-width: 2px;
+}
+
+/* Work that runs past the deadline. Striped so it reads as trouble without a
+   second colour, and drawn beyond the date rather than stopped at it. */
+.tl-overrun {
+  position: absolute; top: 7px; height: 6px;
+  border-radius: 0 3px 3px 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--tl-mark) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+/* Today: a fixed post at the start of every track, so the eye has an anchor
+   to measure the gap from. */
+.tl-today {
+  position: absolute; left: 0; top: 3px; width: 2px; height: 14px;
+  background: var(--line-strong); border-radius: 1px;
+}
+
+/* The last day you can still start. Drawn as an open marker rather than a
+   solid one: it is a boundary, not a quantity. */
+.tl-start {
+  position: absolute; top: 4px; width: 2px; height: 12px;
+  background: var(--tl-mark); border-radius: 1px; transform: translateX(-1px);
+}
+
+.tl-deadline {
+  position: absolute; top: 1px; width: 3px; height: 18px;
+  background: var(--tl-mark); border-radius: 2px; transform: translateX(-2px);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* A deadline past the end of the shared axis. The taper says "further than
+   this track reaches" without pretending to a position it does not have. */
+.tl-deadline.tl-beyond {
+  width: 0; height: 0; top: 3px; background: none; box-shadow: none;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 8px solid var(--tl-mark);
+  transform: translateX(-8px);
+}
+
+/* Nothing left to schedule: the whole axis is behind us. */
+.tl-elapsed {
+  position: absolute; inset-inline: 0; top: 7px; height: 6px;
+  border-radius: 3px; background: var(--tl-fill); opacity: 0.55;
+}
+
+.tl-scale {
+  display: flex; justify-content: space-between; gap: var(--s-2);
+  margin-top: var(--s-1); font-size: var(--t-xs); color: var(--ink-faint);
+}
+.tl-scale .tl-end { color: var(--ink-soft); font-weight: 600; }
+
+/* Tones. The fill is the light wash and the marks are the full-strength
+   colour, so a row reads at a glance without the fill having to carry text
+   contrast it cannot meet. */
+.tl-negative { --tl-fill: var(--negative-line); --tl-mark: var(--negative); }
+.tl-caution  { --tl-fill: var(--caution-line);  --tl-mark: var(--caution); }
+.tl-positive { --tl-fill: var(--positive-line); --tl-mark: var(--positive); }
+.tl-neutral  { --tl-fill: var(--line-strong);   --tl-mark: var(--ink-soft); }
+
+/* The work block grows from the day it starts towards the deadline. */
+.tl-work.grows { transform-origin: left center; animation: viz-grow var(--motion-slow) var(--ease) both; }
 /* ---------- Reduced motion ------------------------------------------------
    Last in the file so it wins on order, as the mobile block above does. */
 @media (prefers-reduced-motion: reduce) {

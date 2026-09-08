@@ -9,7 +9,12 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { InvalidTenantError, TenantDatabase, type TransactionCapable } from './client.js';
+import {
+  inTenantTransaction,
+  InvalidTenantError,
+  TenantDatabase,
+  type TransactionCapable,
+} from './client.js';
 import { createTestDatabase, ORG_A, ORG_B, type TestDatabase } from './testing/harness.js';
 
 let harness: TestDatabase;
@@ -120,5 +125,51 @@ describe('validation is enforced before any query runs', () => {
       InvalidTenantError,
     );
     expect(await rowsWithoutTenant(harness.db)).toEqual([]);
+  });
+});
+
+/**
+ * The deadlock guard.
+ *
+ * `withAdmin` needs a second connection while the tenant transaction still
+ * holds the first. The development database has exactly one, so it waits on
+ * itself and the request never returns — no error, no log, no stack. This
+ * shipped for weeks and was invisible because the only caller short-circuited
+ * whenever ANTHROPIC_API_KEY was set in the environment, which it was on every
+ * machine anyone tested on.
+ */
+/** Stands in for the several awaits between a page render and `withAdmin`. */
+async function deeper(): Promise<boolean> {
+  await Promise.resolve();
+  return inTenantTransaction();
+}
+
+describe('operator access inside a tenant transaction', () => {
+  it('is flagged while the transaction is open, and not after', async () => {
+    expect(inTenantTransaction()).toBe(false);
+
+    const inside = await tenantDb.withTenant(ORG_A, async (tx) => {
+      await tx.query('SELECT 1');
+      return inTenantTransaction();
+    });
+
+    expect(inside).toBe(true);
+    expect(inTenantTransaction()).toBe(false);
+  });
+
+  it('is still flagged after an await deeper in the call stack', async () => {
+    // The flag has to survive async boundaries, or the guard only catches the
+    // mistakes that were never going to happen.
+    const inside = await tenantDb.withTenant(ORG_A, () => deeper());
+    expect(inside).toBe(true);
+  });
+
+  it('is cleared when the transaction fails', async () => {
+    await expect(
+      tenantDb.withTenant(ORG_A, async () => {
+        throw new Error('rolled back');
+      }),
+    ).rejects.toThrow('rolled back');
+    expect(inTenantTransaction()).toBe(false);
   });
 });

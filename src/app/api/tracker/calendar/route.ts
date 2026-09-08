@@ -3,7 +3,7 @@ import { loadOrganisation, loadProject } from '@/db/queries';
 import { loadCriteriaFor, loadTracker } from '@/db/tracker';
 import { DEMO_ORG_ID } from '@/demo/seed';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
-import { readDrafting } from '@/app/drafting';
+import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { toCalendarEvents, toIcs, type CalendarSource } from '@/domain/tracker/calendar';
 import { remainingHours, schedule } from '@/domain/tracker/schedule';
 
@@ -28,6 +28,8 @@ export async function GET(): Promise<Response> {
   const day = now.toISOString().slice(0, 10);
 
   const database = await getDatabase();
+  // Outside the transaction: see the guard in withAdmin.
+  const writerAvailable = await isWriterAvailable();
   const loaded = await database.withTenant(DEMO_ORG_ID, async (tx) => {
     const tracker = await loadTracker(tx);
     const ids = [
@@ -39,7 +41,7 @@ export async function GET(): Promise<Response> {
       criteria: await loadCriteriaFor(tx, ids),
       organisation: await loadOrganisation(tx),
       project: await loadProject(tx),
-      drafting: await readDrafting(tx),
+      drafting: await readDrafting(tx, writerAvailable),
     };
   });
   const { tracker, organisation, project } = loaded;

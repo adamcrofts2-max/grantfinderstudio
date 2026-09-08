@@ -10,7 +10,7 @@ import {
   loadProject,
 } from '@/db/queries';
 import { findApplicationForOpportunity } from '@/db/workspace';
-import { readDrafting } from '@/app/drafting';
+import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
 import { DEMO_APPLICATION_FEATURES, DEMO_ORG_ID } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
@@ -36,6 +36,9 @@ export default async function OpportunityPage({
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);
 
+  // Outside the transaction: see the guard in withAdmin.
+  const writerAvailable = await isWriterAvailable();
+
   const page = await database.withTenant(DEMO_ORG_ID, async (tx) => {
     const opportunity = await loadOpportunity(tx, id);
     if (!opportunity) return null;
@@ -45,7 +48,7 @@ export default async function OpportunityPage({
     const { criteria } = await loadCriteria(tx, opportunity.id);
     const awards = await loadAwards(tx, opportunity.funderId);
     const application = await findApplicationForOpportunity(tx, opportunity.id);
-    const drafting = await readDrafting(tx);
+    const drafting = await readDrafting(tx, writerAvailable);
     return {
       opportunity,
       organisation,

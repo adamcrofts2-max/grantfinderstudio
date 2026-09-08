@@ -15,6 +15,8 @@
  * There is deliberately no API here for querying without a tenant.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 export interface QueryResult<T> {
   rows: T[];
 }
@@ -52,6 +54,22 @@ export function assertValidTenantId(id: unknown): asserts id is string {
   }
 }
 
+/**
+ * Whether the current call stack is inside an open tenant transaction.
+ *
+ * This exists to make one specific mistake loud. Opening an operator
+ * connection while a tenant transaction is held is a deadlock: the dev
+ * database is a single connection and waits on itself forever, and a pool
+ * under load exhausts itself the same way. A deadlock gives you no error, no
+ * log line and no stack — just a request that never returns, which is the
+ * worst failure mode we have. `withAdmin` consults this and throws instead.
+ */
+const OPEN_TENANT_TRANSACTION = new AsyncLocalStorage<true>();
+
+export function inTenantTransaction(): boolean {
+  return OPEN_TENANT_TRANSACTION.getStore() === true;
+}
+
 export class TenantDatabase {
   constructor(private readonly db: TransactionCapable) {}
 
@@ -71,7 +89,7 @@ export class TenantDatabase {
         'app.organisation_id',
         organisationId,
       ]);
-      return fn(tx);
+      return OPEN_TENANT_TRANSACTION.run(true, () => fn(tx));
     });
   }
 }

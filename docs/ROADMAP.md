@@ -217,17 +217,25 @@ product is honest and visually inert: 478 lines of CSS with no transitions, no
 SVG and no charts across eleven screens, while every quantity it knows is
 rendered as a sentence.
 
-- [ ] Motion scale, with `prefers-reduced-motion` throughout
-- [ ] Funder award distribution chart (highest value — build first)
-- [ ] Tracker timelines: today → latest start → deadline
+- [x] Motion scale, with `prefers-reduced-motion` throughout
+- [x] Funder award distribution chart (highest value — build first)
+- [x] Tracker timelines: today → latest start → deadline
 - [ ] Effort composition bar
 - [ ] Application progress segmentation
 - [ ] Stat tiles on the three summary screens
-- [ ] Validated series palette in tokens, light and dark
+- [x] Validated series palette in tokens, light and dark
 - [ ] Icon set replacing the single-character glyphs
 - [ ] Button hierarchy by consequence
 - [ ] Real drop zones on the two upload screens
 - [ ] First-run moment on onboarding
+
+### Found while building Phase 12
+- [x] Fix the deadlock: `withAdmin` inside `withTenant` hung `/tracker`,
+      `/opportunities/[id]` and the calendar export forever whenever
+      `ANTHROPIC_API_KEY` was absent from the environment
+- [x] Guard `withAdmin` so the same mistake throws instead of hanging
+- [ ] Seed a demo fund that is genuinely behind, so the overrun state is
+      visible without a harness
 
 ## Phase 11 — Hardening
 - [ ] Upgrade vitest/vite (dev-only advisories: esbuild dev server, postcss via next)
