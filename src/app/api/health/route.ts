@@ -1,6 +1,7 @@
 import { checkConfiguration, readEnvironment } from '@/env';
 import { getDatabase } from '@/db';
 import { checkIsolation } from '@/db/isolation';
+import { diagnose } from '@/db/diagnose';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +26,18 @@ export async function GET(): Promise<Response> {
       await tx.query('SELECT 1');
     });
     if (env.databaseUrl !== null) database = 'ok';
-  } catch {
+  } catch (error) {
     database = env.databaseUrl === null ? 'in-memory' : 'unreachable';
+    if (env.databaseUrl !== null) {
+      // The driver's own words, and the fix when we recognise the failure.
+      // Safe to show: these describe what went wrong, never the credentials.
+      const { detail, hint } = diagnose(error);
+      problems.push({
+        variable: 'DATABASE_URL',
+        problem: detail,
+        fix: hint ?? 'Check the connection string, then redeploy.',
+      });
+    }
   }
 
   // Checked on every call rather than once at deploy: a privilege granted by
