@@ -211,6 +211,24 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Effort features beyond word counts (attachments, policies, match funding) per opportunity
 - [ ] DOCX/PDF export
 
+## Phase 12 — Visual pass
+Brief: `docs/DESIGN_BRIEF.md`, written after a screen-by-screen audit. The
+product is honest and visually inert: 478 lines of CSS with no transitions, no
+SVG and no charts across eleven screens, while every quantity it knows is
+rendered as a sentence.
+
+- [ ] Motion scale, with `prefers-reduced-motion` throughout
+- [ ] Funder award distribution chart (highest value — build first)
+- [ ] Tracker timelines: today → latest start → deadline
+- [ ] Effort composition bar
+- [ ] Application progress segmentation
+- [ ] Stat tiles on the three summary screens
+- [ ] Validated series palette in tokens, light and dark
+- [ ] Icon set replacing the single-character glyphs
+- [ ] Button hierarchy by consequence
+- [ ] Real drop zones on the two upload screens
+- [ ] First-run moment on onboarding
+
 ## Phase 11 — Hardening
 - [ ] Upgrade vitest/vite (dev-only advisories: esbuild dev server, postcss via next)
 - [ ] WCAG 2.2 AA audit with automated axe in CI
