@@ -199,6 +199,24 @@ appending to it. Vercel does. If you move this behind a proxy that does not,
 that axis can be evaded by forging the header and only the per-address limit
 stands up — check before assuming.
 
+### Environment variables need a redeploy, and Vercel's database integration is not for you
+
+Two things that cost an afternoon on the first deploy:
+
+**Variables added after a deployment do not reach the one already running.**
+Set `DATABASE_URL` and `APP_ENCRYPTION_KEY`, then trigger a new deployment.
+Without `DATABASE_URL` the app now refuses to start with a message saying so,
+rather than falling back to the in-memory database — which is a devDependency
+and fails to import in a deployed bundle, and which would be worse if it ever
+did load, quietly accepting sign-ups into a database that vanishes on the next
+cold start.
+
+**Do not use Vercel's "Connect to a Database" / Neon storage integration** if
+you have already set `DATABASE_URL` by hand. It exists to provision a new
+database from Vercel and inject its own variable, so against an existing one it
+just reports a name collision and asks for a prefix. Cancel it; the manually
+set variable is all that is needed.
+
 ### First account on a new deployment
 
 There is no seeded account in production: the demo data only exists on the

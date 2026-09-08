@@ -76,8 +76,23 @@ async function buildDevelopment(): Promise<Backend> {
 }
 
 function build(): Promise<Backend> {
-  const url = readEnvironment().databaseUrl;
-  return url === null ? buildDevelopment() : buildPostgres(url);
+  const env = readEnvironment();
+  if (env.databaseUrl === null) {
+    if (env.isProduction) {
+      // Never fall back to the in-memory database in production. It is a
+      // devDependency, so the import fails in a deployed bundle and surfaces
+      // as an unexplained crash on the first request that touches data — and
+      // if it ever DID load, it would quietly accept sign-ups into a database
+      // that vanishes on the next cold start, which is worse.
+      throw new Error(
+        'DATABASE_URL is not set. The deployment has no database. Set it in the ' +
+          'hosting environment and REDEPLOY — environment variables added after a ' +
+          'deployment do not reach the one already running.',
+      );
+    }
+    return buildDevelopment();
+  }
+  return buildPostgres(env.databaseUrl);
 }
 
 /** The tenant-scoped database. Every query through it is subject to RLS. */
