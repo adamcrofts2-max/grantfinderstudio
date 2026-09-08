@@ -58,7 +58,21 @@ export const readSession = cache(async (): Promise<Session | null> => {
   const tokenHash = hashSessionToken(token);
   const now = new Date();
 
-  const session = await withAdmin((tx) => loadSession(tx, tokenHash, now));
+  // FAILS CLOSED, and never throws.
+  //
+  // This runs in the root layout, so it is on the path of every page. If it
+  // threw when the database were unavailable, someone holding a cookie would
+  // get a crash page on every route — including the one that would let them
+  // sign out. Treating the session as absent instead sends them to sign-in,
+  // which is the safe direction: this can only ever deny access, never grant
+  // it. The operator sees the truth at /api/health.
+  let session: SessionRecord | null;
+  try {
+    session = await withAdmin((tx) => loadSession(tx, tokenHash, now));
+  } catch (error) {
+    console.error('[grantfinderstudio] could not read the session:', error);
+    return null;
+  }
   if (session === null) return null;
 
   // Slide the window, but only once it is half spent — otherwise every page
@@ -66,7 +80,11 @@ export const readSession = cache(async (): Promise<Session | null> => {
   // someone who stops using it is, on schedule.
   const halfLife = (ACCOUNT_CONSTANTS.sessionDays / 2) * 24 * 60 * 60 * 1000;
   if (session.expiresAt.getTime() - now.getTime() < halfLife) {
-    await withAdmin((tx) => touchSession(tx, tokenHash, sessionExpiry(now)));
+    try {
+      await withAdmin((tx) => touchSession(tx, tokenHash, sessionExpiry(now)));
+    } catch {
+      // Housekeeping. Failing to extend a valid session must not end it.
+    }
   }
 
   return { ...session, tokenHash };

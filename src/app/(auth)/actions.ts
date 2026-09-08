@@ -33,6 +33,7 @@ import {
   recordFailedSignUp,
 } from './limit';
 import { describeWait } from '@/domain/auth/throttle';
+import { deploymentProblem } from './readiness';
 
 
 
@@ -60,6 +61,11 @@ export async function signUpAction(
   const email = normaliseEmail(String(formData.get('email') ?? ''));
   const password = String(formData.get('password') ?? '');
   const name = String(formData.get('name') ?? '').trim();
+
+  const unavailable = await deploymentProblem();
+  if (unavailable !== null) {
+    return { ok: false, message: unavailable, problems: [], email };
+  }
 
   const limit = await checkSignUpLimit();
   if (!limit.allowed) {
@@ -112,6 +118,11 @@ export async function signInAction(
 ): Promise<AuthState> {
   const email = normaliseEmail(String(formData.get('email') ?? ''));
   const password = String(formData.get('password') ?? '');
+
+  const unavailable = await deploymentProblem();
+  if (unavailable !== null) {
+    return { ok: false, message: unavailable, problems: [], email };
+  }
 
   const limit = await checkSignInLimit(email);
   if (!limit.allowed) {
