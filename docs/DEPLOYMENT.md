@@ -133,6 +133,15 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
 
+### The per-origin rate limit depends on your proxy
+
+Sign-in and sign-up are limited by origin as well as by address, and the origin
+comes from `x-forwarded-for`. That header is also one a client can send, so the
+limit is only worth anything where something upstream OVERWRITES it rather than
+appending to it. Vercel does. If you move this behind a proxy that does not,
+that axis can be evaded by forging the header and only the per-address limit
+stands up — check before assuming.
+
 ### First account on a new deployment
 
 There is no seeded account in production: the demo data only exists on the

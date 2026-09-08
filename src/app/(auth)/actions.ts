@@ -25,6 +25,14 @@ import {
 } from '@/domain/auth/account';
 import { SESSION_COOKIE, sessionCookieOptions } from '@/app/session';
 import type { AuthState } from './state';
+import {
+  checkSignInLimit,
+  checkSignUpLimit,
+  clearSignInLimit,
+  recordFailedSignIn,
+  recordFailedSignUp,
+} from './limit';
+import { describeWait } from '@/domain/auth/throttle';
 
 
 
@@ -53,6 +61,16 @@ export async function signUpAction(
   const password = String(formData.get('password') ?? '');
   const name = String(formData.get('name') ?? '').trim();
 
+  const limit = await checkSignUpLimit();
+  if (!limit.allowed) {
+    return {
+      ok: false,
+      message: `Too many attempts from this connection. Try again in ${describeWait(limit.retryAfterSeconds)}.`,
+      problems: [],
+      email,
+    };
+  }
+
   const problems = passwordProblems(password, email);
   if (!isPlausibleEmail(email)) {
     problems.unshift('That does not look like an email address.');
@@ -63,6 +81,8 @@ export async function signUpAction(
 
   const existing = await withAdmin((tx) => findAccountByEmail(tx, email));
   if (existing !== null) {
+    // Counted: this is the expensive, enumerable end of sign-up.
+    await recordFailedSignUp();
     // This does reveal that an account exists. There is no way to avoid it
     // while sign-up is instant and there is no email to send a "someone tried
     // to register your address" notice to. Sign-IN, where it matters more,
@@ -93,6 +113,18 @@ export async function signInAction(
   const email = normaliseEmail(String(formData.get('email') ?? ''));
   const password = String(formData.get('password') ?? '');
 
+  const limit = await checkSignInLimit(email);
+  if (!limit.allowed) {
+    // Before the hash, not after: a limiter that runs after the expensive
+    // step has not saved the expensive step.
+    return {
+      ok: false,
+      message: `Too many sign-in attempts. Try again in ${describeWait(limit.retryAfterSeconds)}.`,
+      problems: [],
+      email,
+    };
+  }
+
   const wrong: AuthState = {
     ok: false,
     // One message for both failures. Which of the two it was is exactly the
@@ -105,6 +137,7 @@ export async function signInAction(
   const account = await withAdmin((tx) => findAccountByEmail(tx, email));
   if (account === null) {
     await verifyPassword(password, ABSENT_ACCOUNT_HASH);
+    await recordFailedSignIn(email);
     return wrong;
   }
 
@@ -113,10 +146,17 @@ export async function signInAction(
     // An account with no password: created by an operator, or by a sign-in
     // method we have not built. It cannot be signed into this way.
     await verifyPassword(password, ABSENT_ACCOUNT_HASH);
+    await recordFailedSignIn(email);
     return wrong;
   }
 
-  if (!(await verifyPassword(password, stored))) return wrong;
+  if (!(await verifyPassword(password, stored))) {
+    await recordFailedSignIn(email);
+    return wrong;
+  }
+
+  // Right password: this address starts again from nothing.
+  await clearSignInLimit(email);
 
   // The one moment we hold the plaintext and know it is right.
   if (needsRehash(stored)) {

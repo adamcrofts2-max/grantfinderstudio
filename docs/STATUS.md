@@ -354,9 +354,45 @@ identical from outside, so there is a test that it is a real hash at current
 parameters. Sign-UP does reveal that an address is taken; there is no way
 around that without a mailer, and it is recorded rather than glossed.
 
-**Not done, and needed before real traffic:** rate limiting on sign-in. scrypt
-at ~200ms an attempt makes online guessing slow, but slow is not stopped. There
-is no password reset either, because there is no mailer.
+**Rate limiting** is on both forms, along two axes, because they catch
+different attacks and neither catches the other's. By ADDRESS — ten failures in
+fifteen minutes — stops someone grinding one account's password, which a
+per-origin limit barely touches if they have a few addresses to rotate through.
+By ORIGIN — thirty in the same window — stops someone spraying one common
+password across many accounts, which never trips a per-address limit because it
+only tries each address once. The origin limit is the looser of the two because
+an office, a school or anyone behind carrier-grade NAT shares an address, and
+locking out a whole building is its own outage.
+
+The check runs BEFORE the hash. A limiter that runs after the expensive step
+has not saved the expensive step, which is half of what it is for. Measured in
+the browser: a refused attempt returns in ~85ms against ~360ms for one that
+reaches scrypt.
+
+Failures are counted for addresses with no account too. Otherwise "too many
+attempts" would only ever appear for addresses that exist, and the limiter
+would hand back exactly the enumeration the sign-in wording and the
+absent-account hash were built to withhold. A successful sign-in clears the
+ADDRESS bucket only — clearing the origin bucket would let an attacker who
+holds one valid account reset their own spraying budget every time they used
+it.
+
+The accepted cost is that anyone can make somebody else's address unusable for
+fifteen minutes by failing at it deliberately. That is why the window is short
+and self-healing rather than a lockout an administrator has to lift: a lockout
+needing a human to clear it is a better denial of service than the one it
+prevents.
+
+Verified end to end rather than asserted: the eleventh attempt on one address
+is refused, the correct password is refused while that window runs, a spray of
+fresh addresses is stopped at the thirtieth from one origin, and sign-up from
+that origin is refused too.
+
+**Still not done:** password reset, because there is no mailer. And the
+per-origin limit is only worth anything where the platform OVERWRITES
+`x-forwarded-for` rather than appending to it — Vercel does; behind a proxy
+that does not, that axis can be evaded by forging the header and only the
+per-address limit stands up.
 
 ## Visual identity (Phase 12)
 

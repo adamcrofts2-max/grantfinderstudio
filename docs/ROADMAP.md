@@ -54,7 +54,9 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Tests proving the context cannot outlive a request
 - [x] Authentication: sign-up, sign-in, sign-out, database-backed sessions
 - [x] Every screen reads its organisation from the session, never a constant
-- [ ] Rate limiting on sign-in (see STATUS — required before real traffic)
+- [x] Rate limiting on sign-in and sign-up, by address and by origin
+- [ ] Confirm the platform overwrites `x-forwarded-for` (Vercel does; the
+      per-origin limit is only worth anything where something upstream does)
 - [ ] Password reset (needs a mailer; there is none yet)
 - [ ] Organisation switcher for someone in more than one
 - [ ] Organisation and membership management endpoints
