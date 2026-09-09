@@ -414,7 +414,13 @@ annotation inside the working screens.**
 
 ## Phase 11 — Hardening
 - [ ] Upgrade vitest/vite (dev-only advisories: esbuild dev server, postcss via next)
-- [ ] WCAG 2.2 AA audit with automated axe in CI
+- [x] WCAG 2.2 AA audit with axe across all seventeen screens —
+      `npm run accessibility`, signed out, as a customer and as an operator
+- [x] Fix `link-in-text-block`: nine inline links across six screens were
+      distinguished by colour alone (WCAG 1.4.1)
+- [x] Fix an invalid `<dl>` on the console overview
+- [ ] Run the axe sweep in CI. It needs a dev server and a browser, so it is a
+      separate step from `npm test` rather than part of it
 - [ ] Security review
 - [ ] AI evaluation suite
 - [ ] Performance

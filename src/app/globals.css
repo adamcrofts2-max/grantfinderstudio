@@ -215,8 +215,37 @@ body {
 h1, h2, h3 { line-height: 1.25; letter-spacing: -0.011em; margin: 0; }
 p { margin: 0; }
 
-a { color: var(--accent); }
+/* Underlined by default, and undone on the components that are not prose.
+   The other way round — bare by default, underlined where remembered — is how
+   an inline link in a paragraph ends up distinguished by colour alone, which
+   axe reports as `link-in-text-block` and WCAG 1.4.1 forbids. It was true of
+   nine links across six screens. This direction means a link added to a
+   sentence tomorrow is underlined without anybody remembering to.
+
+   `from-font` keeps the rule off the descenders where the face supplies a
+   position, and the thin stroke keeps a paragraph from looking ruled. */
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  text-decoration-skip-ink: auto;
+}
 a:hover { color: var(--accent-hover); }
+
+/* Not prose: these are controls, cards and navigation, where the shape, the
+   position or a background already says "this is a target". */
+.btn,
+.brand,
+.nav-item,
+.opportunity,
+.admin-tab,
+.lp-nav-links a,
+.lp-signin,
+.skip-link,
+.setup-go {
+  text-decoration: none;
+}
 
 /* A visible focus ring everywhere. Never removed. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
@@ -1379,14 +1408,16 @@ summary:focus-visible {
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 .admin-reading dd { margin: var(--s-2) 0 0; }
-.admin-value {
+.admin-value-figure {
+  display: block;
   font-family: var(--font-display, ui-sans-serif), var(--font-sans);
   font-size: var(--t-lg); font-weight: 800; letter-spacing: -0.02em;
 }
+.admin-note { display: block; margin-top: var(--s-2); }
 .admin-good { color: var(--positive); }
 .admin-caution { color: var(--caution); }
 .admin-plain { color: var(--ink); }
-.admin-reading .hint { margin-top: var(--s-2); }
+
 
 .admin-list { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
 .admin-list-item {

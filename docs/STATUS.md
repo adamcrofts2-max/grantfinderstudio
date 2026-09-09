@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,129 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,138 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1201,3 +1201,49 @@ pending by name. That is the thing you most want to know right after a deploy
 carrying a schema change, and nothing reported it. Migrations run on the first
 request that touches data, so a deploy that cannot migrate surfaces as an
 unrelated-looking error on whichever page somebody opens first.
+
+## The ingest, over a real socket
+
+Every other test in the ingestion directory substitutes something — a fake
+HttpClient, or a fake fetch. `live.test.ts` starts an actual HTTP server,
+points the actual `FetchJsonClient` at it, and runs the actual connector,
+normaliser and persistence into the actual schema. Worth having because each
+piece was correct and the SEAMS were never exercised: the connector took an
+`HttpClient` nothing implemented, and the persistence had no caller.
+
+It covers the two failure modes that could destroy data — a 503, and a 200
+carrying an HTML error page — and asserts that neither empties a funder we
+already hold.
+
+One thing it cannot do: follow pagination. `assertSameOrigin` requires https,
+and a local stub is plain http. That is the guard working, not a limitation, so
+the test asserts the guard instead: **an http pagination link is refused even
+back to the host we are already talking to**, because a downgrade is exactly
+how a paginating client gets walked somewhere in the middle. The multi-page
+path stays covered against a fake client.
+
+## Accessibility: axe across every screen
+
+`npm run accessibility` walks seventeen screens — signed out, as a customer
+with data, and as an operator in the console — against WCAG 2.0/2.1/2.2 A and
+AA. Not part of `npm test`: that suite needs neither a browser nor a server,
+and a test that silently skips is worse than one somebody runs.
+
+The first run found two real failures.
+
+**Nine inline links across six screens were distinguished by colour alone**
+(`link-in-text-block`, serious — WCAG 1.4.1). Somebody who cannot separate the
+blue from the grey could not tell there was a link there at all. The base style
+was `a { color: accent }` with `text-decoration: none` added back by hand in
+the components that needed it — which is exactly how a link added to a sentence
+later ends up bare. It is inverted now: underlined by default, and undone on
+the nine component classes that are controls, cards or navigation rather than
+prose. A link added to a paragraph tomorrow is underlined without anybody
+remembering to.
+
+**The console overview's `<dl>` was invalid.** A `<div>` inside a definition
+list may hold only a `dt`/`dd` group, and each of ours also held a `<p>` note.
+The note lives inside the `<dd>` now.
+
+Second run: **zero violating nodes across all seventeen screens, zero page
+errors.**

@@ -26,12 +26,18 @@ function Readings({ title, readings }: { title: string; readings: Reading[] }) {
   return (
     <section className="card" style={{ marginTop: 'var(--s-5)' }}>
       <h2 className="card-title">{title}</h2>
+      {/* The note lives INSIDE the <dd>. A <div> in a <dl> may hold only a
+          dt/dd group, so a sibling <p> made the whole list invalid. */}
       <dl className="admin-readings">
         {readings.map((reading) => (
           <div className="admin-reading" key={reading.label}>
             <dt>{reading.label}</dt>
-            <dd className={`admin-value admin-${reading.tone}`}>{reading.value}</dd>
-            {reading.note === undefined ? null : <p className="hint">{reading.note}</p>}
+            <dd className={`admin-value admin-${reading.tone}`}>
+              <span className="admin-value-figure">{reading.value}</span>
+              {reading.note === undefined ? null : (
+                <span className="hint admin-note">{reading.note}</span>
+              )}
+            </dd>
           </div>
         ))}
       </dl>
