@@ -266,7 +266,7 @@ rendered as a sentence.
 - [x] Fix the development database's tenant isolation: an operator call left
       the single shared connection un-roled, so any tenant query overlapping it
       ran as the owner and saw every other tenant's rows
-- [ ] Landing page: a stranger at the root is sent to Sign in and never told
+- [x] Landing page: a stranger at the root was sent to Sign in and never told
       what the product is
 - [ ] `/organisation` is 18 buttons in one column on a phone — the step the
       guide sends people to is its heaviest screen
@@ -320,7 +320,16 @@ annotation inside the working screens.**
 - [x] Line-character figure and empty states on tracker, applications, funders
 - [ ] Replace the placeholder figure with real illustration
 - [ ] More than one figure — one drawing across three empty states will wear thin
-- [ ] Landing page (does not exist yet; the hero was only ever a mockup)
+- [x] Landing page, built for real rather than mocked. Leads on the claim
+      nobody else makes — there is no list of open funds and we will not
+      pretend there is
+- [x] Fix white-on-accent: every primary button measured 2.13:1 in dark mode
+- [x] Darken `--ink-faint`; at 4.43:1 it was a hair under AA and it carries
+      every hint, eyebrow and caption in the product
+- [ ] Pricing. Deliberately absent from the landing page until it is decided —
+      an invented figure is a promise made to somebody in a fortnight
+- [ ] A worked example on the landing page: what a verdict actually looks
+      like, labelled as an illustration rather than passed off as real
 - [ ] A title that reports a finding on more screens than the tracker — today it
       is the only one that earns a highlighter
 

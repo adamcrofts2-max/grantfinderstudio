@@ -1,5 +1,5 @@
 import { getDatabase } from '@/db';
-import { requireOrganisationId } from '@/app/session';
+import { readSession, requireOrganisationId } from '@/app/session';
 import { assessAll } from '@/db/queries';
 import { readEnvironment } from '@/env';
 
@@ -7,6 +7,7 @@ import { Card, gbp, Notice, RecommendationPill } from '@/app/components';
 import { readSetupProgress } from '@/app/setup';
 import { SetupGuide } from '@/app/SetupGuide';
 import { EmptyState } from '@/app/illustration/EmptyState';
+import { Landing } from '@/app/Landing';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,11 @@ export const dynamic = 'force-dynamic';
 const ORDER = { strong: 0, worth_considering: 1, conditional: 2, not_recommended: 3 };
 
 export default async function HomePage() {
+  // The root is two pages. To a stranger it is the front door — until this
+  // existed they were redirected to a password box for a product they had
+  // never heard of. To somebody signed in it is their list of funds.
+  if ((await readSession()) === null) return <Landing />;
+
   const organisationId = await requireOrganisationId();
   const database = await getDatabase();
   const asOf = new Date().toISOString().slice(0, 10);

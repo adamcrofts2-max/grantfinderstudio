@@ -26,7 +26,11 @@
 
   --ink:        var(--c-900);
   --ink-soft:   var(--c-600);
-  --ink-faint:  var(--c-500);
+  /* Not var(--c-500). That step is #69748a, which measures 4.43:1 on the
+     canvas — a hair under AA — and this token carries every hint, eyebrow,
+     caption and footer in the product. Darkened until it passes on the canvas
+     and on a white card both. The ramp step itself is left alone. */
+  --ink-faint:  #666f84;
   --surface:    var(--c-0);
   --surface-sunken: var(--c-50);
   --canvas:     var(--c-50);
@@ -124,6 +128,18 @@
   --fig-accent: var(--accent);
   --fig-muted:  var(--line-strong);
 
+  /* The ink that goes ON a filled accent or caution surface.
+     A token rather than a hardcoded #fff, because in dark mode the fills
+     become LIGHT — the accent is #8fb2f5 — and white text on them measured
+     2.13:1. That is every primary button in the product, which is the most
+     clicked control there is. */
+  --on-accent:  #ffffff;
+  --on-caution: #ffffff;
+  /* The brand badge is a gradient, so its own start colour is a token: in
+     dark mode the accent end is too light to carry white lettering. */
+  --brand-from: var(--accent);
+  --brand-to:   #6d3fd4;
+
   color-scheme: light;
 }
 
@@ -151,6 +167,12 @@
     --accent-hover:#a8c3f8;
     --accent-bg:   #15213a;
     --accent-line: #25375c;
+
+    /* Dark ink on the light fills, not white. See --on-accent above. */
+    --on-accent:  #0c1015;
+    --on-caution: #241804;
+    --brand-from: #3f63c8;
+    --brand-to:   #6d3fd4;
 
     /* A full-saturation swipe is too loud against a near-black page. */
     --hl: #e3c53d;
@@ -234,7 +256,7 @@ a:hover { color: var(--accent-hover); }
 .brand { display: flex; align-items: center; gap: var(--s-3); text-decoration: none; color: var(--ink); }
 .brand-mark {
   width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
-  background: linear-gradient(140deg, var(--accent), #6d3fd4);
+  background: linear-gradient(140deg, var(--brand-from), var(--brand-to));
   display: grid; place-items: center;
   color: #fff; font-weight: 700; font-size: var(--t-sm);
 }
@@ -324,8 +346,8 @@ a:hover { color: var(--accent-hover); }
   font: inherit; font-size: var(--t-base); font-weight: 600;
   border: 1px solid transparent; cursor: pointer; text-decoration: none;
 }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); color: #fff; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); color: var(--on-accent); }
 .btn-secondary {
   background: var(--surface); color: var(--ink);
   border-color: var(--line-strong);
@@ -512,8 +534,8 @@ textarea.input { resize: vertical; min-height: 8rem; font-family: var(--font-mon
 .copywrap { display: inline-flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
 .copystatus { font-size: var(--t-sm); }
 .copied { color: var(--positive); font-weight: 600; }
-.btn-warn { background: var(--caution); color: #fff; }
-.btn-warn:hover { background: var(--caution); filter: brightness(0.92); color: #fff; }
+.btn-warn { background: var(--caution); color: var(--on-caution); }
+.btn-warn:hover { background: var(--caution); filter: brightness(0.92); color: var(--on-caution); }
 
 /* ---------- Lists, definition pairs and quoted source ---------------------
    Added when the documents and fund-review screens needed them; both were
@@ -919,7 +941,7 @@ summary:focus-visible {
   background: var(--surface-sunken); color: var(--ink-faint);
   border: 1px solid var(--line);
 }
-.setup-step.is-next .setup-mark { background: var(--accent); color: #fff; border-color: var(--accent); }
+.setup-step.is-next .setup-mark { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .setup-step.is-done .setup-mark {
   background: var(--positive-bg); color: var(--positive); border-color: var(--positive-line);
 }
@@ -985,7 +1007,7 @@ summary:focus-visible {
   background: var(--surface-sunken); color: var(--ink-faint);
   border: 1px solid var(--line);
 }
-.setup-step.is-next .setup-mark { background: var(--accent); color: #fff; border-color: var(--accent); }
+.setup-step.is-next .setup-mark { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .setup-step.is-done .setup-mark {
   background: var(--positive-bg); color: var(--positive); border-color: var(--positive-line);
 }
@@ -996,6 +1018,135 @@ summary:focus-visible {
   .setup-step { grid-template-columns: 24px 1fr; gap: var(--s-3); }
   .setup-mark { width: 24px; height: 24px; }
 }
+/* ---------- The front door ------------------------------------------------
+   The one page a stranger sees. Wider measure and larger type than the app —
+   this is read standing up on a phone by somebody deciding whether to bother,
+   not worked in — but the same tokens throughout, so it cannot drift into
+   looking like a different product's marketing site. */
+
+.lp { max-width: 68rem; margin: 0 auto; padding: 0 var(--s-5) var(--s-8); }
+
+.lp-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-4); padding: var(--s-5) 0;
+}
+.lp-signin { font-weight: 650; font-size: var(--t-sm); }
+
+.lp-hero {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--s-7); align-items: center;
+  padding: var(--s-7) 0 var(--s-8);
+}
+.lp-title {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  /* 4.4vw, not 5.5: at around 900px the larger step put the headline at 49px
+     in a 430px column and stranded "are" on a line of its own. */
+  font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1.08;
+  margin: var(--s-3) 0 0;
+}
+/* The swipe is tuned for a card heading. On display type at three times that
+   size the same 8%/84% left the ascenders of "th" and "k" sticking out of the
+   top of the mark, which reads as clipping rather than as a highlighter. */
+.lp-title .hl { top: 1%; height: 94%; }
+.lp-lede {
+  margin: var(--s-5) 0 0; max-width: 34rem;
+  font-size: var(--t-md); line-height: 1.62; color: var(--ink-soft);
+}
+.lp-actions {
+  display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-6);
+}
+.lp-cta { padding: 0.8rem var(--s-6); font-size: var(--t-md); }
+.lp-quiet {
+  margin: var(--s-4) 0 0; color: var(--ink-faint); font-size: var(--t-sm);
+}
+/* The figure is decoration. It goes when there is no room for it rather than
+   squashing the words it sits beside. */
+.lp-hero-art .figure-stage { max-width: 300px; }
+
+/* A hairline before each section, so the page has a rhythm rather than four
+   blocks of text drifting apart. */
+.lp-truth, .lp-does, .lp-wont, .lp-start {
+  padding: var(--s-7) 0; border-top: 1px solid var(--line);
+}
+
+.lp-h2 {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: clamp(1.35rem, 3vw, 1.875rem); font-weight: 800;
+  letter-spacing: -0.02em; line-height: 1.2;
+  margin: 0 0 var(--s-4); max-width: 32rem;
+}
+.lp-h3 {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-md); font-weight: 700; letter-spacing: -0.01em;
+  margin: 0 0 var(--s-3);
+}
+.lp-body {
+  margin: 0 0 var(--s-4); max-width: 40rem;
+  font-size: var(--t-base); line-height: 1.65; color: var(--ink-soft);
+}
+.lp-body:last-child { margin-bottom: 0; }
+.lp-note {
+  margin: var(--s-4) 0 0; padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm); color: var(--ink-faint);
+}
+
+.lp-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--s-4);
+  /* Two across, not three. Four cards in a three-column grid leave an orphan
+     on the second row and a column of dead space beside it. */
+  /* min() so the track can shrink below its own minimum on a narrow screen.
+     A bare minmax(24rem, 1fr) cannot, and forced the whole page to scroll
+     sideways at 390px — caught by measuring scrollWidth, not by looking. */
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+}
+.lp-card { display: flex; flex-direction: column; }
+/* The aside sits at the foot of its card whatever the card above it does, so
+   one card carrying a note does not stretch a hole into the others. */
+.lp-card .lp-note { margin-top: auto; }
+
+.lp-wont-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--s-5); max-width: 44rem;
+}
+.lp-wont-list li {
+  font-size: var(--t-base); line-height: 1.65; color: var(--ink-soft);
+  padding-left: var(--s-5); border-left: 2px solid var(--line-strong);
+}
+.lp-wont-list strong { color: var(--ink); }
+
+.lp-start { border-bottom: 1px solid var(--line); }
+
+.lp-foot {
+  padding: var(--s-6) 0 0;
+  display: flex; flex-wrap: wrap; gap: var(--s-3);
+  justify-content: space-between;
+  color: var(--ink-faint); font-size: var(--t-sm);
+}
+.lp-foot p { margin: 0; }
+
+/* The hero stacks earlier than the rest needs to: its two columns leave the
+   headline too narrow for its own type well before the phone breakpoint.
+   Kept as its own query — folding it into the one below stretched the buttons
+   to 420px on a tablet, because widening one rule's breakpoint drags every
+   rule sharing the block with it. */
+@media (max-width: 1000px) {
+  .lp-hero { grid-template-columns: 1fr; gap: var(--s-5); padding: var(--s-5) 0 var(--s-6); }
+  /* Below the words: a reader deciding whether to bother should meet the
+     sentence first, not the drawing. */
+  .lp-hero-art { order: 2; }
+  .lp-hero-art .figure-stage { max-width: 200px; margin-inline: 0; }
+}
+
+/* Phone. Full-width stacked buttons are a phone idiom and look wrong on a
+   tablet, so they stay here. */
+@media (max-width: 640px) {
+  .lp-truth, .lp-does, .lp-wont, .lp-start { padding: var(--s-6) 0; }
+  .lp-actions .btn { flex: 1 1 12rem; text-align: center; }
+}
+
 /* ---------- The console ----------------------------------------------------
    Deliberately plainer than the product. An operator is reading numbers, not
    being persuaded of anything, and the visual distance is itself a signal:

@@ -892,3 +892,79 @@ And one repeat of a mistake already made once: the guide's button linked to
 `/organisation#add-fact` and landed on a *closed* `<details>`. The same failure
 as the project form on onboarding, in a different file. The page now opens the
 form when that step is what somebody was sent to do.
+
+## The landing page
+
+`/` is now two pages: the front door to a stranger, their list of funds to
+somebody signed in. Until this existed a visitor was redirected to a password
+box for a product they had never heard of.
+
+### The one claim it must not make
+
+Every funding product on the market sells a DATABASE — search thousands of
+grants, never miss an opportunity. This one has no database of open funds and
+is never going to have one: there is no machine-readable source of open UK
+trust and foundation calls, and building one by crawling runs into the sui
+generis database right and most funders' own terms (see "what we will not
+build" in the roadmap).
+
+So the page leads with the thing that is true and that nobody else says:
+**there is no list of open funds, and we are not going to pretend there is.**
+What it sells is judgement about a fund you already found — a smaller promise,
+and one it can keep. The four capability sections describe only shipped
+behaviour, and the trust section is phrased as refusals, because "it will tell
+you not to apply" is a stronger signal than another list of features.
+
+Every number on the page is checkable: ten criterion kinds are the ten in
+`domain/eligibility/types.ts`; the Find a Grant figure is the research in
+PRODUCT_ARCHITECTURE.md §2.3 (roughly 119–121 grants, central government only).
+
+**Deliberately absent:** testimonials, a customer count, logos, "£2m raised" —
+there are no customers yet, and a landing page that opens with an invented
+number has already told the reader what kind of product this is. And no
+pricing, because it has not been decided; a figure invented here is a promise
+made to somebody in a fortnight.
+
+### Two accessibility failures it turned up
+
+Measuring the page's contrast rather than looking at it found both, and neither
+was the landing page's fault — both were product-wide:
+
+- **Every primary button failed in dark mode.** `.btn-primary` hardcoded
+  `color: #fff`, and in dark mode `--accent` becomes `#8fb2f5` — a light blue.
+  White on it measures **2.13:1**. That is the most-clicked control in the
+  product, on "Add your project", "Save these details", "Create the account"
+  and the rest. Fixed with an `--on-accent` token that carries dark ink in dark
+  mode; now 8.95:1. `--on-caution` does the same for `.btn-warn`, which was
+  worse, and the brand badge's gradient gets its own start colour so its white
+  lettering still works.
+- **`--ink-faint` measured 4.43:1** on the canvas, a hair under AA, and it
+  carries every hint, eyebrow, caption and footer in the product. Darkened to
+  `#666f84` — 4.74:1 on the canvas, 5.03:1 on a card. The grey ramp step it
+  used to point at is left alone.
+
+Everything on the page now passes AA in both schemes.
+
+### Two layout bugs, both found by measuring
+
+- `minmax(24rem, 1fr)` on the card grid cannot shrink below its own minimum, so
+  at 390px the whole page scrolled sideways. `minmax(min(24rem, 100%), 1fr)`
+  fixes it. Caught by asserting `scrollWidth <= innerWidth`, not by looking —
+  a horizontal scrollbar is easy to miss in a screenshot.
+- Widening one rule's breakpoint from 860px to 1000px dragged every rule
+  sharing that media block with it, and the hero buttons stretched to 420px on
+  a tablet. The hero's stacking and the phone's full-width buttons are now
+  separate queries.
+
+Verified at 1440, 1024, 768, 390 and 320: no horizontal overflow anywhere, the
+headline wrapping sensibly at each, cards going two-up then one-up, and zero
+page errors.
+
+The highlighter swipe needed its own adjustment for display type — tuned for a
+card heading at 8%/84%, it left the ascenders of "th" and "k" poking out of the
+top of a 3.25rem headline, which reads as clipping rather than as a mark
+somebody made.
+
+The hero figure is still the placeholder art flagged in Phase 12. It shows more
+at hero size than it does in a small empty state, and it is the next thing this
+page needs.

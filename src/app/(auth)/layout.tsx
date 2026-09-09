@@ -11,7 +11,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="auth-shell">
       <div className="auth-panel">
-        <a className="brand" href="/sign-in" style={{ marginBottom: 'var(--s-6)' }}>
+        {/* Back to the front door, now that there is one. It used to point at
+            sign-in, because the root redirected here anyway. */}
+        <a className="brand" href="/" style={{ marginBottom: 'var(--s-6)' }}>
           <span className="brand-mark" aria-hidden="true">GF</span>
           <span>
             <span className="brand-name">Grant Finder</span>
