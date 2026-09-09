@@ -13,6 +13,7 @@ const env = (over: Partial<AppEnvironment> = {}): AppEnvironment => ({
   databaseUrl: 'postgres://x/y?sslmode=require',
   encryptionKey: null,
   companiesHouseBaseUrl: null,
+  adminClaimSecret: null,
   isProduction: true,
   ...over,
 });

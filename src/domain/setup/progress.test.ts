@@ -61,17 +61,6 @@ describe('the facts step', () => {
 });
 
 describe('steps that cannot be done yet say so', () => {
-  it('flags adding a fund when there is no Writer', () => {
-    const step = setupSteps(facts({ writerAvailable: false })).find(
-      (s) => s.id === 'opportunity',
-    );
-    expect(step?.blocked).toContain('Anthropic key');
-  });
-
-  it('does not flag it when the Writer is available', () => {
-    expect(setupSteps(facts()).find((s) => s.id === 'opportunity')?.blocked).toBeNull();
-  });
-
   it('flags starting an application before any fund exists', () => {
     expect(setupSteps(facts()).find((s) => s.id === 'application')?.blocked).toContain(
       'Add a fund first',
@@ -84,9 +73,9 @@ describe('steps that cannot be done yet say so', () => {
   });
 
   it('never shows a blocker on a step that is done', () => {
-    // "Add a fund · done" beside "this needs an Anthropic key" is the product
-    // contradicting itself. A blocker is about doing a thing, not having done
-    // it. This combination reached a screenshot before it was caught.
+    // "Add a fund · done" beside a blocker is the product contradicting
+    // itself. A blocker is about doing a thing, not having done it. This
+    // combination reached a screenshot before it was caught.
     const done = setupSteps(
       facts({ writerAvailable: false, opportunities: 2, applications: 1 }),
     );
@@ -97,44 +86,43 @@ describe('steps that cannot be done yet say so', () => {
   });
 
   it('still blocks the step when it is NOT done', () => {
-    const step = setupSteps(facts({ writerAvailable: false })).find(
-      (s) => s.id === 'opportunity',
-    );
+    const step = setupSteps(facts()).find((s) => s.id === 'application');
     expect(step?.done).toBe(false);
-    expect(step?.blocked).toContain('Anthropic key');
+    expect(step?.blocked).toContain('Add a fund first');
   });
 });
 
 describe('the facts step, when there is nothing waiting to be checked', () => {
   // The dead end this was written for: the guide said "confirm the rest", the
   // page it pointed at said "Everything is checked", and the counter could
-  // never move. A step you cannot finish must say why, not repeat itself.
+  // never move.
   const stuck = facts({ hasOrganisation: true, hasProject: true, confirmedFacts: 2, pendingFacts: 0 });
 
   it('does not tell you to confirm what does not exist', () => {
     const step = setupSteps(stuck).find((s) => s.id === 'facts');
     expect(step?.action).not.toBe('Confirm the rest');
-    expect(step?.href).toBe('/documents');
+    expect(step?.href).toBe('/organisation#add-fact');
   });
 
-  it('says where facts come from, and how many are still needed', () => {
+  it('says how many are still needed, in the button', () => {
     const step = setupSteps(stuck).find((s) => s.id === 'facts');
-    expect(step?.blocked).toContain('documents');
-    expect(step?.blocked).toContain(`2 of ${CONFIRMED_FACTS_NEEDED}`);
+    expect(step?.action).toContain(`2 of ${CONFIRMED_FACTS_NEEDED}`);
   });
 
-  it('names the key as the blocker when there is no writer, and points at it', () => {
-    const step = setupSteps({ ...stuck, writerAvailable: false }).find((s) => s.id === 'facts');
-    expect(step?.blocked).toContain('Anthropic key');
-    // Not Documents: that page cannot do anything either without the key.
-    expect(step?.href).toBe('/settings');
+  it('is never blocked, because typing a fact needs no key', () => {
+    // It used to point at Settings when there was no writer. There is now a
+    // route that works without one, and telling somebody to go and configure
+    // an API key to solve a problem they do not have is worse than saying
+    // nothing.
+    expect(setupSteps({ ...stuck, writerAvailable: false }).find((s) => s.id === 'facts')?.blocked)
+      .toBeNull();
+    expect(setupSteps(stuck).find((s) => s.id === 'facts')?.blocked).toBeNull();
   });
 
   it('sends you to the checking page when something IS waiting', () => {
     const step = setupSteps({ ...stuck, pendingFacts: 4 }).find((s) => s.id === 'facts');
     expect(step?.href).toBe('/organisation');
     expect(step?.action).toBe('Confirm the rest');
-    expect(step?.blocked).toBeNull();
   });
 
   it('is not blocked once it is done, however few are waiting', () => {
@@ -143,5 +131,33 @@ describe('the facts step, when there is nothing waiting to be checked', () => {
     );
     expect(step?.done).toBe(true);
     expect(step?.blocked).toBeNull();
+  });
+});
+
+describe('adding a fund, on a deployment with no key', () => {
+  const noWriter = facts({ hasOrganisation: true, hasProject: true, writerAvailable: false });
+
+  it('is not blocked — typing one in works without a key', () => {
+    expect(setupSteps(noWriter).find((s) => s.id === 'opportunity')?.blocked).toBeNull();
+  });
+
+  it('describes the route that actually exists', () => {
+    const step = setupSteps(noWriter).find((s) => s.id === 'opportunity');
+    expect(step?.why).toContain('Type in the one you are looking at');
+    expect(step?.why).not.toContain('Paste');
+  });
+
+  it('offers the reader when there is a key for it', () => {
+    const step = setupSteps({ ...noWriter, writerAvailable: true }).find(
+      (s) => s.id === 'opportunity',
+    );
+    expect(step?.why).toContain('Paste');
+  });
+
+  it('leaves nothing on the whole path that a missing key can block', () => {
+    // The product has to be finishable end to end without one.
+    for (const step of setupSteps(noWriter)) {
+      if (step.blocked !== null) expect(step.blocked, step.id).not.toContain('Anthropic');
+    }
   });
 });

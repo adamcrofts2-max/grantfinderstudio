@@ -462,3 +462,35 @@ export async function loadVerifiedCriteriaLabels(
   );
   return r.rows.map((row) => row.label);
 }
+
+/**
+ * Record a fact the organisation typed about itself.
+ *
+ * Confirmed on the way in. Extraction proposes and a person confirms because
+ * the proposal came from a machine reading a document; here the person IS the
+ * source, and asking them to confirm what they just typed is a ritual rather
+ * than a check.
+ *
+ * The id is derived from the claim, so typing the same thing twice corrects it
+ * rather than leaving two facts about one subject — which is exactly how a set
+ * of confirmed facts stops being worth anything.
+ */
+export async function recordSelfDeclaredFact(
+  tx: Queryable,
+  organisationId: string,
+  userId: string,
+  fact: { claim: string; value: string },
+): Promise<string> {
+  const id = `self_${organisationId}_${fact.claim}`;
+  await tx.query(
+    `INSERT INTO facts
+       (id, organisation_id, claim, value, source, source_ref, retrieved_at,
+        confidence_level, confirmed_by, confirmed_at)
+     VALUES ($1, $2, $3, $4, 'user', NULL, now(), 'high', $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       value = EXCLUDED.value, retrieved_at = now(),
+       confirmed_by = EXCLUDED.confirmed_by, confirmed_at = now()`,
+    [id, organisationId, fact.claim, fact.value, userId],
+  );
+  return id;
+}

@@ -48,10 +48,6 @@ export interface SetupStep {
 /** Below this the Writer will not draft, so the step is not finished. */
 export const CONFIRMED_FACTS_NEEDED = 5;
 
-const NEEDS_WRITER =
-  'This needs an Anthropic key. Add one in Settings, or ask whoever runs this ' +
-  'deployment to set one for everybody.';
-
 export function setupSteps(facts: SetupFacts): SetupStep[] {
   // A blocker describes what stands between you and DOING something. Once a
   // step is done it cannot also be blocked, and showing both — "done" beside
@@ -83,46 +79,45 @@ function build(facts: SetupFacts): SetupStep[] {
       action: facts.hasProject ? 'Review' : 'Add your project',
       blocked: null,
     },
-    // Facts are not typed in — they are extracted from what you already have
-    // and then checked. So when there is nothing waiting, "confirm the rest"
-    // is an instruction with nothing behind it: the page it sends you to says
-    // "Everything is checked" and the counter never moves. Say where facts
-    // come from instead, and point at the door that produces them.
+    // Two routes to a fact, and this step names whichever one is actually
+    // in front of the person.
+    //
+    // When something is waiting to be checked, checking it is the work.
+    // When nothing is, "confirm the rest" is an instruction with nothing
+    // behind it — the page says "Everything is checked" and the counter never
+    // moves — so the step sends them to the form where they can just say it.
+    //
+    // Never blocked. Typing a fact needs no key, so there is no state in
+    // which this step cannot be finished.
     {
       id: 'facts',
       title: 'Confirm the facts about your organisation',
       why: `The Writer drafts only from facts you have confirmed. Below ${CONFIRMED_FACTS_NEEDED} it will not draft at all, and every answer stays yours to write from a blank box.`,
       done: facts.confirmedFacts >= CONFIRMED_FACTS_NEEDED,
-      // The button goes wherever the work actually is. Sending somebody to
-      // Documents when the reader cannot run is the same dead end one door
-      // further along.
-      href:
-        facts.pendingFacts > 0 ? '/organisation'
-        : facts.writerAvailable ? '/documents'
-        : '/settings',
+      href: facts.pendingFacts > 0 ? '/organisation' : '/organisation#add-fact',
       action:
         facts.pendingFacts > 0
           ? facts.confirmedFacts === 0
             ? 'Check what we know'
             : 'Confirm the rest'
-          : facts.writerAvailable
-            ? 'Add a document'
-            : 'Add a key in Settings',
-      blocked:
-        facts.pendingFacts > 0
-          ? null
-          : facts.writerAvailable
-            ? `You have ${facts.confirmedFacts} of ${CONFIRMED_FACTS_NEEDED}, and nothing is waiting to be checked. Facts come from documents you already have — a constitution, last year’s accounts, a policy.`
-            : `You have ${facts.confirmedFacts} of ${CONFIRMED_FACTS_NEEDED}, and nothing is waiting to be checked. Facts are read out of documents you already have, and that needs an Anthropic key.`,
+          : `Tell us about yourself (${facts.confirmedFacts} of ${CONFIRMED_FACTS_NEEDED})`,
+      blocked: null,
     },
+    // Also never blocked. Having the guidance read for you needs a key;
+    // typing in the funder, the fund, the deadline and the size does not, and
+    // that is enough for the tracker, the timing and the size check. Marking
+    // this step "blocked" when a working route exists sent people to Settings
+    // to solve a problem they did not have.
     {
       id: 'opportunity',
       title: 'Add a fund you are considering',
-      why: 'Nobody publishes a list of open UK trust funds. Paste a funder’s own guidance and we read it into an eligibility check, a deadline, and an estimate of the work.',
+      why: facts.writerAvailable
+        ? 'Nobody publishes a list of open UK trust funds. Paste a funder’s own guidance and we read it into an eligibility check, a deadline, and an estimate of the work.'
+        : 'Nobody publishes a list of open UK trust funds. Type in the one you are looking at — who is offering it, what it is called, the deadline and the size — and it joins your tracker and gets checked against what you are asking for.',
       done: facts.opportunities > 0,
       href: '/opportunities/add',
       action: 'Add a fund',
-      blocked: facts.writerAvailable ? null : NEEDS_WRITER,
+      blocked: null,
     },
     {
       id: 'application',

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**965 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,060 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -748,3 +748,147 @@ piece before the app can hold more than one organisation.
 
 After that, the AI layer: the provider abstraction and the four agents, starting with the
 Extractor so onboarding can accept a plain-English description instead of seeded data.
+
+## The operator console
+
+`/admin`. Separate credentials, a separate cookie, a separate session table, and
+a third database role. Built to a single rule:
+
+> An admin runs the SERVICE. They do not run anybody's funding bid.
+
+### Why it cannot read customer data
+
+The sign-in page promises a CIC that its facts, documents and applications are
+its own. A console able to read them would make that sentence false however
+carefully the console behaved — so the separation is not a rule the application
+follows, it is a set of grants.
+
+`app_operator` (0009) is granted SELECT on `users`, `auth_attempts`,
+`schema_migrations` and the shared catalogue tables. It is granted **nothing at
+all** on any tenant table. A console page reaching for `facts` gets `permission
+denied for table facts` from the driver, in development and in the deployment
+alike.
+
+`src/db/operator-scope.test.ts` asserts that table by table — 19 tenant tables,
+5 credential tables, read and write — so a future migration that granted the
+operator a tenant table fails the build rather than slipping through. The same
+file covers the third channel: `app_operator` can read the shared catalogue but
+not write it, because curating what every tenant sees is a larger blast radius
+than looking at it, and the two statements that need it raise privilege for
+themselves.
+
+Three channels, and which one a query uses is the whole design:
+
+| Channel | Role | Reaches |
+|---|---|---|
+| `withTenant` | `app_user` | One organisation's rows, via RLS |
+| `withOperator` | `app_operator` | Platform tables. No tenant grant exists |
+| `withAdmin` | owner | Credentials, migrations, catalogue writes |
+
+The tenant tables are additionally `FORCE ROW LEVEL SECURITY`, so even the owner
+sees nothing there without a tenant context. The operator role is what makes
+that hold identically in development, where PGlite connects as a superuser and
+a superuser bypasses RLS regardless of FORCE.
+
+### A grant that was always too wide
+
+0001 ended with `GRANT SELECT ON users TO app_user`, and `users` carries no
+policy — so the tenant role could read every account on the platform, addresses
+and names included. Nothing on the tenant path had ever used it: sign-in,
+sign-up and session loading are operator-scope by design, and the only reader is
+`src/db/auth.ts`, through `withAdmin`. Not exploitable as it stood, since no
+route puts arbitrary SQL on the tenant connection. 0009 takes it back, and a
+test holds it back.
+
+### Why separate credentials rather than a flag on a user
+
+A flag makes every customer account a potential admin account: one phished
+password and the console is open. Separate credentials, a cookie scoped to
+`/admin` with `SameSite=Strict`, and an eight-hour session mean an admin's own
+customer account being taken does not reach the platform.
+
+Verified in a browser: a signed-in customer visiting `/admin`, `/admin/catalogue`
+and `/admin/accounts` lands on the console sign-in every time and never sees
+console chrome; an admin visiting `/`, `/organisation` and `/tracker` lands on
+the customer sign-in. The cookie reads
+`gfs_admin path=/admin httpOnly=true sameSite=Strict`.
+
+### There is no sign-up
+
+An admin console with a registration form is a back door with a welcome mat. The
+first admin is claimed once, at `/admin/sign-in`, and only when both hold: the
+`admin_accounts` table is empty, and `ADMIN_CLAIM_SECRET` is configured. The
+table being empty is what closes the door permanently — no configuration change
+anybody could forget. The secret is what stops a freshly deployed console being
+a race between the operator and whoever finds the URL first.
+
+The guard is inside the INSERT (`WHERE NOT EXISTS (SELECT 1 FROM
+admin_accounts)`), not a count checked beforehand: two claims arriving together
+would both pass a prior check and both create an admin. There is a test that
+fires two at once and asserts exactly one wins.
+
+Sign-in has its own throttle axis — five tries per address in thirty minutes,
+against a customer's ten in fifteen — so a run of customer failures cannot lock
+the operator out, and an attack on the console cannot spend the customer's
+allowance. Wrong password, no such admin, and a stood-down admin all answer
+"Those details do not match", and the absent case still pays the cost of a hash
+so it cannot be told apart by timing.
+
+### What it shows
+
+Isolation self-check; deployment readiness (database, drafting, lookup,
+credential storage) and any configuration problems; accounts and how many
+signed up this week; the size of the shared catalogue; sign-in limiter state. A
+standing note on every page says what the console cannot reach — not decoration,
+because an operator who believes they are looking at customer data will
+eventually act as though they were.
+
+## Working without an Anthropic key
+
+The product is now finishable end to end with no key, and no step in the setup
+guide carries a key-shaped blocker. This was not a small gap: the previous state
+sent somebody to Settings to configure an API key in order to finish setting up,
+which for a small CIC is a wall.
+
+Two routes were missing, and both are the same shape — a person types what they
+know, and the product records it as theirs rather than dressing it up:
+
+- **Facts by hand** (`/organisation`, `AddFact`). Facts were only ever produced
+  by extraction, so a deployment with no model had no route to one at all and
+  the five confirmed facts the Writer wants were unreachable. A typed fact has
+  source `user`, no source span, and is confirmed on the way in — asking
+  somebody to confirm what they just typed is a ritual, not a check. Its id is
+  derived from the claim, so typing the same thing twice corrects it rather than
+  leaving two facts about one subject. The suggested claim keys come from the
+  extraction vocabulary, so a typed fact and the same fact read from a document
+  later are one fact rather than two; there is a test asserting that.
+- **Funds by hand** (`/opportunities/add`, and `/admin/catalogue` for the shared
+  ones). Two required fields, the rest optional. `freshness_state` is
+  `needs_verification` and `origin` is `user`, matching the pasted-guidance path.
+
+What a hand-entered fund deliberately does NOT carry is eligibility criteria.
+The engine evaluates rules; typing "we fund charities in the South West" into a
+box does not make a rule, and inventing one would be the product guessing on
+somebody's behalf about the thing it exists to be certain about. So its
+eligibility reads `unknown` — a first-class answer here — while the deadline,
+the size and the link all still work.
+
+Which route leads depends on what the deployment can do: with a key the reader
+comes first and the form folds behind "Or type it in yourself"; without one the
+form is the page and the reader folds away with a note about what it would add.
+
+Walked in a browser on a 390×844 phone with no key configured: sign up →
+organisation → project → five typed facts → a typed fund → an application, and
+the guide removes itself at 5 of 5 and hands over the full navigation. Zero page
+errors throughout.
+
+One bug that only the browser found: `insertManualFund` created its funder on
+the tenant connection, and `app_user` has SELECT on `funders` but not INSERT —
+`permission denied for table funders` the first time somebody typed in a funder
+we had not heard of, which is most of them. Funder creation is an operator step,
+exactly as the pasted-guidance path already did it.
+
+And one repeat of a mistake already made once: the guide's button linked to
+`/organisation#add-fact` and landed on a *closed* `<details>`. The same failure
+as the project form on onboarding, in a different file. The page now opens the
+form when that step is what somebody was sent to do.

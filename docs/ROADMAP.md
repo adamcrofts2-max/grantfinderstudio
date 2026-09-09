@@ -270,8 +270,40 @@ rendered as a sentence.
       what the product is
 - [ ] `/organisation` is 18 buttons in one column on a phone — the step the
       guide sends people to is its heaviest screen
-- [ ] Let somebody add a fact by hand, so five confirmed facts is reachable
+- [x] Let somebody add a fact by hand, so five confirmed facts is reachable
       without a document reader
+- [x] Let somebody add a fund by hand — funder, title, deadline, size — so the
+      product is finishable with no Anthropic key at all
+- [x] Remove every key-shaped blocker from the setup guide: both steps that
+      carried one now have a route that works without a key
+- [ ] A hand-entered fund carries no eligibility criteria. Let somebody add
+      one or two by hand too, so a typed fund can be checked rather than only
+      tracked
+
+## Phase 13 — The operator console
+Everything the person running the service needs, and nothing that belongs to a
+customer. Structural, not disciplined: `app_operator` holds no grant on any
+tenant table, so a console page reaching for customer data is refused by
+Postgres.
+
+- [x] `admin_accounts` and `admin_sessions`, owner-scope, revoked from PUBLIC
+- [x] `app_operator` role with platform-table SELECT and no tenant grants
+- [x] `src/db/operator-scope.test.ts` — every tenant and credential table
+      asserted refused, table by table
+- [x] Close the always-too-wide `GRANT SELECT ON users TO app_user`
+- [x] One-time claim guarded by `ADMIN_CLAIM_SECRET`, closed by the INSERT
+      rather than a prior count, with no sign-up route at all
+- [x] Separate cookie (`/admin`, SameSite=Strict) and an 8-hour session
+- [x] Dedicated sign-in throttle axis, tighter than a customer's
+- [x] Overview: isolation self-check, deployment readiness, use, limiter
+- [x] Shared catalogue: add and remove funds by hand, no key needed
+- [x] Accounts: address and sign-up date, with no route to their work
+- [x] Middleware so the console never wears the customer's shell
+- [ ] Disable an admin from inside the console (the column exists; nothing
+      sets it)
+- [ ] A second admin — the claim only ever creates the first
+- [ ] Change the console password from inside the console
+- [ ] An audit trail of what an operator changed in the shared catalogue
 - [ ] First-run moment on onboarding
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no
       opportunities — those are seeded only by the demo module. Every chart is

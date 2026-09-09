@@ -27,7 +27,7 @@ export interface Policy {
   windowSeconds: number;
 }
 
-export const THROTTLE: { address: Policy; origin: Policy } = {
+export const THROTTLE: { address: Policy; origin: Policy; admin: Policy } = {
   /**
    * Ten tries at one address in fifteen minutes. Comfortably above anyone
    * genuinely misremembering a password, far below anything useful for
@@ -40,6 +40,15 @@ export const THROTTLE: { address: Policy; origin: Policy } = {
    * out a whole building is its own outage.
    */
   origin: { maxAttempts: 30, windowSeconds: 900 },
+  /**
+   * Five tries at the console in the same window, half an hour's lockout.
+   *
+   * Tighter than a customer's ten because the population is one person who
+   * knows their own password, so a run of failures is not somebody having a
+   * bad morning — and because what is behind this door is the service rather
+   * than one bid.
+   */
+  admin: { maxAttempts: 5, windowSeconds: 1800 },
 };
 
 export interface AttemptRecord {

@@ -24,6 +24,14 @@ import type { Queryable, QueryResult, TransactionCapable } from './client.js';
 import type { MigrationExecutor } from './migrate.js';
 
 const TENANT_ROLE = 'app_user';
+/**
+ * The platform operator's role.
+ *
+ * Granted SELECT on platform tables and NOTHING on any tenant table (0009), so
+ * an admin page that reaches for customer data fails at the driver rather than
+ * at a code review.
+ */
+const OPERATOR_ROLE = 'app_operator';
 
 function wrap(client: PoolClient): MigrationExecutor {
   return {
@@ -76,8 +84,25 @@ export class PostgresDatabase implements TransactionCapable {
     }
   }
 
+  /** Operator transaction: the platform's own role, no tenant grants at all. */
+  async operatorTransaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SET LOCAL ROLE ${OPERATOR_ROLE}`);
+      const result = await fn(wrap(client));
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   /**
-   * Operator transaction, running as the owner.
+   * Owner transaction, running as the owner.
    *
    * Only for the platform's own service credentials, which belong to no
    * tenant. Never read tenant data through this — RLS does not apply.

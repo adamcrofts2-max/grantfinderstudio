@@ -26,6 +26,8 @@ import { createPool, PostgresDatabase } from './postgres.js';
 interface Backend {
   tenant: TenantDatabase;
   admin: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
+  /** The platform operator: platform tables only, no tenant grants at all. */
+  operator: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -63,6 +65,7 @@ async function buildPostgres(url: string): Promise<Backend> {
   return {
     tenant: new TenantDatabase(database as TransactionCapable),
     admin: (fn) => database.adminTransaction(fn),
+    operator: (fn) => database.operatorTransaction(fn),
   };
 }
 
@@ -72,6 +75,7 @@ async function buildDevelopment(): Promise<Backend> {
   return {
     tenant: await dev.getDevDatabase(),
     admin: (fn) => dev.withAdmin(fn),
+    operator: (fn) => dev.withOperator(fn),
   };
 }
 
@@ -122,4 +126,30 @@ export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T
     );
   }
   return (await (cached() ?? cache(build()))).admin(fn);
+}
+
+/**
+ * Run a query as the platform operator.
+ *
+ * For the admin console, and for nothing else. `app_operator` holds SELECT on
+ * the platform's own tables — accounts, migrations, the shared catalogue, the
+ * sign-in limiter — and is granted NOTHING on any tenant table, so a console
+ * page that reaches for a customer's facts fails at the driver with
+ * "permission denied" rather than quietly succeeding.
+ *
+ * That is the point of it. `withAdmin` runs as the owner, which in development
+ * is a superuser that bypasses Row-Level Security entirely; a console built on
+ * withAdmin would be separated from customer data by nothing but the queries
+ * somebody remembered not to write.
+ *
+ * Same deadlock rule as withAdmin: never from inside a tenant transaction.
+ */
+export async function withOperator<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  if (inTenantTransaction()) {
+    throw new Error(
+      'withOperator was called inside withTenant. That deadlocks: it needs a ' +
+        'second connection while the first is still open.',
+    );
+  }
+  return (await (cached() ?? cache(build()))).operator(fn);
 }

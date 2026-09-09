@@ -131,6 +131,8 @@ access to at all. They are reached only through `withAdmin`.
 |---|---|---|
 | `DATABASE_URL` | Production | Must request SSL |
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
+| `ANTHROPIC_API_KEY` | No | Turns on reading guidance and drafting for everybody. Without it the product still works — see below |
+| `ADMIN_CLAIM_SECRET` | To use the console | At least 24 characters. Opens the one-time claim at `/admin/sign-in` |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
 
 ### Neon needs no setup
@@ -216,6 +218,65 @@ you have already set `DATABASE_URL` by hand. It exists to provision a new
 database from Vercel and inject its own variable, so against an existing one it
 just reports a name collision and asks for a prefix. Cancel it; the manually
 set variable is all that is needed.
+
+### The console, and claiming it
+
+The operator console lives at `/admin`. It is not part of the product: separate
+credentials, a separate cookie scoped to `/admin`, and a session that lasts
+eight hours rather than a customer's thirty days.
+
+**There is no sign-up.** An admin console with a registration form is a back
+door with a welcome mat, so the first admin is claimed once and the route closes
+permanently the moment it succeeds.
+
+To claim it:
+
+1. Generate a secret — `openssl rand -base64 32` — and set it as
+   `ADMIN_CLAIM_SECRET`.
+2. **Redeploy.** Variables added after a deployment do not reach the one already
+   running.
+3. Open `/admin/sign-in`. While no admin exists it offers the claim: your
+   address, that secret, and a password of at least 14 characters.
+4. Claim it. From then on the page offers sign-in only, and no route can create
+   another admin.
+
+Until `ADMIN_CLAIM_SECRET` is set the claim never opens, which is deliberate:
+without it a freshly deployed console is a race between you and whoever finds
+the URL first.
+
+#### What the console can and cannot see
+
+It reads the platform's own tables — accounts, the shared catalogue, the sign-in
+limiter, configuration — through a third database role, `app_operator`, which is
+granted **nothing at all** on any tenant table. A console page that asked for an
+organisation's facts or applications gets `permission denied` from Postgres.
+That is not a policy in the code; `src/db/operator-scope.test.ts` asserts it
+table by table, and a migration that granted the operator a tenant table would
+fail the build.
+
+So there are no per-organisation numbers on the console, and there cannot be.
+
+### Running without an Anthropic key
+
+The product is finishable end to end with no key at all, and the setup guide has
+no step that a missing key can block:
+
+- **Facts** — normally read out of documents you share. Without a key,
+  `/organisation` has a form to type them in directly; they are recorded as
+  "you told us" rather than as read from a document, and they count as
+  confirmed.
+- **Funds** — normally read from guidance you paste. Without a key,
+  `/opportunities/add` leads with a form: who is offering it, what it is called,
+  the deadline and the size. Eligibility for such a fund reads `unknown` rather
+  than being invented, and everything else works — the tracker, the timing, the
+  size check against what you are asking for.
+- **The shared catalogue** — an operator can add funds every organisation sees,
+  the same way, from `/admin/catalogue`. A deployment with an empty catalogue
+  opens on an empty list for every new account, so this is the fastest thing to
+  do after claiming the console.
+
+What a key adds is the reading: proposed eligibility rules shown beside the
+funder's own sentence, and drafted answers grounded in confirmed facts.
 
 ### First account on a new deployment
 

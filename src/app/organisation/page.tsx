@@ -1,7 +1,9 @@
 import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
+import { readSetupProgress } from '@/app/setup';
 import { loadFacts } from '@/db/workspace';
 
+import { AddFact } from './AddFact';
 import { FactList, type FactView } from './FactList';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +20,14 @@ export default async function OrganisationPage() {
   const organisationId = await requireOrganisationId();
   const database = await getDatabase();
   const facts = await database.withTenant(organisationId, (tx) => loadFacts(tx));
+
+  // Open the form when this is what somebody was sent here to do. A guide that
+  // says "tell us about yourself", links to #add-fact and lands you on a
+  // collapsed row has let go at the moment it was leading — the same failure
+  // the project form had on onboarding.
+  const progress = await readSetupProgress();
+  const nextIsFacts = progress?.next?.id === 'facts';
+  const nothingPending = facts.every((fact) => fact.confirmedBy !== null);
 
   const view: FactView[] = facts.map((fact) => ({
     id: fact.id,
@@ -37,12 +47,19 @@ export default async function OrganisationPage() {
           What we know about you
         </h1>
         <p className="page-sub">
-          Gathered from Companies House and the documents you have shared. Check each one — your
-          applications are written from these and nothing else.
+          Gathered from Companies House, the documents you have shared, and whatever you tell
+          us here. Check each one — your applications are written from these and nothing else.
         </p>
       </header>
 
       <FactList facts={view} />
+
+      <div style={{ marginTop: 'var(--s-5)' }}>
+        <AddFact
+          known={facts.map((fact) => fact.claim)}
+          open={nextIsFacts && nothingPending}
+        />
+      </div>
     </div>
   );
 }

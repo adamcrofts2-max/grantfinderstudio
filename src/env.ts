@@ -1,3 +1,5 @@
+import { claimSecretProblem } from './domain/auth/admin.js';
+
 /**
  * Environment configuration.
  *
@@ -13,6 +15,13 @@ export interface AppEnvironment {
   encryptionKey: string | null;
   /** Overridable for staging or contract tests. */
   companiesHouseBaseUrl: string | null;
+  /**
+   * The one-time secret that opens the first-admin claim.
+   *
+   * Absent means the claim never opens, which is the safe default: on a fresh
+   * deployment the alternative is racing strangers for your own console.
+   */
+  adminClaimSecret: string | null;
   isProduction: boolean;
 }
 
@@ -31,6 +40,7 @@ export function readEnvironment(
     databaseUrl: value('DATABASE_URL'),
     encryptionKey: value('APP_ENCRYPTION_KEY'),
     companiesHouseBaseUrl: value('COMPANIES_HOUSE_BASE_URL'),
+    adminClaimSecret: value('ADMIN_CLAIM_SECRET'),
     isProduction: source['NODE_ENV'] === 'production',
   };
 }
@@ -78,6 +88,15 @@ export function checkConfiguration(env: AppEnvironment): ConfigProblem[] {
         fix: 'Generate a new one with: openssl rand -base64 32',
       });
     }
+  }
+
+  const claimProblem = claimSecretProblem(env.adminClaimSecret);
+  if (claimProblem !== null) {
+    problems.push({
+      variable: 'ADMIN_CLAIM_SECRET',
+      problem: claimProblem,
+      fix: 'Generate one with: openssl rand -base64 32',
+    });
   }
 
   if (env.databaseUrl !== null && env.isProduction && !/sslmode=|ssl=true/u.test(env.databaseUrl)) {

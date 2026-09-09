@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
 import { Bricolage_Grotesque } from 'next/font/google';
 import './globals.css';
 import { readSession } from './session';
@@ -41,6 +42,13 @@ const NAV = [
 ];
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  // The console is not the product. It carries its own frame, and wrapping it
+  // in the customer's — a funding navigation, a setup guide, "Your next step"
+  // — would tell an operator they are somewhere they are not. The path comes
+  // from middleware, because a root layout is never told which page it wraps.
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  const isConsole = pathname === '/admin' || pathname.startsWith('/admin/');
+
   // The shell is for signed-in people. Every link in it goes somewhere that
   // requires a session, so showing it to a visitor offers a product they
   // cannot reach — and reads as a locked door rather than a front door.
@@ -56,13 +64,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Null means we could not tell, and then the menu is shown — hiding it from
   // somebody who has finished would be far worse than showing it to somebody
   // who has not.
-  const progress = await readSetupProgress();
+  const progress = isConsole ? null : await readSetupProgress();
   const stillSettingIn = progress !== null && !progress.complete;
 
   return (
     <html lang="en-GB" className={display.variable}>
       <body>
-        {session === null ? (
+        {isConsole || session === null ? (
           children
         ) : (
           <>

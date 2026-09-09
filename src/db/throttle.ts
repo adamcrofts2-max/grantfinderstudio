@@ -10,7 +10,15 @@ import { createHash } from 'node:crypto';
 import type { Queryable } from './client.js';
 import type { AttemptRecord } from '../domain/auth/throttle.js';
 
-export type Axis = 'address' | 'origin';
+/**
+ * Which limit a bucket belongs to.
+ *
+ * `admin-address` is its own axis rather than a reuse of `address` so the two
+ * sign-ins cannot interfere: a customer failing repeatedly must not lock the
+ * operator out of the console, and an attack on the console must not spend the
+ * customer's allowance either.
+ */
+export type Axis = 'address' | 'origin' | 'admin-address';
 
 /**
  * The key a bucket is stored under.

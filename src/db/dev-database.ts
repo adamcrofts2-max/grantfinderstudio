@@ -39,6 +39,8 @@ import { TenantDatabase, type Queryable, type QueryResult, type TransactionCapab
 
 /** The unprivileged role every tenant query runs as. Same name as production. */
 const TENANT_ROLE = 'app_user';
+/** The platform operator's role. No grants on any tenant table (0009). */
+const OPERATOR_ROLE = 'app_operator';
 
 // Also on globalThis, for the same reason as src/db/index.ts: separate
 // bundles must share one in-memory database or writes vanish.
@@ -165,4 +167,36 @@ export async function withAdmin<T>(fn: (tx: Queryable) => Promise<T>): Promise<T
   const db = slot()?.raw;
   if (!db) throw new Error('The database is not initialised.');
   return exclusive(() => fn(db as unknown as Queryable));
+}
+
+/**
+ * Run a query as the platform operator.
+ *
+ * Transaction-local role, exactly as production does it, and for the same
+ * reason it matters more here: PGlite connects as a superuser, and a superuser
+ * bypasses Row-Level Security whatever the policies say. Dropping into
+ * `app_operator` is what makes "an admin page cannot read tenant data" mean
+ * the same thing in development as it does in the deployment.
+ */
+export async function withOperator<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  await getDevDatabase();
+  const db = slot()?.raw;
+  if (!db) throw new Error('The database is not initialised.');
+  return exclusive(async () => {
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`SET LOCAL ROLE ${OPERATOR_ROLE}`);
+      const result = await fn({
+        async query<T2 = Record<string, unknown>>(sql: string, params?: unknown[]) {
+          const r = await db.query<T2>(sql, params as unknown[] | undefined);
+          return { rows: r.rows };
+        },
+      });
+      await db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      await db.exec('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  });
 }

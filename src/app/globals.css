@@ -971,50 +971,7 @@ summary:focus-visible {
   .shell-guided .nav-more { grid-area: more; }
 }
 
-/* ---------- Signed out -----------------------------------------------------
-   A centred panel rather than the app shell. Everything in the sidebar needs a
-   session, so offering it here would be a locked door dressed as a front
-   door. */
-
-.auth-shell {
-  min-height: 100vh; display: grid; place-items: center;
-  padding: var(--s-6) var(--s-4); background: var(--canvas);
-}
-.auth-panel {
-  width: 100%; max-width: 26rem;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-md);
-  padding: var(--s-6);
-}
-.auth-panel .page-title { font-size: var(--t-xl); }
-
-.nav-foot { margin-top: auto; padding-top: var(--s-4); }
-.nav-signout {
-  width: 100%; background: none; border: 0; cursor: pointer;
-  font: inherit; text-align: left;
-}
-
-/* ---------- Getting started ----------------------------------------------
-   The path through the product for an account that has not finished setting
-   up. It is the first thing anyone sees, so it carries the annotation type and
-   the accent, and it removes itself the moment it is finished. */
-
-.setup { border-color: var(--accent-line); }
-.setup-count {
-  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
-  font-size: var(--t-lg); font-weight: 800; color: var(--accent);
-  letter-spacing: -0.02em; flex: 0 0 auto;
-}
-
-.setup-bar {
-  height: 6px; border-radius: 3px; background: var(--c-100);
-  margin: var(--s-4) 0 var(--s-5); overflow: hidden;
-}
-.setup-bar-fill {
-  height: 100%; background: var(--accent); border-radius: 3px;
-  transform-origin: left center;
-  animation: viz-grow var(--motion-slow) var(--ease) both;
-}
+/* The folded list of all five, and the small numbered step inside it. */
 
 .setup-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-5); }
 
@@ -1033,20 +990,89 @@ summary:focus-visible {
   background: var(--positive-bg); color: var(--positive); border-color: var(--positive-line);
 }
 
-.setup-body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
-.setup-title {
-  margin: 0; font-size: var(--t-base); font-weight: 700;
-  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
-}
-.setup-step.is-done .setup-title { color: var(--ink-soft); font-weight: 600; }
 .setup-done-label { color: var(--positive); font-weight: 650; font-size: var(--t-sm); }
-.setup-why { margin: 0; color: var(--ink-soft); font-size: var(--t-sm); max-width: 44rem; }
-.setup-blocked { margin: 0; }
 
 @media (max-width: 640px) {
   .setup-step { grid-template-columns: 24px 1fr; gap: var(--s-3); }
   .setup-mark { width: 24px; height: 24px; }
 }
+/* ---------- The console ----------------------------------------------------
+   Deliberately plainer than the product. An operator is reading numbers, not
+   being persuaded of anything, and the visual distance is itself a signal:
+   nobody should be able to mistake this page for the customer's. */
+
+.admin {
+  max-width: 62rem; margin: 0 auto; padding: var(--s-6) var(--s-5) var(--s-8);
+}
+.admin-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--s-4); flex-wrap: wrap;
+}
+.admin-title {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-xl); font-weight: 800; letter-spacing: -0.02em;
+  margin: var(--s-2) 0 0;
+}
+.admin-who {
+  display: block; color: var(--ink-faint); font-size: var(--t-sm);
+  margin-bottom: var(--s-2); text-align: right;
+}
+
+.admin-tabs {
+  display: flex; gap: var(--s-2); flex-wrap: wrap;
+  margin-top: var(--s-5); border-bottom: 1px solid var(--line);
+}
+.admin-tab {
+  padding: var(--s-3) var(--s-4); color: var(--ink-soft);
+  text-decoration: none; font-weight: 600; font-size: var(--t-sm);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.admin-tab:hover { color: var(--ink); }
+.admin-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* The standing reminder of what this console cannot reach. Not decoration: an
+   operator who believes they are looking at customer data will eventually act
+   as though they were. */
+.admin-boundary {
+  margin: var(--s-5) 0 0; padding: var(--s-4);
+  border: 1px dashed var(--line); border-radius: var(--r-md);
+  color: var(--ink-faint); font-size: var(--t-sm); line-height: 1.6;
+}
+
+.admin-readings {
+  margin: var(--s-4) 0 0; display: grid; gap: var(--s-5);
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+.admin-reading dt {
+  color: var(--ink-faint); font-size: var(--t-xs); font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.admin-reading dd { margin: var(--s-2) 0 0; }
+.admin-value {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-lg); font-weight: 800; letter-spacing: -0.02em;
+}
+.admin-good { color: var(--positive); }
+.admin-caution { color: var(--caution); }
+.admin-plain { color: var(--ink); }
+.admin-reading .hint { margin-top: var(--s-2); }
+
+.admin-list { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
+.admin-list-item {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--s-4); padding: var(--s-4) 0; border-top: 1px solid var(--line);
+}
+.admin-list-item:first-child { border-top: 0; }
+.admin-list-title { margin: 0; font-weight: 650; }
+
+.btn-small { padding: 0.35rem var(--s-3); font-size: var(--t-sm); }
+
+@media (max-width: 640px) {
+  .admin { padding: var(--s-5) var(--s-4) var(--s-7); }
+  .admin-head { flex-direction: column; }
+  .admin-who { text-align: left; }
+}
+
 /* ---------- Reduced motion ------------------------------------------------
    Last in the file so it wins on order, as the mobile block above does. */
 @media (prefers-reduced-motion: reduce) {

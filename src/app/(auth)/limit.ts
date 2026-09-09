@@ -88,6 +88,35 @@ export async function checkSignInLimit(email: string): Promise<LimitVerdict> {
   };
 }
 
+/**
+ * The console's sign-in limit.
+ *
+ * Both axes, as with a customer's, but on the admin address bucket and the
+ * tighter admin policy. The origin axis is shared deliberately: a run of
+ * failures from one place is worth counting whichever door it is knocking on.
+ */
+export async function checkAdminSignInLimit(email: string): Promise<LimitVerdict> {
+  const [byAddress, byOrigin] = await Promise.all([
+    verdictFor('admin-address', email, THROTTLE.admin),
+    verdictFor('origin', await origin(), THROTTLE.origin),
+  ]);
+  if (byAddress.allowed && byOrigin.allowed) return { allowed: true, retryAfterSeconds: 0 };
+  return {
+    allowed: false,
+    retryAfterSeconds: Math.max(byAddress.retryAfterSeconds, byOrigin.retryAfterSeconds),
+  };
+}
+
+export async function recordFailedAdminSignIn(email: string): Promise<void> {
+  await bump('admin-address', email, THROTTLE.admin);
+  await bump('origin', await origin(), THROTTLE.origin);
+  await sweepOccasionally();
+}
+
+export async function clearAdminSignInLimit(email: string): Promise<void> {
+  await withAdmin((tx) => clearAttempt(tx, attemptKey('admin-address', email)));
+}
+
 /** The origin axis alone, for sign-up, where there is no address to defend. */
 export async function checkSignUpLimit(): Promise<LimitVerdict> {
   return verdictFor('origin', await origin(), THROTTLE.origin);
