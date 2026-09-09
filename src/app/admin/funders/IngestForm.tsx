@@ -6,7 +6,7 @@ import { JURISDICTIONS } from '@/domain/types';
 
 import { selectKey, valueOf } from '@/app/formValues';
 
-import { ingestFunderAction } from './actions';
+import { ingestFunderAction, probeFunderAction } from './actions';
 import { EMPTY_INGEST } from './state';
 
 const JURISDICTION_LABEL: Record<string, string> = {
@@ -31,8 +31,14 @@ const JURISDICTION_LABEL: Record<string, string> = {
  */
 export function IngestForm() {
   const [state, submit, running] = useActionState(ingestFunderAction, EMPTY_INGEST);
-  const error = (field: string): string | undefined => state.errors[field];
-  const was = (field: string): string => valueOf(state.values, field);
+  // A second action on the same form: the dry run needs only the id, so it can
+  // be pressed before the licence fields are filled in.
+  const [probe, runProbe, probing] = useActionState(probeFunderAction, EMPTY_INGEST);
+  const shown = probe.message !== '' && state.message === '' ? probe : state;
+  const error = (field: string): string | undefined =>
+    state.errors[field] ?? probe.errors[field];
+  const was = (field: string): string =>
+    valueOf(state.values, field) || valueOf(probe.values, field);
 
   const problem = (field: string) =>
     error(field) === undefined ? null : (
@@ -140,10 +146,24 @@ export function IngestForm() {
         </div>
       </fieldset>
 
-      <button className="btn btn-primary" type="submit" disabled={running}
-        style={{ marginTop: 'var(--s-5)' }}>
-        {running ? 'Fetching…' : 'Load this funder’s grants'}
-      </button>
+      <div className="row" style={{ marginTop: 'var(--s-5)' }}>
+        <button className="btn btn-primary" type="submit" disabled={running || probing}>
+          {running ? 'Fetching…' : 'Load this funder’s grants'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          type="submit"
+          formAction={runProbe}
+          /* The dry run needs only the organisation id, but the licence fields
+             are `required` — so without this the browser silently refuses to
+             submit and the button appears to do nothing at all. The action
+             validates what it needs for itself. */
+          formNoValidate
+          disabled={running || probing}
+        >
+          {probing ? 'Checking…' : 'Check first — writes nothing'}
+        </button>
+      </div>
       {running ? (
         <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
           Two requests a second, so a large publisher takes a while. Nothing is written until
@@ -151,18 +171,18 @@ export function IngestForm() {
         </p>
       ) : null}
 
-      {state.message === '' ? null : (
+      {shown.message === '' ? null : (
         <div
-          className={`notice ${state.ok ? 'notice-neutral' : 'notice-caution'}`}
+          className={`notice ${shown.ok ? 'notice-neutral' : 'notice-caution'}`}
           style={{ marginTop: 'var(--s-4)' }}
-          role={state.ok ? 'status' : 'alert'}
+          role={shown.ok ? 'status' : 'alert'}
         >
-          {state.ok ? null : <span aria-hidden="true">⚠</span>}
+          {shown.ok ? null : <span aria-hidden="true">⚠</span>}
           <span>
-            {state.message}
-            {state.detail.length > 0 ? (
+            {shown.message}
+            {shown.detail.length > 0 ? (
               <ul style={{ margin: 'var(--s-2) 0 0', paddingLeft: '1.1rem' }}>
-                {state.detail.map((line) => (
+                {shown.detail.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>

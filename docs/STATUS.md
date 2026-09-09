@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,121 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,129 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1169,3 +1169,35 @@ both on the wire in clear.
 360Giving having no key at all is the answer to the original question: it
 belongs under service settings, not under keys, and the console says so on the
 screen so nobody goes looking for a token that does not exist.
+
+## Making the first ingest safe to attempt
+
+The first real ingest on a new deployment was a leap: type an organisation id
+and a licence, press the button, and if it failed you could not tell whether it
+was the id, the network, the publisher, or a bug in us.
+
+`probeFunder` fetches one page and writes nothing. It reports how many grants
+the publisher says they have, how many of them we can read, why we rejected any
+we could not, and **one example award** — because "£9,000 to A Recipient CIC on
+2025-06-01" is how an operator recognises that they have the right funder,
+which no amount of checking the id can tell them.
+
+It needs no licence, so it can be pressed before those fields are filled in,
+and it can be run as many times as you like.
+
+**A bug the browser caught and nothing else would have.** The dry run button
+sits in the same form as the ingest, and that form's licence fields are
+`required` — so the browser silently refused to submit and the button appeared
+to do nothing at all. No error, no network request, no log line. `formNoValidate`
+on that one button fixes it; the action validates what it actually needs.
+
+The failure path reads well, which was the point: pointing it at an unreachable
+API returns *"https://api.threesixtygiving.org/api/v1/org/GB-CHC-…/grants_made/
+returned 403 Forbidden. Nothing has been written."* — the URL, the status, and
+the reassurance, in one line.
+
+`/api/health` now also reports migration state: applied, expected, and any
+pending by name. That is the thing you most want to know right after a deploy
+carrying a schema change, and nothing reported it. Migrations run on the first
+request that touches data, so a deploy that cannot migrate surfaces as an
+unrelated-looking error on whichever page somebody opens first.

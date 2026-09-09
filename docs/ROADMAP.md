@@ -296,8 +296,12 @@ this cheque before", where no source answers "what is open".
       operator console
 - [x] Re-ingest replaces rather than upserts, so a withdrawn grant actually
       goes; scoped to one funder so it cannot touch another's history
+- [x] A dry run that fetches one page and writes nothing, so a first ingest
+      can separate a wrong id from an unreachable API from a bug
+- [x] `/api/health` reports migration state — applied, expected, and pending
+      by name
 - [ ] Verify against the live API (egress-blocked here; must be run from the
-      deployment or a workstation)
+      deployment or a workstation). The dry run is the way in
 - [ ] Resolve licence and publisher automatically from 360Giving's own
       registry metadata rather than asking the operator to copy it
 - [ ] Quartiles need the grants themselves — the org aggregate gives mean, min,

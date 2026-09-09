@@ -7,6 +7,7 @@ import { deleteFunder } from '@/db/awards';
 import { IngestionError } from '@/ingestion/threesixtygiving/connector';
 import { FetchJsonClient } from '@/ingestion/threesixtygiving/http';
 import { ingestFunder, type IngestRequest } from '@/ingestion/threesixtygiving/ingest';
+import { probeFunder } from '@/ingestion/threesixtygiving/probe';
 import { readEffectiveSettings } from '@/settings/store';
 import {
   THREESIXTYGIVING_BASE_URL_KEY,
@@ -160,4 +161,80 @@ export async function removeFunderAction(formData: FormData): Promise<void> {
   revalidatePath('/admin/funders');
   revalidatePath('/funders');
   revalidatePath('/admin');
+}
+
+/**
+ * Check the connection before committing to an ingest.
+ *
+ * One page, nothing written, no licence required. It answers the three
+ * questions a first ingest cannot separate on its own: can we reach the API,
+ * is this organisation id right, and is this the funder you meant.
+ */
+export async function probeFunderAction(
+  _previous: IngestFormState,
+  formData: FormData,
+): Promise<IngestFormState> {
+  await requireAdmin();
+  const values = readValues(formData, INGEST_FIELDS);
+  const orgId = String(formData.get('orgId') ?? '').trim();
+
+  if (orgId === '') {
+    return {
+      ok: false,
+      message: 'Enter the organisation id first.',
+      detail: [],
+      errors: { orgId: 'The 360Giving organisation id, e.g. GB-CHC-1164883.' },
+      values,
+    };
+  }
+
+  try {
+    const settings = await withAdmin((tx) => readEffectiveSettings(tx));
+    const baseUrl =
+      settings.find((s) => s.definition.key === THREESIXTYGIVING_BASE_URL_KEY)?.value ?? '';
+    const result = await probeFunder(new FetchJsonClient(), orgId, baseUrl);
+
+    const detail: string[] = [];
+    detail.push(
+      result.totalReported === null
+        ? 'The publisher did not say how many grants they have in total.'
+        : `${result.totalReported} grants published in total.`,
+    );
+    detail.push(
+      `On the first page: ${result.usableOnFirstPage} usable${
+        result.rejectedOnFirstPage > 0 ? `, ${result.rejectedOnFirstPage} not` : ''
+      }.`,
+    );
+    detail.push(...result.rejectionReasons);
+    if (result.sample !== null) {
+      const to = result.sample.recipientName ?? 'an unnamed recipient';
+      detail.push(
+        `For example: £${result.sample.amountGbp.toLocaleString('en-GB')} to ${to} on ${result.sample.awardedOn}. If that is not this funder, the id is wrong.`,
+      );
+    }
+    if (result.hasMore) detail.push('There are more pages; a full ingest will follow them.');
+
+    return {
+      ok: true,
+      message:
+        result.usableOnFirstPage === 0 && result.totalReported === 0
+          ? 'Reached the API. This publisher has nothing published under that id.'
+          : 'Reached the API. Nothing has been written.',
+      detail,
+      errors: {},
+      values,
+    };
+  } catch (error) {
+    console.error('[grantfinderstudio] 360Giving probe failed:', error);
+    return {
+      ok: false,
+      message:
+        error instanceof IngestionError
+          ? error.message
+          : 'Could not reach 360Giving. Nothing has been written.',
+      detail: [],
+      errors: {},
+      values,
+    };
+  }
 }

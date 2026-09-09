@@ -1,7 +1,8 @@
 import { checkConfiguration, readEnvironment } from '@/env';
-import { getDatabase } from '@/db';
+import { getDatabase, withAdmin } from '@/db';
 import { checkIsolation } from '@/db/isolation';
 import { diagnose } from '@/db/diagnose';
+import { MIGRATIONS } from '@/db/migrate';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,38 @@ export async function GET(): Promise<Response> {
     }
   }
 
+  /**
+   * Which migrations have actually run.
+   *
+   * The thing you most want to know right after a deploy that carries a schema
+   * change, and the thing nothing reported. Migrations apply themselves on the
+   * first request that touches data, so "deployed" and "migrated" are not the
+   * same event — and a deploy that cannot migrate fails in a way that looks
+   * like an unrelated bug in whatever page you happened to open.
+   */
+  let migrations: { applied: number; expected: number; pending: string[] } | null = null;
+  if (database === 'ok' || database === 'in-memory') {
+    try {
+      const applied = await withAdmin(async (tx) => {
+        const { rows } = await tx.query<{ name: string }>('SELECT name FROM schema_migrations');
+        return new Set(rows.map((row) => row.name));
+      });
+      const pending = MIGRATIONS.filter((name) => !applied.has(name));
+      migrations = { applied: applied.size, expected: MIGRATIONS.length, pending: [...pending] };
+      for (const name of pending) {
+        problems.push({
+          variable: 'schema_migrations',
+          problem: `${name} has not been applied.`,
+          fix: 'It runs on the first request that touches data. If it stays pending, the database user cannot apply it — check the logs.',
+        });
+      }
+    } catch {
+      // No table yet is the normal state before the first request. Not a
+      // problem to report, because the next request will create it.
+      migrations = null;
+    }
+  }
+
   const healthy = problems.length === 0 && database !== 'unreachable';
 
   return Response.json(
@@ -67,6 +100,7 @@ export async function GET(): Promise<Response> {
       status: healthy ? 'ok' : 'attention',
       database,
       isolation,
+      migrations,
       persistent: env.databaseUrl !== null,
       problems,
     },

@@ -246,6 +246,29 @@ Until `ADMIN_CLAIM_SECRET` is set the claim never opens, which is deliberate:
 without it a freshly deployed console is a race between you and whoever finds
 the URL first.
 
+#### Loading the first funder
+
+1. Redeploy, then open `/api/health`. It now reports **migrations**: how many
+   have run and which are pending. Migrations apply themselves on the first
+   request that touches data, so "deployed" and "migrated" are not the same
+   event — and a deploy that cannot migrate fails in a way that looks like an
+   unrelated bug on whatever page you happened to open.
+2. Claim the console at `/admin/sign-in` if you have not already.
+3. Find the funder on the 360Giving registry and note their **organisation
+   identifier** (`GB-CHC-…`, `GB-COH-…`, `360G-…`) and their **licence** and
+   **attribution**, from the publisher's own terms.
+4. On **Funders**, type the id and press **Check first — writes nothing**. This
+   fetches one page and reports how many grants the publisher has, how many of
+   them we can read, and one example award. If that award is not the funder you
+   meant, the id is wrong. Nothing is stored either way, so run it as often as
+   you like.
+5. Fill in the licence fields and press **Load this funder's grants**.
+6. A funder needs at least five published grants before the product will
+   describe them at all; below that they show as "too little published to say".
+
+The dry run exists because a first ingest cannot otherwise tell you whether a
+failure was the id, the network, the publisher or a bug in us.
+
 #### Where API keys and service settings live
 
 **Both are in the console, under Services (`/admin/settings`), and nowhere
