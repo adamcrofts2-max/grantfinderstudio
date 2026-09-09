@@ -90,6 +90,12 @@ export default async function AdminSettingsPage() {
           set here beats one from the hosting environment, because this takes effect now and
           that needs a redeploy. Each says which is in force.
         </p>
+        <p className="card-sub" style={{ marginTop: 'var(--s-3)' }}>
+          You will not find a base URL here for a service that needs a key. A key is encrypted
+          and never shown again so that it is write-only — and an editable base URL would undo
+          that, by letting somebody point the service at a host they control and read the
+          key off the next request. Those stay environment variables, which need a redeploy.
+        </p>
 
         {[...byService.entries()].map(([service, group]) => (
           <div className="setting-group" key={service}>

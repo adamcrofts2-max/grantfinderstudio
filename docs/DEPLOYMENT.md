@@ -133,7 +133,7 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `ANTHROPIC_API_KEY` | No | Turns on reading guidance and drafting for everybody. Without it the product still works — see below |
 | `ADMIN_CLAIM_SECRET` | To use the console | At least 24 characters. Opens the one-time claim at `/admin/sign-in` |
-| `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at their sandbox. Overridable live under Services |
+| `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at their sandbox. **Environment only** — see below |
 | `THREESIXTYGIVING_BASE_URL` | No | Points ingestion at a mirror. Overridable live under Services |
 | `THREESIXTYGIVING_MAX_PAGES` | No | Pages per ingest, default 50. Overridable live under Services |
 
@@ -285,6 +285,15 @@ Two kinds of thing, handled differently:
   environment, because the console takes effect now and an environment variable
   needs a redeploy; each setting shows which is in force. Clear the box and
   save to fall back.
+
+**A base URL for a keyed service is not editable from the console.** A key is
+encrypted and never shown again so that it is write-only: nobody, admin
+included, can read it back. An editable base URL would quietly undo that —
+point Companies House at a host you control, wait for the next lookup, and the
+`Authorization: Basic <key>` header arrives on your server. So
+`COMPANIES_HOUSE_BASE_URL` stays an environment variable, which needs a
+redeploy and leaves a trace in the hosting platform. A test enforces the rule
+so it survives somebody adding a setting without reading this.
 
 **360Giving needs no key.** It is an open, unauthenticated API — no token, no
 registration — so it appears under service settings and not under keys.

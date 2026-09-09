@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,138 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,139 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1274,3 +1274,51 @@ what decides both — and the paste box is open and ready.
 their reasoning, "too little published to say" for a funder with fewer than
 five grants, and a standing "what this is and is not" that says plainly it
 cannot tell you whether a funder is open right now.
+
+## A hole I opened the same day, and the rule that closes it
+
+Reviewing the settings work found that I had introduced a
+credential-exfiltration path while building it.
+
+`companiesHouse.baseUrl` was registered as a console-editable setting. The
+Companies House client sends `Authorization: Basic <key>` to whatever base URL
+it is given. So an admin could point the service at a host they control, wait
+for the next lookup, and read the key off the request — **a key that is
+encrypted at rest and masked afterwards precisely so that nobody, admin
+included, can read it back.** Write-only, undone by redirect.
+
+It happened to be inert — nothing read that setting yet, only the environment
+variable — which is its own smaller problem: the console showed "Set here" for
+a value that changed nothing.
+
+The fix is the rule rather than the instance:
+
+> A base URL for a service whose requests carry a secret does not belong in the
+> console.
+
+`COMPANIES_HOUSE_BASE_URL` goes back to being environment-only, which needs a
+redeploy and leaves a trace in the hosting platform. 360Giving is the opposite
+case and stays: it is unauthenticated, so a redirected request carries nothing
+worth stealing.
+
+The rule is a test, not a comment — `SETTINGS` is asserted to contain no `url`
+setting for a service in `KEYED_SERVICES`, so it survives somebody adding an
+entry without reading the reasoning. And it is scoped to what is actually
+dangerous: a timeout or a page cap for a keyed service would be fine, because
+only the URL decides who receives the header.
+
+### The rest of the review
+
+Checked and clean: every console action calls `requireAdmin` except sign-in,
+claim and sign-out, which must be reachable without a session; the API-key form
+does not echo the key back to the client, unlike the five forms that now echo
+their values; the 360Giving organisation id is `encodeURIComponent`-escaped
+into the path; pagination links are origin-checked and https-only; publisher
+text is stripped of control characters and length-capped at the boundary,
+before it can reach a model.
+
+## Keyboard focus
+
+Walked the tab order across seven screens. Every focusable element has a
+visible indicator — the only three without are Next's own dev-mode overlay,
+off-screen. The folded navigation is reachable by keyboard and opens on Enter.

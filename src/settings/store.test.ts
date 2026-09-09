@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { readEffectiveSettings, readSetting, saveSetting, SettingError } from './store.js';
 import {
+  SETTINGS,
   THREESIXTYGIVING_BASE_URL_KEY,
   THREESIXTYGIVING_MAX_PAGES_KEY,
 } from './registry.js';
@@ -97,7 +98,7 @@ describe('saving a setting', () => {
 describe('reading settings', () => {
   it('returns every registered setting, stored or not', async () => {
     const all = await readEffectiveSettings(tx(), {});
-    expect(all.length).toBeGreaterThanOrEqual(3);
+    expect(all.length).toBe(SETTINGS.length);
     expect(all.every((s) => s.value !== '')).toBe(true);
   });
 });

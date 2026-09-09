@@ -426,7 +426,12 @@ annotation inside the working screens.**
 - [x] Fix an invalid `<dl>` on the console overview
 - [ ] Run the axe sweep in CI. It needs a dev server and a browser, so it is a
       separate step from `npm test` rather than part of it
-- [ ] Security review
+- [x] Security review of the console, settings and ingestion work. Found and
+      fixed a credential-exfiltration path I had introduced the same day: an
+      editable Companies House base URL would have let an admin redirect the
+      key off a request, defeating the encryption that makes it write-only
+- [x] Keyboard focus visibility across seven screens
+- [ ] Security review of the older surface (documents, applications, export)
 - [ ] AI evaluation suite
 - [ ] Performance
 

@@ -37,7 +37,26 @@ export interface SettingDefinition {
 
 export const THREESIXTYGIVING_BASE_URL_KEY = 'threesixtygiving.baseUrl';
 export const THREESIXTYGIVING_MAX_PAGES_KEY = 'threesixtygiving.maxPages';
-export const COMPANIES_HOUSE_BASE_URL_KEY = 'companiesHouse.baseUrl';
+
+/**
+ * THE RULE: a base URL for a service whose requests carry a secret does not
+ * belong here.
+ *
+ * A key is encrypted at rest and masked afterwards precisely so that it is
+ * write-only — nobody, admin included, can read it back. A console-editable
+ * base URL quietly undoes that: point Companies House at a host you control,
+ * wait for the next lookup, and the `Authorization: Basic <key>` header
+ * arrives on your server. The key becomes readable by redirect.
+ *
+ * So `COMPANIES_HOUSE_BASE_URL` stays an environment variable, which needs a
+ * redeploy and leaves a trace in the hosting platform. 360Giving is the
+ * opposite case and is fine here: it is unauthenticated, so a redirected
+ * request carries nothing worth stealing, and its pagination links are checked
+ * against whatever origin is configured either way.
+ *
+ * `noUrlSettingForKeyedServices` in the tests enforces this, so the rule
+ * survives somebody adding an entry without reading this comment.
+ */
 
 export const SETTINGS: readonly SettingDefinition[] = [
   {
@@ -60,16 +79,16 @@ export const SETTINGS: readonly SettingDefinition[] = [
     min: 1,
     max: 500,
   },
-  {
-    key: COMPANIES_HOUSE_BASE_URL_KEY,
-    service: 'companies_house',
-    label: 'API base URL',
-    help: 'The Companies House REST API. Change it only to point at their sandbox.',
-    kind: 'url',
-    fallback: 'https://api.company-information.service.gov.uk',
-    envVar: 'COMPANIES_HOUSE_BASE_URL',
-  },
 ] as const;
+
+/**
+ * Services the platform holds a credential for. Kept here rather than imported
+ * from `secrets/store` so this module stays pure and dependency-free.
+ */
+export const KEYED_SERVICES: readonly SettingDefinition['service'][] = [
+  'anthropic',
+  'companies_house',
+];
 
 export function settingByKey(key: string): SettingDefinition | null {
   return SETTINGS.find((setting) => setting.key === key) ?? null;

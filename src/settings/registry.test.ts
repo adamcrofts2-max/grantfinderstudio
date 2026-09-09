@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  COMPANIES_HOUSE_BASE_URL_KEY,
+  KEYED_SERVICES,
   SETTINGS,
+  type SettingDefinition,
+  type SettingKind,
   THREESIXTYGIVING_BASE_URL_KEY,
   THREESIXTYGIVING_MAX_PAGES_KEY,
   effectiveSetting,
@@ -105,9 +107,30 @@ describe('which value is in force', () => {
   });
 });
 
-describe('Companies House', () => {
-  it('keeps the environment variable the deployment already documents', () => {
-    const ch = settingByKey(COMPANIES_HOUSE_BASE_URL_KEY)!;
-    expect(ch.envVar).toBe('COMPANIES_HOUSE_BASE_URL');
+/** The rule, as a function, so both cases below test the same thing. */
+const offending = (setting: {
+  kind: SettingKind;
+  service: SettingDefinition['service'];
+}): boolean => setting.kind === 'url' && KEYED_SERVICES.includes(setting.service);
+
+describe('the rule about keyed services', () => {
+  it('registers no base URL for a service whose requests carry a secret', () => {
+    // A key is encrypted and masked so it is write-only. A console-editable
+    // base URL undoes that: point the service at a host you control, wait for
+    // the next request, and the Authorization header arrives on your server.
+    // The key becomes readable by redirect, by somebody who could not read it
+    // any other way.
+    const offenders = SETTINGS.filter(
+      (setting) => setting.kind === 'url' && KEYED_SERVICES.includes(setting.service),
+    );
+    expect(offenders.map((s) => s.key)).toEqual([]);
+  });
+
+  it('is about where a request GOES, not about keyed services in general', () => {
+    // A timeout or a page cap for a keyed service would be fine; only the URL
+    // is dangerous, because only the URL decides who receives the header.
+    expect(offending({ kind: 'integer', service: 'anthropic' })).toBe(false);
+    expect(offending({ kind: 'url', service: 'anthropic' })).toBe(true);
+    expect(offending({ kind: 'url', service: 'threesixtygiving' })).toBe(false);
   });
 });
