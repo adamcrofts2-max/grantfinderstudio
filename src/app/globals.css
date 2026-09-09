@@ -384,6 +384,17 @@ a:hover { color: var(--accent-hover); }
 .btn-secondary:hover { background: var(--surface-sunken); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* A control that carries a real action but should not compete with the
+   primary one beside it. A button element, so it is still a button to a
+   screen reader and to the keyboard. */
+.link-quiet {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--t-sm); font-weight: 550;
+  color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px;
+}
+.link-quiet:hover { color: var(--ink); }
+.link-quiet:disabled { opacity: 0.55; cursor: not-allowed; }
+
 /* ---------- Status ------------------------------------------------------- */
 
 .badge {
@@ -482,10 +493,27 @@ a:hover { color: var(--accent-hover); }
 /* ---------- Facts and the application workspace -------------------------- */
 
 .facts { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
-.fact {
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  padding: var(--s-4); margin-bottom: var(--s-3);
+
+/* A fact is a row, not a card. Nine cards stacked on a phone is a wall; the
+   job is one decision repeated, so the row gives that decision one button and
+   demotes the rest. */
+.fact { border-top: 1px solid var(--line); padding: var(--s-3) 0; }
+.fact:first-child { border-top: 0; padding-top: var(--s-1); }
+.fact-main {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: var(--s-2) var(--s-4);
 }
+.fact-body { min-width: 0; flex: 1 1 16rem; }
+.fact-do { display: flex; align-items: center; gap: var(--s-3); flex: 0 0 auto; }
+.fact-done {
+  flex: 0 0 auto; color: var(--positive);
+  font-size: var(--t-sm); font-weight: 650; white-space: nowrap;
+}
+.fact-edit {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--s-2) var(--s-3); margin-top: var(--s-3);
+}
+.fact-edit .input { flex: 1 1 14rem; min-width: 0; }
 .fact-claim {
   font-size: var(--t-xs); font-weight: 650; letter-spacing: .05em;
   text-transform: uppercase; color: var(--ink-faint);

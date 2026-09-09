@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-09
 
 ## What exists
 
-**1,139 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,154 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1322,3 +1322,89 @@ before it can reach a model.
 Walked the tab order across seven screens. Every focusable element has a
 visible indicator — the only three without are Next's own dev-mode overlay,
 off-screen. The folded navigation is reachable by keyboard and opens on Enter.
+
+
+## Checking nine facts (2026-09-09)
+
+`/organisation` is where the setup guide sends people for step 3, and it was
+the heaviest screen in the product: nine facts, each a bordered card, each
+carrying two equal-weight buttons. 3,845px of scrolling at 390px wide, for a
+job that is one decision repeated nine times.
+
+What changed, in `FactList.tsx` and the `.fact` rules:
+
+- **A fact is a row, not a card.** A 1px top rule between rows instead of a
+  border, radius and padding around each. On a wide screen the fact's value and
+  its button sit on one line; on a phone the button wraps beneath.
+- **One button per fact.** "That's right" stays primary. "Correct it" becomes
+  `.link-quiet` — still a `<button>`, so it is still a button to the keyboard
+  and to a screen reader, but no longer a second bordered control competing
+  with the first. Confirming is the common case; correcting is not.
+- **The "Needs checking" badge is gone from every unconfirmed row.** The
+  section heading already counts them ("9 to check") and the button already
+  says what is being asked. Nine badges saying the same thing nine times is
+  noise, and it was noise in the caution colour.
+- **A confirmed row shows "✓ Confirmed"** in its place, which is also what the
+  row becomes the moment somebody confirms it, before the page revalidates.
+  Without it a just-confirmed fact would go blank.
+- The correction form now wraps instead of forcing input, Save and Cancel onto
+  one line at 390px.
+
+2,614px, down 32%. Nothing about the provenance was removed: the source, the
+confidence when it is not high, and the quoted span all stay on every row. The
+one thing deliberately NOT added is a "confirm all" control — the product's
+whole claim is that a person checked each fact, and a button that confirms nine
+at once makes that claim false.
+
+## The roster (2026-09-09)
+
+`admin_accounts.disabled_at` has existed since migration 0009, and
+`loadAdminSession` has honoured it since the day it was written — a disabled
+admin's live session stops working at once rather than at expiry. Nothing ever
+set the column. Revocation existed on paper: taking somebody's console access
+away meant an UPDATE typed against production.
+
+`/admin/admins` now does three things, and they only make sense together —
+revoking an admin is meaningless while there can only ever be one, since the
+claim route opens only on an empty table.
+
+**Add an admin.** Email and a first password, set by the admin adding them and
+handed over directly. No invitation email, because an emailed console password
+is a console password sitting in an inbox. `ON CONFLICT (lower(email)) DO
+NOTHING` rather than a prior lookup: two submissions of the same address
+arriving together would both pass a check. A taken address says so, and says to
+bring the stood-down account back rather than create a second one.
+
+**Stand down / bring back.** `disableAdmin` writes `disabled_at` and deletes
+every session that admin holds, in one call. The delete is not what makes
+revocation immediate — the session join already refuses a disabled account —
+it is what stops the rows outliving the access they represent. Two refusals,
+both pure and both tested in `domain/auth/admin.ts`:
+
+- Nobody may stand THEMSELVES down. Their own session stops working the moment
+  the row is written, so the undo is not reachable from where they are. Somebody
+  leaving asks the other admin, which also leaves a trace of who decided it.
+- The LAST enabled admin may not be stood down. With the claim route closed for
+  the life of the deployment, that would not be an administrative act — it
+  would be the end of the console.
+
+**Change your password.** The current one is required even though the session
+already proves who you are: a console left open on an unlocked laptop should
+not be a way to lock its owner out of it. Every other session for the account
+is deleted afterwards and this browser's is kept — the usual reason to change a
+console password is that somebody else may have had it.
+
+### Two things worth remembering from building it
+
+The page reads through `withAdmin`, not `withOperator` — the only console page
+that does. `admin_accounts` is granted to no role at all, because a role able to
+read password hashes for the sake of listing email addresses is a worse trade
+than raising privilege for one query.
+
+And a bug the browser found that the types could not: standing an admin down
+and then bringing them back left the row captioned "Stood down. Every session
+they held has been deleted." Two `useActionState` hooks each held a result for
+the same row, and the code checked one before the other rather than asking
+which was newer. Every outcome now carries the millisecond it was produced and
+the row shows the latest. A stale success message is a lie about what the
+database currently says.

@@ -109,3 +109,49 @@ export function claimSecretProblem(secret: string | null): string | null {
   }
   return null;
 }
+
+export interface RosterChange {
+  /** The admin asking for the change. */
+  actorId: string;
+  /** The admin the change is aimed at. */
+  targetId: string;
+  /** Whether that admin is already stood down. */
+  targetDisabled: boolean;
+  /** How many admins can currently sign in, the target included if enabled. */
+  enabledAdmins: number;
+}
+
+/**
+ * Why an admin may not be stood down, or null if they may.
+ *
+ * Two refusals, and both exist to stop the console locking itself.
+ *
+ * The LAST enabled admin cannot be stood down, because the claim route is open
+ * only while the table is empty (see `claimAvailability`). Disabling the only
+ * admin would therefore not be a reversible administrative act; it would end
+ * access to the console for the life of the deployment, recoverable only with
+ * a hand-written UPDATE against production. A confirmation dialog is not
+ * enough for a mistake that expensive.
+ *
+ * And nobody may stand THEMSELVES down. Revocation is something done to an
+ * account by somebody who still holds the console; a self-revocation is a
+ * one-click lockout with no undo the person can reach, since their own session
+ * stops working the moment the row is written. Somebody leaving asks the other
+ * admin, which is also the only version that leaves a trace of who decided it.
+ */
+export function standDownRefusal(change: RosterChange): string | null {
+  if (change.targetDisabled) return 'That admin has already been stood down.';
+  if (change.actorId === change.targetId) {
+    return 'You cannot stand yourself down. Another admin has to do it, so that the console is never closed by a single click.';
+  }
+  if (change.enabledAdmins <= 1) {
+    return 'This is the last admin who can sign in. Add another before standing this one down — with none left, the console cannot be opened again.';
+  }
+  return null;
+}
+
+/** Why an admin may not be brought back, or null if they may. */
+export function restoreRefusal(change: Pick<RosterChange, 'targetDisabled'>): string | null {
+  if (!change.targetDisabled) return 'That admin can already sign in.';
+  return null;
+}

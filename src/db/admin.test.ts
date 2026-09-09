@@ -11,6 +11,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   claimFirstAdmin,
   countAdmins,
+  countEnabledAdmins,
+  deleteOtherAdminSessions,
+  disableAdmin,
+  enableAdmin,
+  findAdminById,
+  insertAdmin,
+  listAdmins,
   createAdminSession,
   deleteAdminSession,
   findAdminByEmail,
@@ -150,5 +157,83 @@ describe('admin sessions', () => {
     await createAdminSession(tx(), { id: 'hash1', adminId: 'a1', expiresAt: soon() });
     await harness.db.query('DELETE FROM admin_accounts WHERE id = $1', ['a1']);
     expect(await loadAdminSession(tx(), 'hash1')).toBeNull();
+  });
+});
+
+
+describe('the roster', () => {
+  beforeEach(async () => {
+    await claimFirstAdmin(tx(), { id: 'a1', email: 'first@example.org', passwordHash: 'h' });
+  });
+
+  it('adds a second admin', async () => {
+    expect(
+      await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' }),
+    ).toBe(true);
+    expect(await countAdmins(tx())).toBe(2);
+  });
+
+  it('refuses an address that is already an admin, whatever case it is typed in', async () => {
+    // Not an exception to catch: the caller has something useful to say about
+    // it, including "they were stood down — bring them back instead".
+    expect(
+      await insertAdmin(tx(), { id: 'a2', email: 'FIRST@example.ORG', passwordHash: 'h' }),
+    ).toBe(false);
+    expect(await countAdmins(tx())).toBe(1);
+  });
+
+  it('lists them oldest first, with their state', async () => {
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' });
+    await disableAdmin(tx(), 'a2');
+    const admins = await listAdmins(tx());
+    expect(admins.map((a) => a.id)).toEqual(['a1', 'a2']);
+    expect(admins[0]?.disabledAt).toBeNull();
+    expect(admins[1]?.disabledAt).toBeInstanceOf(Date);
+  });
+
+  it('counts only the admins who can actually sign in', async () => {
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' });
+    expect(await countEnabledAdmins(tx())).toBe(2);
+    await disableAdmin(tx(), 'a2');
+    expect(await countEnabledAdmins(tx())).toBe(1);
+    expect(await countAdmins(tx())).toBe(2);
+  });
+
+  it('deletes the sessions of an admin it stands down', async () => {
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' });
+    await createAdminSession(tx(), { id: 'theirs', adminId: 'a2', expiresAt: soon() });
+    await createAdminSession(tx(), { id: 'mine', adminId: 'a1', expiresAt: soon() });
+
+    await disableAdmin(tx(), 'a2');
+
+    expect(await loadAdminSession(tx(), 'theirs')).toBeNull();
+    expect(await loadAdminSession(tx(), 'mine')).not.toBeNull();
+  });
+
+  it('brings one back without giving the old sessions back', async () => {
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' });
+    await createAdminSession(tx(), { id: 'theirs', adminId: 'a2', expiresAt: soon() });
+    await disableAdmin(tx(), 'a2');
+    await enableAdmin(tx(), 'a2');
+
+    expect((await findAdminById(tx(), 'a2'))?.disabledAt).toBeNull();
+    expect(await loadAdminSession(tx(), 'theirs')).toBeNull();
+  });
+
+  it('keeps a stood-down account rather than deleting it', async () => {
+    // Whatever they signed should still have a name against it.
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h' });
+    await disableAdmin(tx(), 'a2');
+    expect(await findAdminById(tx(), 'a2')).not.toBeNull();
+  });
+
+  it('leaves the session you are using when you change your password', async () => {
+    await createAdminSession(tx(), { id: 'this-browser', adminId: 'a1', expiresAt: soon() });
+    await createAdminSession(tx(), { id: 'somewhere-else', adminId: 'a1', expiresAt: soon() });
+
+    await deleteOtherAdminSessions(tx(), 'a1', 'this-browser');
+
+    expect(await loadAdminSession(tx(), 'this-browser')).not.toBeNull();
+    expect(await loadAdminSession(tx(), 'somewhere-else')).toBeNull();
   });
 });

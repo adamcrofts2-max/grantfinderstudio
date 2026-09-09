@@ -6,6 +6,8 @@ import {
   adminSessionExpiry,
   claimAvailability,
   claimSecretProblem,
+  restoreRefusal,
+  standDownRefusal,
 } from './admin.js';
 
 describe('admin sessions', () => {
@@ -80,5 +82,45 @@ describe('the claim secret itself', () => {
 
   it('accepts a generated one', () => {
     expect(claimSecretProblem('Zx0J9m2QpL7vT4rN8sB6yH1kW3eC5gA=')).toBeNull();
+  });
+});
+
+
+describe('standing an admin down', () => {
+  const base = { actorId: 'a', targetId: 'b', targetDisabled: false, enabledAdmins: 2 };
+
+  it('is allowed when somebody else is left to run the console', () => {
+    expect(standDownRefusal(base)).toBeNull();
+  });
+
+  it('refuses the last admin who can sign in', () => {
+    // The claim route only opens on an EMPTY table, so this would not be an
+    // administrative act that could be undone from the console — it would be
+    // the end of the console.
+    expect(standDownRefusal({ ...base, enabledAdmins: 1 })).toContain('last admin');
+  });
+
+  it('refuses even the last admin standing themselves down, for the same reason', () => {
+    expect(standDownRefusal({ ...base, targetId: 'a', enabledAdmins: 1 })).toContain(
+      'stand yourself down',
+    );
+  });
+
+  it('refuses self-revocation while others exist, because the undo is unreachable', () => {
+    expect(standDownRefusal({ ...base, targetId: 'a' })).toContain('stand yourself down');
+  });
+
+  it('says so when the admin is already stood down', () => {
+    expect(standDownRefusal({ ...base, targetDisabled: true })).toContain('already');
+  });
+});
+
+describe('bringing an admin back', () => {
+  it('is allowed for somebody stood down', () => {
+    expect(restoreRefusal({ targetDisabled: true })).toBeNull();
+  });
+
+  it('is refused for somebody who was never stood down', () => {
+    expect(restoreRefusal({ targetDisabled: false })).toContain('already');
   });
 });

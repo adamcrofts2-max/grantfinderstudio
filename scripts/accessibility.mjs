@@ -2,7 +2,7 @@
  * Accessibility sweep, with axe, across every screen in the product.
  *
  * Signed out, as a customer with data, and as an operator in the console —
- * seventeen screens, against WCAG 2.0/2.1/2.2 A and AA.
+ * eighteen screens, against WCAG 2.0/2.1/2.2 A and AA.
  *
  * Needs a dev server and a browser, so it is NOT part of `npm test`: that
  * suite runs without either, and a test that silently skips is worse than one
@@ -100,7 +100,8 @@ await q.fill('#password', 'a long enough passphrase here');
 await q.click('form button[type=submit]');
 await q.waitForURL(/\/admin$/, { timeout: 60000 });
 for (const [path, label] of [['/admin', 'console overview'], ['/admin/funders', 'console funders'],
-  ['/admin/catalogue', 'console catalogue'], ['/admin/accounts', 'console accounts'], ['/admin/settings', 'console services']]) {
+  ['/admin/catalogue', 'console catalogue'], ['/admin/accounts', 'console accounts'],
+  ['/admin/admins', 'console admins'], ['/admin/settings', 'console services']]) {
   await q.goto(`${B}${path}`, { waitUntil: 'networkidle' });
   results.push(await audit(q, label));
 }

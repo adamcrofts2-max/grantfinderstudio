@@ -28,6 +28,15 @@ function readable(claim: string): string {
   return claim.replaceAll('_', ' ').replace(/^./u, (c) => c.toUpperCase());
 }
 
+/**
+ * One fact, as a row rather than a card.
+ *
+ * Checking nine facts is one job done nine times, so the row carries one
+ * decision — "that's right" — and demotes everything else. The "needs
+ * checking" badge is gone: the section heading counts them and the button
+ * says what is being asked. Correcting is rarer than confirming, so it is a
+ * quiet control rather than a second button of equal weight.
+ */
 function Fact({ fact }: { fact: FactView }) {
   const [confirmState, confirm, confirming] = useActionState(confirmFactAction, EMPTY_FACT_ACTION);
   const [correctState, correct, correcting] = useActionState(correctFactAction, EMPTY_FACT_ACTION);
@@ -41,26 +50,39 @@ function Fact({ fact }: { fact: FactView }) {
 
   return (
     <li className="fact">
-      <div className="row-between" style={{ alignItems: 'flex-start' }}>
-        <div style={{ minWidth: 0, flex: '1 1 20rem' }}>
+      <div className="fact-main">
+        <div className="fact-body">
           <p className="fact-claim">{readable(fact.claim)}</p>
           <p className="fact-value">{fact.value}</p>
           <p className="fact-source">
             {SOURCE_LABEL[fact.source] ?? fact.source}
             {fact.confidence === 'high' ? null : ` · ${fact.confidence} confidence`}
           </p>
-          {fact.sourceSpan ? (
-            <p className="fact-span">“{fact.sourceSpan}”</p>
-          ) : null}
         </div>
-        <span className={confirmed ? 'badge badge-positive' : 'badge badge-caution'}>
-          <span aria-hidden="true">{confirmed ? '✓' : '?'}</span>
-          {confirmed ? 'Confirmed' : 'Needs checking'}
-        </span>
+
+        {confirmed ? (
+          <p className="fact-done">
+            <span aria-hidden="true">✓</span> Confirmed
+          </p>
+        ) : editing ? null : (
+          <div className="fact-do">
+            <form action={confirm}>
+              <input type="hidden" name="factId" value={fact.id} />
+              <button className="btn btn-primary btn-small" type="submit" disabled={confirming}>
+                {confirming ? 'Confirming…' : 'That’s right'}
+              </button>
+            </form>
+            <button className="link-quiet" type="button" onClick={() => setEditing(true)}>
+              Correct it
+            </button>
+          </div>
+        )}
       </div>
 
-      {confirmed ? null : editing ? (
-        <form action={correct} className="row" style={{ marginTop: 'var(--s-3)', flexWrap: 'nowrap' }}>
+      {fact.sourceSpan ? <p className="fact-span">“{fact.sourceSpan}”</p> : null}
+
+      {confirmed || !editing ? null : (
+        <form action={correct} className="fact-edit">
           <input type="hidden" name="factId" value={fact.id} />
           <label className="sr-only" htmlFor={`v-${fact.id}`}>
             Correct value for {readable(fact.claim)}
@@ -72,25 +94,13 @@ function Fact({ fact }: { fact: FactView }) {
             defaultValue={fact.value}
             required
           />
-          <button className="btn btn-primary" type="submit" disabled={correcting}>
+          <button className="btn btn-primary btn-small" type="submit" disabled={correcting}>
             {correcting ? 'Saving…' : 'Save'}
           </button>
-          <button className="btn btn-secondary" type="button" onClick={() => setEditing(false)}>
+          <button className="link-quiet" type="button" onClick={() => setEditing(false)}>
             Cancel
           </button>
         </form>
-      ) : (
-        <div className="row" style={{ marginTop: 'var(--s-3)' }}>
-          <form action={confirm}>
-            <input type="hidden" name="factId" value={fact.id} />
-            <button className="btn btn-primary" type="submit" disabled={confirming}>
-              {confirming ? 'Confirming…' : 'That’s right'}
-            </button>
-          </form>
-          <button className="btn btn-secondary" type="button" onClick={() => setEditing(true)}>
-            Correct it
-          </button>
-        </div>
       )}
 
       <div aria-live="polite">

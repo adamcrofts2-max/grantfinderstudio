@@ -273,8 +273,10 @@ rendered as a sentence.
       ran as the owner and saw every other tenant's rows
 - [x] Landing page: a stranger at the root was sent to Sign in and never told
       what the product is
-- [ ] `/organisation` is 18 buttons in one column on a phone — the step the
-      guide sends people to is its heaviest screen
+- [x] `/organisation` is 18 buttons in one column on a phone — the step the
+      guide sends people to is its heaviest screen. Each fact is a row rather
+      than a card now, with one primary button and a quiet "Correct it":
+      3,845px to 2,614px at 390px wide, measured on the demo organisation
 - [x] Let somebody add a fact by hand, so five confirmed facts is reachable
       without a document reader
 - [x] Let somebody add a fund by hand — funder, title, deadline, size — so the
@@ -354,10 +356,14 @@ Postgres.
 - [x] `app_settings` for non-secret operational config, with database →
       environment → default precedence and the source shown
 - [x] 360Giving base URL and page cap configurable without a redeploy
-- [ ] Disable an admin from inside the console (the column exists; nothing
-      sets it)
-- [ ] A second admin — the claim only ever creates the first
-- [ ] Change the console password from inside the console
+- [x] Disable an admin from inside the console (the column existed since 0009
+      and nothing set it). Stand down and bring back, sessions deleted rather
+      than left to expire, and neither the last enabled admin nor yourself
+- [x] A second admin — the claim only ever creates the first. Added from the
+      console with a password handed over directly; no invitation email,
+      because an emailed console password is one sitting in an inbox
+- [x] Change the console password from inside the console — the current one is
+      required, and every other session for the account is ended
 - [ ] An audit trail of what an operator changed in the shared catalogue
 - [ ] First-run moment on onboarding
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no
@@ -419,7 +425,7 @@ annotation inside the working screens.**
 
 ## Phase 11 — Hardening
 - [ ] Upgrade vitest/vite (dev-only advisories: esbuild dev server, postcss via next)
-- [x] WCAG 2.2 AA audit with axe across all seventeen screens —
+- [x] WCAG 2.2 AA audit with axe across all eighteen screens —
       `npm run accessibility`, signed out, as a customer and as an operator
 - [x] Fix `link-in-text-block`: nine inline links across six screens were
       distinguished by colour alone (WCAG 1.4.1)
