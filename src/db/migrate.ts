@@ -33,6 +33,7 @@ export const MIGRATIONS = [
   '0007_auth.sql',
   '0008_auth_throttle.sql',
   '0009_admin.sql',
+  '0010_app_settings.sql',
 ] as const;
 
 /**

@@ -84,7 +84,7 @@ export async function ingestFunder(
   http: HttpClient,
   request: IngestRequest,
   runInTransaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
-  options: { now?: () => Date; maxPages?: number } = {},
+  options: { now?: () => Date; maxPages?: number; baseUrl?: string } = {},
 ): Promise<IngestOutcome> {
   const now = options.now ?? (() => new Date());
   const orgId = request.orgId.trim();
@@ -94,7 +94,14 @@ export async function ingestFunder(
   }
 
   const dataset = buildDataset(request, now().toISOString());
-  const connector = new ThreeSixtyGivingConnector(http, { maxPages: options.maxPages ?? 50 });
+  const connector = new ThreeSixtyGivingConnector(http, {
+    maxPages: options.maxPages ?? 50,
+    // Undefined means the connector's own default. Passing an empty string
+    // through would make every pagination check compare against nothing.
+    ...(options.baseUrl !== undefined && options.baseUrl !== ''
+      ? { baseUrl: options.baseUrl }
+      : {}),
+  });
   const result = await connector.fetchAwardsByFunder(orgId, dataset);
 
   const funderId = funderIdFor360Giving(orgId);

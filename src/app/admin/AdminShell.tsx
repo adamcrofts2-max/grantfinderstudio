@@ -16,7 +16,7 @@ export function AdminShell({
   children,
 }: {
   email: string;
-  active: 'overview' | 'funders' | 'catalogue' | 'accounts';
+  active: 'overview' | 'funders' | 'catalogue' | 'accounts' | 'settings';
   children: ReactNode;
 }) {
   const tab = (id: typeof active, href: string, label: string) => (
@@ -43,6 +43,7 @@ export function AdminShell({
         {tab('funders', '/admin/funders', 'Funders')}
         {tab('catalogue', '/admin/catalogue', 'Shared catalogue')}
         {tab('accounts', '/admin/accounts', 'Accounts')}
+        {tab('settings', '/admin/settings', 'Services')}
       </nav>
 
       <p className="admin-boundary">

@@ -7,6 +7,11 @@ import { deleteFunder } from '@/db/awards';
 import { IngestionError } from '@/ingestion/threesixtygiving/connector';
 import { FetchJsonClient } from '@/ingestion/threesixtygiving/http';
 import { ingestFunder, type IngestRequest } from '@/ingestion/threesixtygiving/ingest';
+import { readEffectiveSettings } from '@/settings/store';
+import {
+  THREESIXTYGIVING_BASE_URL_KEY,
+  THREESIXTYGIVING_MAX_PAGES_KEY,
+} from '@/settings/registry';
 import { JURISDICTIONS, type Jurisdiction } from '@/domain/types';
 
 import { requireAdmin } from '../session';
@@ -88,9 +93,20 @@ export async function ingestFunderAction(
   };
 
   try {
+    // Base URL and page cap come from the console, so an operator can point at
+    // a mirror or raise the cap for a large publisher without a redeploy.
+    const settings = await withAdmin((tx) => readEffectiveSettings(tx));
+    const value = (key: string): string =>
+      settings.find((s) => s.definition.key === key)?.value ?? '';
+    const baseUrl = value(THREESIXTYGIVING_BASE_URL_KEY);
+    const maxPages = Number(value(THREESIXTYGIVING_MAX_PAGES_KEY));
+
     // A client per run, so two ingests are two independent 2/second streams
     // rather than one shared limiter.
-    const outcome = await ingestFunder(new FetchJsonClient(), request, (fn) => withAdmin(fn));
+    const outcome = await ingestFunder(new FetchJsonClient(), request, (fn) => withAdmin(fn), {
+      baseUrl,
+      maxPages: Number.isFinite(maxPages) && maxPages > 0 ? maxPages : undefined,
+    });
 
     const detail: string[] = [
       `${outcome.awardsWritten} grants written from ${outcome.pagesFetched} page${outcome.pagesFetched === 1 ? '' : 's'}.`,
@@ -101,7 +117,7 @@ export async function ingestFunderAction(
     }
     if (outcome.truncated) {
       detail.push(
-        'Stopped at the page limit — this publisher has more. Run it again to continue is not supported yet; raise the limit if you need the rest.',
+        'Stopped at the page limit — this publisher has more. Raise “Pages per ingest” under Services and run it again.',
       );
     }
     if (outcome.awardsWritten === 0) {

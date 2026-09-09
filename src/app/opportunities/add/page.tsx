@@ -82,10 +82,10 @@ export default async function AddOpportunityPage() {
               <p className="notice notice-caution">
                 <span aria-hidden="true">⚠</span>
                 <span>
-                  Reading guidance needs an Anthropic key, and this deployment has none. Add
-                  one in <a href="/settings">Settings</a> and it turns on — it proposes the
-                  fund’s eligibility rules, each shown beside the funder’s own sentence, so
-                  you check their words rather than ours.
+                  Reading guidance is not switched on for this deployment. When it is, it
+                  proposes the fund’s eligibility rules, each shown beside the funder’s own
+                  sentence, so you check their words rather than ours. Ask whoever runs this
+                  service — it is not something you can turn on yourself.
                 </span>
               </p>
               <AddOpportunity ready={false} />

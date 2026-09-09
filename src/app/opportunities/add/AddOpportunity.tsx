@@ -82,7 +82,8 @@ export function AddOpportunity({ ready = true }: { ready?: boolean }) {
       </button>
       {ready ? null : (
         <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
-          Add an Anthropic key in <a href="/settings">Settings</a> and this button turns on.
+          Reading guidance is not switched on for this deployment. Whoever runs it can turn
+          it on; in the meantime, typing the fund in yourself works and needs nothing.
         </p>
       )}
 

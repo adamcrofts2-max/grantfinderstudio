@@ -16,3 +16,15 @@ export interface ActionState {
 }
 
 export const EMPTY_ACTION: ActionState = { provider: null, ok: false, message: '' };
+
+export interface SettingActionState {
+  key: string | null;
+  ok: boolean;
+  message: string;
+}
+
+export const EMPTY_SETTING_ACTION: SettingActionState = {
+  key: null,
+  ok: true,
+  message: '',
+};

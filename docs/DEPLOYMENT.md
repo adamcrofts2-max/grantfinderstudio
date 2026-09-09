@@ -133,7 +133,9 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `ANTHROPIC_API_KEY` | No | Turns on reading guidance and drafting for everybody. Without it the product still works — see below |
 | `ADMIN_CLAIM_SECRET` | To use the console | At least 24 characters. Opens the one-time claim at `/admin/sign-in` |
-| `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at a staging endpoint |
+| `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at their sandbox. Overridable live under Services |
+| `THREESIXTYGIVING_BASE_URL` | No | Points ingestion at a mirror. Overridable live under Services |
+| `THREESIXTYGIVING_MAX_PAGES` | No | Pages per ingest, default 50. Overridable live under Services |
 
 ### Neon needs no setup
 
@@ -243,6 +245,29 @@ To claim it:
 Until `ADMIN_CLAIM_SECRET` is set the claim never opens, which is deliberate:
 without it a freshly deployed console is a race between you and whoever finds
 the URL first.
+
+#### Where API keys and service settings live
+
+**Both are in the console, under Services (`/admin/settings`), and nowhere
+else.** A CIC using this product is never asked for a key and has no screen
+that could accept one.
+
+Two kinds of thing, handled differently:
+
+- **Keys** — Anthropic and Companies House. Encrypted with
+  `APP_ENCRYPTION_KEY`, verified against the provider when saved, masked
+  afterwards, never shown again.
+- **Service settings** — base URLs and the page cap. Not secret, read back in
+  full, edited in place. A value set in the console beats one from the hosting
+  environment, because the console takes effect now and an environment variable
+  needs a redeploy; each setting shows which is in force. Clear the box and
+  save to fall back.
+
+**360Giving needs no key.** It is an open, unauthenticated API — no token, no
+registration — so it appears under service settings and not under keys.
+Loading a funder's grants is on the Funders tab, and the publisher's licence
+and attribution are typed there rather than guessed, because publishers choose
+their own and some are share-alike.
 
 #### What the console can and cannot see
 

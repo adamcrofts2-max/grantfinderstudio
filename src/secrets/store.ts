@@ -11,6 +11,13 @@
 import type { Queryable } from '../db/client.js';
 import { decryptSecret, encryptSecret, maskSecret } from './crypto.js';
 
+/**
+ * Services the platform holds a secret for.
+ *
+ * 360Giving is deliberately absent: it is an open, unauthenticated API — no
+ * key, no token — so it has settings but no credential. Adding a blank
+ * credential row for it would invite somebody to paste something into it.
+ */
 export type ProviderId = 'anthropic' | 'companies_house';
 
 export interface CredentialStatus {
@@ -71,11 +78,13 @@ export async function saveCredential(
   plaintext: string,
   masterKey: Buffer,
   verification: VerificationResult,
-  updatedBy: string | null,
+  /** The admin account making the change, never a customer. */
+  updatedByAdmin: string | null,
 ): Promise<void> {
   await db.query(
     `INSERT INTO app_credentials
-       (provider, ciphertext, masked, last_checked_at, last_check_ok, last_check_note, updated_by)
+       (provider, ciphertext, masked, last_checked_at, last_check_ok, last_check_note,
+        updated_by_admin)
      VALUES ($1, $2, $3, now(), $4, $5, $6)
      ON CONFLICT (provider) DO UPDATE SET
        ciphertext = EXCLUDED.ciphertext,
@@ -83,7 +92,7 @@ export async function saveCredential(
        last_checked_at = EXCLUDED.last_checked_at,
        last_check_ok = EXCLUDED.last_check_ok,
        last_check_note = EXCLUDED.last_check_note,
-       updated_by = EXCLUDED.updated_by,
+       updated_by_admin = EXCLUDED.updated_by_admin,
        updated_at = now()`,
     [
       provider,
@@ -91,7 +100,7 @@ export async function saveCredential(
       maskSecret(plaintext),
       verification.ok,
       verification.note,
-      updatedBy,
+      updatedByAdmin,
     ],
   );
 }

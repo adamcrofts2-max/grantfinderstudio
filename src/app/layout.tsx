@@ -38,7 +38,6 @@ const NAV = [
   { href: '/organisation', label: 'Your organisation', icon: '⌂' },
   { href: '/documents', label: 'Documents', icon: '❒' },
   { href: '/onboarding', label: 'Find your company', icon: '⌕' },
-  { href: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

@@ -1398,6 +1398,27 @@ summary:focus-visible {
 
 .btn-small { padding: 0.35rem var(--s-3); font-size: var(--t-sm); }
 
+/* One operational setting, on the Services tab. The SOURCE badge is the point
+   of the layout: an operator who cannot see whether a value is coming from
+   here, from the environment or from the default will change the wrong one. */
+.setting {
+  padding: var(--s-4) 0; border-top: 1px solid var(--line);
+}
+.setting:first-of-type { border-top: 0; }
+.setting-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3); flex-wrap: wrap;
+}
+.setting-head .label { margin: 0; }
+.setting-problem { color: var(--negative); }
+.setting-group { margin-top: var(--s-5); }
+.setting-service {
+  display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap;
+  margin: 0 0 var(--s-2);
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-md); font-weight: 700; letter-spacing: -0.015em;
+}
+
 /* The licence block on the ingest form. Set apart because it is the part an
    operator must not tab past: publishers choose their own licences, and a
    wrong one here puts somebody else's terms on their data. */

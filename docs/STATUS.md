@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,094 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,121 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1101,3 +1101,71 @@ focus from whatever is being typed.
 Verified in a browser across all five: ManualProfile, ProjectForm,
 ManualFundForm, AddFact and the ingest form all keep every field, selects
 included, after a rejected submit.
+
+## Service connections: a hole, and where they belong
+
+Asked to work out how the 360Giving API should be configured in admin
+settings. Researching that found something worse than the feature.
+
+### `/settings` was open to anybody
+
+`app_credentials` (0002) is explicit that these are the PLATFORM's keys and
+that "CIC users never see or supply them". The screen that edited them lived at
+`/settings`, in the customer navigation, and had **no guard of any kind** — not
+an admin check, not an organisation check, not a session check. Nothing.
+
+Proven rather than assumed: `curl http://localhost:3000/settings` returned
+**200** with "Service connections", "Anthropic" and "Companies House" in the
+body, with no cookie at all. The server actions behind it were equally
+unguarded, and a server action is a public endpoint. Anyone who could reach the
+deployment could read which keys were configured and their masked form,
+overwrite them, or delete them — taking out drafting and company lookup for
+every organisation on the platform.
+
+It is now `/admin/settings`, behind `requireAdmin`, with the guard on the
+actions too. `/settings` is gone: 404 for anybody, and the customer navigation
+is eight items with no Settings in it. Verified in a browser both ways.
+
+The three places that told a customer to "add a key in Settings" were written
+on the assumption they could. They now say the deployment does not have it
+switched on and point at what the customer *can* do — typing their facts and
+funds in — rather than at a screen they should never have been offered.
+
+`app_credentials.updated_by` pointed at `users`, from when this lived in the
+tenant app. It is `updated_by_admin` against `admin_accounts` now. Dropped
+rather than migrated: the column was only ever written by a screen reachable
+without signing in, so its contents cannot be trusted to mean anything.
+
+### Two kinds of configuration, kept apart
+
+`app_credentials` holds secrets: encrypted, verified on save, masked, replaced
+rather than edited. `app_settings` (0010) holds what is not secret but still
+has to change without a redeploy — a base URL, a page cap. Storing them
+together would make every read path remember which kind it was holding.
+
+`src/settings/registry.ts` declares them, so adding a service is one entry and
+the store, the screen and the validation all follow.
+
+**Precedence is database → environment → default, and the source is shown.**
+The database wins because the console is live and an environment variable needs
+a redeploy: an operator who changes something here and sees no effect has been
+lied to. Showing the source answers the opposite confusion before it is asked.
+Clearing the box falls back, so a mistyped base URL is never permanent.
+
+A base URL is validated as https only. Every request to these services either
+carries a key or is a pagination link that gets followed, and http would put
+both on the wire in clear.
+
+### What each service actually needs
+
+| Service | Key? | Settings |
+|---|---|---|
+| **360Giving** | **None** — open, unauthenticated | Base URL, pages per ingest |
+| Anthropic | Yes, encrypted | — |
+| Companies House | Yes, encrypted | Base URL |
+| Charity Commission *(roadmap)* | Will need one | — |
+| Find a Grant *(roadmap, demoted)* | None expected | — |
+
+360Giving having no key at all is the answer to the original question: it
+belongs under service settings, not under keys, and the console says so on the
+screen so nobody goes looking for a token that does not exist.

@@ -52,8 +52,9 @@ export default async function DocumentsPage() {
         <p className="notice notice-caution">
           <span aria-hidden="true">⚠</span>
           <span>
-            Reading documents needs an Anthropic key. Add one in <a href="/settings">Settings</a>{' '}
-            first.
+            Reading documents is not switched on for this deployment. Ask whoever runs this
+            service to turn it on. In the meantime you can tell us your facts directly on{' '}
+            <a href="/organisation#add-fact">your organisation</a> page.
           </span>
         </p>
       )}

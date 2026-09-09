@@ -338,6 +338,13 @@ Postgres.
 - [x] Shared catalogue: add and remove funds by hand, no key needed
 - [x] Accounts: address and sign-up date, with no route to their work
 - [x] Middleware so the console never wears the customer's shell
+- [x] Move service connections into the console. `/settings` was in the
+      customer navigation with NO guard — an unauthenticated GET returned 200
+      with the platform's key status in it, and the actions behind it could
+      overwrite or delete those keys
+- [x] `app_settings` for non-secret operational config, with database →
+      environment → default precedence and the source shown
+- [x] 360Giving base URL and page cap configurable without a redeploy
 - [ ] Disable an admin from inside the console (the column exists; nothing
       sets it)
 - [ ] A second admin — the claim only ever creates the first
