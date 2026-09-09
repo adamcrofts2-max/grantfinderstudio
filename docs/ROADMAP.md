@@ -240,6 +240,11 @@ rendered as a sentence.
 - [x] Tracker timelines: today → latest start → deadline
 - [ ] Effort composition bar
 - [ ] Application progress segmentation
+- [x] The guided shell is a strip at every width, not only on a phone. A
+      15rem column holding three short lines and four hundred pixels of nothing
+      sat beside every screen in the product
+- [x] An application with no questions leads with pasting them, instead of a
+      readiness score and a collapsed row
 - [ ] Stat tiles on the three summary screens
 - [x] Validated series palette in tokens, light and dark
 - [ ] Icon set replacing the single-character glyphs

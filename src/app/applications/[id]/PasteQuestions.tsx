@@ -12,7 +12,14 @@ import { EMPTY_ADD } from './state';
  * what was detected as they type and can fix it before anything is saved. A
  * misparse then costs an edit rather than a wrong draft.
  */
-export function PasteQuestions({ applicationId }: { applicationId: string }) {
+export function PasteQuestions({
+  applicationId,
+  open = false,
+}: {
+  applicationId: string;
+  /** Open when it is the only thing to do — see the page's empty state. */
+  open?: boolean;
+}) {
   const [pasted, setPasted] = useState('');
   const [edits, setEdits] = useState<Record<number, number | null>>({});
   const [state, add, adding] = useActionState(addQuestionsAction, EMPTY_ADD);
@@ -27,10 +34,10 @@ export function PasteQuestions({ applicationId }: { applicationId: string }) {
   const missingLimits = detected.filter((q) => q.wordLimit === null).length;
 
   return (
-    <details className="card paste">
+    <details className="card paste" open={open}>
       <summary className="paste-summary">
         <span>Add questions from the funder’s form</span>
-        <span className="chev" aria-hidden="true">Paste</span>
+        <span className="chev chev-toggle" aria-hidden="true" />
       </summary>
 
       <div className="paste-body">

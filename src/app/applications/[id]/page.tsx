@@ -98,6 +98,25 @@ export default async function ApplicationPage({
         </p>
       </header>
 
+      {/* An application with no questions in it can do nothing at all, and
+          everything below assumes there are some. Leading with the readiness
+          score and hiding the one available action in a collapsed row left the
+          screen looking finished and inert. */}
+      {questions.length === 0 ? (
+        <section className="card">
+          <h2 className="card-title">Start by pasting the funder’s questions</h2>
+          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+            Copy them straight out of their form or portal — all of them at once is fine. We
+            split them up, pick out the word limits, and show you what we found before
+            anything is saved, so a misparse costs an edit rather than a wrong draft.
+          </p>
+          <p className="card-sub" style={{ marginTop: 'var(--s-3)' }}>
+            Until they are in, we cannot say how long this will take you or what it is worth
+            per hour — the length of the answers is what decides both.
+          </p>
+        </section>
+      ) : null}
+
       <section className="card">
         <div className="row-between" style={{ alignItems: 'center' }}>
           <div>
@@ -128,7 +147,7 @@ export default async function ApplicationPage({
         </section>
       ) : null}
 
-      <PasteQuestions applicationId={application.id} />
+      <PasteQuestions applicationId={application.id} open={questions.length === 0} />
 
       <Workspace applicationId={application.id} questions={questions} />
 

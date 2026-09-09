@@ -1002,9 +1002,45 @@ summary:focus-visible {
 .nav-more > summary:hover { background: var(--surface-sunken); color: var(--ink); }
 .nav-more .nav { margin-top: var(--s-2); }
 
-/* On a phone the sidebar stacks above the page, so a nine-item menu was the
-   entire first screen. Folded and laid out as one row, the header costs about
-   70px and the first thing anyone sees is the one thing they have to do. */
+/* While somebody is still setting up, the shell is a STRIP rather than a
+   column — at every width, not only on a phone.
+
+   The navigation is folded away in this state, so the sidebar held a brand, a
+   progress count and one disclosure. On a phone that was already the right
+   answer. On a desktop it left a 15rem column containing three short lines and
+   four hundred pixels of nothing, beside every screen in the product. A column
+   earns its width by holding navigation; when it is not holding any, it should
+   not be a column.
+
+   Folded and laid out as one row, the header costs about 70px and the first
+   thing anyone sees is the one thing they have to do. */
+.shell-guided {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+.shell-guided .sidebar {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+  display: flex; flex-direction: row; align-items: center;
+  gap: var(--s-5);
+  padding: var(--s-3) var(--s-5);
+}
+/* One line: two is a masthead, and this is a strip. */
+.shell-guided .brand br { display: none; }
+.shell-guided .brand-sub { margin-left: var(--s-2); }
+/* The count sits at the far end, the disclosure beside it. */
+.shell-guided .nav-progress { margin-left: auto; }
+.shell-guided .nav-more { flex: 0 0 auto; }
+/* Absolutely positioned so the folded list overlays the page instead of
+   pushing the strip open and shoving everything down. */
+.shell-guided .nav-more { position: relative; }
+.shell-guided .nav-more > div.nav {
+  position: absolute; right: 0; top: calc(100% + var(--s-2)); z-index: 30;
+  min-width: 15rem; padding: var(--s-2);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-md);
+}
+
 @media (max-width: 820px) {
   .shell-guided .sidebar {
     display: grid;
@@ -1015,11 +1051,14 @@ summary:focus-visible {
     padding: var(--s-3) var(--s-4);
   }
   .shell-guided .brand { grid-area: brand; }
-  /* One line: two is a masthead, and this is a strip. */
-  .shell-guided .brand br { display: none; }
-  .shell-guided .brand-sub { margin-left: var(--s-2); }
-  .shell-guided .nav-progress { grid-area: progress; }
-  .shell-guided .nav-more { grid-area: more; }
+  .shell-guided .nav-progress { grid-area: progress; margin-left: 0; }
+  .shell-guided .nav-more { grid-area: more; position: static; }
+  /* Back in the flow on a phone: an overlay on a narrow screen covers the
+     content it is supposed to be a way out of. */
+  .shell-guided .nav-more > div.nav {
+    position: static; min-width: 0; padding: 0;
+    background: none; border: 0; box-shadow: none;
+  }
 }
 
 /* The folded list of all five, and the small numbered step inside it. */

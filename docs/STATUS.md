@@ -1247,3 +1247,30 @@ The note lives inside the `<dd>` now.
 
 Second run: **zero violating nodes across all seventeen screens, zero page
 errors.**
+
+## Two screens seen properly for the first time
+
+Driving `/funders` and an application detail page — both built, neither ever
+looked at — turned up the same kind of problem in two places: a screen that had
+been designed for its full state and left inert in its empty one.
+
+**The guided shell wasted a column.** While somebody is still setting up the
+navigation is folded away, so the sidebar held a brand, a progress count and
+one disclosure. On a phone that was already right. On a desktop it left a 15rem
+column containing three short lines and four hundred pixels of nothing, beside
+every screen in the product. A column earns its width by holding navigation;
+when it is not holding any, it should not be a column. It is a 61px strip at
+every width now, and the folded list overlays the page rather than shoving it
+down.
+
+**An application with no questions in it was a stub.** It led with "Readiness —
+50%" and put its only available action in a quiet collapsed row labelled
+"Paste". Everything below the fold assumes there are questions. It now opens
+with what to do and why — including that effort and value-per-hour cannot be
+worked out until the questions are in, because the length of the answers is
+what decides both — and the paste box is open and ready.
+
+`/funders` itself reads well: the distribution chart, the four match tiers with
+their reasoning, "too little published to say" for a funder with fewer than
+five grants, and a standing "what this is and is not" that says plainly it
+cannot tell you whether a funder is open right now.
