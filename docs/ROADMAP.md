@@ -367,7 +367,18 @@ annotation inside the working screens.**
       section comes out
 - [ ] Replace the placeholder line-character art. It is no longer on the
       landing page (the product's own charts carry the hero instead) but it
-      still fronts three empty states
+      still fronts three empty states. Finding from a generation pass, worth
+      keeping: **raster art cannot carry this product's dark mode.** Every
+      colour in `Figure.tsx` is a CSS variable that flips; a PNG does not,
+      so shipped art needs either light/dark pairs (which a generator will
+      not produce as a consistent inverted twin) or a single-colour alpha
+      mask tinted by `currentColor` — which themes perfectly but gives up the
+      two-tone accent. Generated images are therefore reference for
+      hand-authored SVG, not the asset itself
+- [ ] Decide whether the empty states want a character at all. Replacing the
+      hero figure with the product's own chart made the landing page markedly
+      better; an empty tracker may be better served by a small diagram of what
+      will appear there than by a figure
 - [ ] A title that reports a finding on more screens than the tracker — today it
       is the only one that earns a highlighter
 
