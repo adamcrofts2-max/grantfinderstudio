@@ -1,11 +1,11 @@
 /**
  * Build an AI provider from the operator credential stored in the database.
  *
- * The key is entered at /settings, verified against Anthropic, and stored
+ * The key is entered at /admin/settings, verified against Anthropic, and stored
  * encrypted. This is the one place it is decrypted for use, and the plaintext
  * never leaves this function's caller.
  *
- * Two routes in, and both must be honoured: a key entered at /settings and
+ * Two routes in, and both must be honoured: a key entered at /admin/settings and
  * stored encrypted, or ANTHROPIC_API_KEY supplied to the process — which is
  * how a deployment configures itself, and what the provider already falls back
  * to. Checking only the stored one made `isWriterAvailable` and this function

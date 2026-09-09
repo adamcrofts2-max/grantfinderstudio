@@ -236,7 +236,7 @@ for anything a screen reader cannot read from the marks.
 | `/opportunities/add`, `/documents` | Real drop zones with drag states and read-progress. These are the two "give us something" screens and both are currently a bare input. |
 | `/organisation` | Confirming a fact should feel like progress accumulating. Consider a quiet count-up as the confirmed number rises. |
 | `/onboarding` | The one screen allowed a genuine first-run moment. Currently the least designed and the most important. |
-| `/settings` | Connection states that read instantly: connected, failing, absent. |
+| `/admin/settings` | Connection states that read instantly: connected, failing, absent. |
 
 ---
 

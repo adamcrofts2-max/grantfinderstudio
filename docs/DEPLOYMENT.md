@@ -13,8 +13,9 @@ some of it is personal data under UK GDPR.
 | Companies House API key | [developer hub](https://developer.company-information.service.gov.uk/) | Free |
 
 The two API keys are **not** environment variables. They are entered in the
-running app at `/settings`, verified against the provider, and stored
-encrypted. Only the database URL and the encryption key are configuration.
+console at `/admin/settings`, verified against the provider, and stored
+encrypted. Only the database URL, the encryption key and the one-time console
+claim secret are configuration.
 
 ## Steps
 
@@ -30,44 +31,71 @@ openssl rand -base64 32
 Keep this safe. Changing it makes every stored API key unreadable and they
 have to be entered again. It is not recoverable.
 
-**3. Deploy.**
+**3. Generate the console claim secret.**
+
+```bash
+openssl rand -base64 32
+```
+
+This is what opens the one-time first-admin claim at `/admin/sign-in`. Without
+it the claim never opens, which is the safe default: on a fresh deployment the
+alternative is racing strangers for your own console.
+
+**4. Deploy.**
 
 ```bash
 npx vercel            # first run links the project
 npx vercel env add DATABASE_URL production
 npx vercel env add APP_ENCRYPTION_KEY production
+npx vercel env add ADMIN_CLAIM_SECRET production
 npx vercel --prod
 ```
 
 Migrations run automatically on first database use. They are tracked in
 `schema_migrations` and are safe to run repeatedly.
 
-**4. Check it came up.**
+**5. Check it came up.**
 
 ```
 GET https://your-app.vercel.app/api/health
 ```
 
-`{"status":"ok","database":"ok","persistent":true,"problems":[]}` is what you
-want. Anything else lists every problem at once, each with a fix.
+`{"status":"ok","database":"ok","isolation":"enforced","persistent":true,"problems":[]}`
+is what you want. Anything else lists every problem at once, each with a fix.
+The response also reports which migrations have applied and which are pending.
 
-**5. Protect the deployment before you put anything real in it.** There is no
-authentication yet: anyone with the URL sees the organisation's data. In
-Vercel, Settings → Deployment Protection → **Password Protection** (or Vercel
-Authentication) covers the whole deployment and is a setting rather than a
-sprint. Do this before step 6.
+**6. Claim the console.** Go to `/admin/sign-in`. While no admin exists and the
+claim secret is set, it offers to create the first admin: your email address, the
+claim secret from step 3, and a password of at least 14 characters. The moment
+you claim it that form is gone for good — every admin after this one is added
+from inside the console, at `/admin/admins`.
 
-**6. Add the API keys** at `/settings`. Each is tested against the provider as
-you save, so "Connected" means it genuinely works rather than merely that
-something was stored.
+**7. Add the API keys** at `/admin/settings`. Each is tested against the
+provider as you save, so "Connected" means it genuinely works rather than merely
+that something was stored. Neither key is ever shown back to the browser after
+it is stored.
 
-**7. First run.** A real database starts completely empty — the demo funds are
-seeded only into the in-memory dev database, so there is no fictional data and
-no "demonstration data" banner. Go to `/onboarding` and either look your
-company up on Companies House or, under **Enter your details yourself**, type
-them in; then fill in **What you are trying to fund**. Both are needed: the
-profile decides eligibility on legal form, and the project supplies the amount,
-duration and beneficiary groups that three more criteria turn on.
+**8. Load a funder** at `/admin/funders`, or the product has nothing to find. A
+real deployment starts with no funders, no awards and no opportunities. Use
+**Check first — writes nothing** before **Load this funder's grants**: the dry
+run fetches one page and tells you what it saw without writing anything.
+
+**9. First run.** A real database is empty — the demo funds are seeded only into
+the in-memory dev database, so there is no fictional data and no "demonstration
+data" banner. Sign up, then at `/onboarding` either look your company up on
+Companies House or, under **Enter your details yourself**, type them in; then
+fill in **What you are trying to fund**. Both are needed: the profile decides
+eligibility on legal form, and the project supplies the amount, duration and
+beneficiary groups that three more criteria turn on.
+
+### Do you still want Vercel deployment protection?
+
+Earlier versions of this document said to turn on Vercel's password protection
+because the app had no authentication. It has since had its own: accounts,
+sessions, per-organisation Row-Level Security, and a console behind separate
+credentials. Deployment protection is now a choice rather than a necessity —
+useful while the deployment is private and a nuisance the moment you want
+somebody to sign up.
 
 ## Rehearsed against a real Postgres
 
