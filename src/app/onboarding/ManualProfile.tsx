@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 
+import { selectKey, valueOf } from '@/app/formValues';
+
 import { saveManualProfileAction } from './actions';
 import { EMPTY_MANUAL, JURISDICTION_CHOICES, LEGAL_FORM_CHOICES } from './state';
 
@@ -19,6 +21,7 @@ import { EMPTY_MANUAL, JURISDICTION_CHOICES, LEGAL_FORM_CHOICES } from './state'
 export function ManualProfile({ open = false }: { open?: boolean }) {
   const [state, save, saving] = useActionState(saveManualProfileAction, EMPTY_MANUAL);
   const error = (field: string): string | undefined => state.errors[field];
+  const was = (field: string): string => valueOf(state.values, field);
 
   return (
     <details className="card" id="organisation" open={open}>
@@ -42,6 +45,7 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
             required
             aria-invalid={error('legalName') !== undefined}
             aria-describedby={error('legalName') ? 'legalName-error' : undefined}
+            defaultValue={was('legalName')}
           />
           {error('legalName') ? (
             <p className="hint" id="legalName-error" style={{ color: 'var(--negative)' }}>
@@ -52,7 +56,8 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
 
         <div className="field" style={{ marginTop: 'var(--s-4)' }}>
           <label className="label" htmlFor="legalForm">Legal form</label>
-          <select id="legalForm" className="input" name="legalForm" required defaultValue="">
+          <select key={selectKey(state.values, 'legalForm')} id="legalForm" className="input" name="legalForm" required
+            defaultValue={was('legalForm')}>
             <option value="" disabled>Choose one</option>
             {LEGAL_FORM_CHOICES.map((choice) => (
               <option key={choice.value} value={choice.value}>{choice.label}</option>
@@ -69,7 +74,8 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
 
         <div className="field" style={{ marginTop: 'var(--s-4)' }}>
           <label className="label" htmlFor="jurisdiction">Where you are based</label>
-          <select id="jurisdiction" className="input" name="jurisdiction" required defaultValue="">
+          <select key={selectKey(state.values, 'jurisdiction')} id="jurisdiction" className="input" name="jurisdiction" required
+            defaultValue={was('jurisdiction')}>
             <option value="" disabled>Choose one</option>
             {JURISDICTION_CHOICES.map((choice) => (
               <option key={choice.value} value={choice.value}>{choice.label}</option>
@@ -84,7 +90,9 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
           <label className="label" htmlFor="region">
             County or area you work in <span className="hint">(optional)</span>
           </label>
-          <input id="region" className="input" name="region" placeholder="Somerset" />
+          <input id="region" className="input" name="region" placeholder="Somerset"
+            defaultValue={was('region')}
+          />
           <p className="hint">Many funders restrict by area, so this decides real eligibility.</p>
         </div>
 
@@ -92,7 +100,9 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
           <label className="label" htmlFor="companyNumber">
             Company number <span className="hint">(optional)</span>
           </label>
-          <input id="companyNumber" className="input input-mono" name="companyNumber" placeholder="12345678" />
+          <input id="companyNumber" className="input input-mono" name="companyNumber" placeholder="12345678"
+            defaultValue={was('companyNumber')}
+          />
           {error('companyNumber') ? (
             <p className="hint" style={{ color: 'var(--negative)' }}>{error('companyNumber')}</p>
           ) : null}
@@ -102,7 +112,9 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
           <label className="label" htmlFor="incorporationDate">
             Date you were set up <span className="hint">(optional)</span>
           </label>
-          <input id="incorporationDate" className="input" type="date" name="incorporationDate" />
+          <input id="incorporationDate" className="input" type="date" name="incorporationDate"
+            defaultValue={was('incorporationDate')}
+          />
           {/* A native date input renders in the BROWSER's locale, not the
               page's, so a UK user can be shown mm/dd/yyyy. Saying so costs a
               line and saves a wrong date on a "must have traded two years"

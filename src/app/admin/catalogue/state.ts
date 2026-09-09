@@ -1,11 +1,12 @@
-export interface CatalogueFormState {
-  saved: boolean;
-  message: string;
-  errors: Record<string, string>;
-}
+import { NO_VALUES } from '@/app/formValues';
+import type { ManualFundFormState } from '@/app/ManualFundForm';
+
+/** The shared manual-fund shape; the console writes shared rows with it. */
+export type CatalogueFormState = ManualFundFormState;
 
 export const EMPTY_CATALOGUE_FORM: CatalogueFormState = {
   saved: false,
   message: '',
   errors: {},
+  values: NO_VALUES,
 };

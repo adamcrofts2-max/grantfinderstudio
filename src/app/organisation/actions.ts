@@ -5,7 +5,12 @@ import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { confirmFact, correctFact, recordSelfDeclaredFact } from '@/db/workspace';
 import { readableClaim, readSelfDeclaredFact } from '@/domain/provenance/self-declared';
-import { type FactActionState, type SelfDeclaredState } from './state';
+import {
+  SELF_DECLARED_FIELDS,
+  type FactActionState,
+  type SelfDeclaredState,
+} from './state';
+import { NO_VALUES, readValues } from '@/app/formValues';
 
 /** Mark a fact as checked, so it may ground a funding application. */
 export async function confirmFactAction(
@@ -62,6 +67,7 @@ export async function addFactAction(
   const organisationId = await requireOrganisationId();
   const userId = await requireUserId();
 
+  const values = readValues(formData, SELF_DECLARED_FIELDS);
   const typed = String(formData.get('customClaim') ?? '').trim();
   const chosen = String(formData.get('claim') ?? '').trim();
   const { fact, errors } = readSelfDeclaredFact({
@@ -72,7 +78,7 @@ export async function addFactAction(
   });
 
   if (fact === null) {
-    return { saved: false, message: 'Check the highlighted fields.', errors };
+    return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
   try {
@@ -86,6 +92,7 @@ export async function addFactAction(
       saved: false,
       message: 'That could not be saved. Nothing has been changed.',
       errors: {},
+      values,
     };
   }
 
@@ -95,5 +102,7 @@ export async function addFactAction(
     saved: true,
     message: `Saved. ${readableClaim(fact.claim)} is confirmed and can be used in an application.`,
     errors: {},
+    // Cleared on success: ready for the next fact.
+    values: NO_VALUES,
   };
 }

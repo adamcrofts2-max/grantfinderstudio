@@ -130,7 +130,7 @@ funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
 - [x] Tiers with stated, countable definitions rather than a similarity score
 - [x] Every tier earned by grants the user can open and read
 - [x] Award classification tags stored, so cause matching can actually fire
-- [ ] Ingest real 360Giving data into funder_awards (connector exists; blocked
+- [x] Ingest real 360Giving data into funder_awards (was: connector exists;
       on egress here, so first run is on deployment)
 - [ ] "Is this funder open?" — targeted search against a named prospect, fetched
       on demand and fed into the existing paste-a-fund review screen
@@ -285,10 +285,21 @@ The half of the product the landing page now promises. 360Giving publishes what
 UK funders have GIVEN, under CC BY 4.0 — which answers "who has actually written
 this cheque before", where no source answers "what is open".
 
-- [ ] Ingest funders and awards from the 360Giving API (2 req/sec, limit/offset,
-      60 grants and 1000 orgs per page)
-- [ ] Per-funder enrichment first, not the whole corpus: a funder somebody is
-      already looking at is worth more than a million rows nobody asked for
+- [x] Persist ingested funders and awards. The connector, normaliser,
+      behaviour summary, prospect matcher and `/funders` screen were all
+      finished; nothing wrote a row, so every one of them ran against an empty
+      table
+- [x] A real HTTP client: 2 req/sec, timeout, size cap, and a loud failure on
+      a non-200 or non-JSON body — an empty page would look like a publisher
+      with no grants and delete every award we hold
+- [x] Per-funder enrichment first, not the whole corpus, triggered from the
+      operator console
+- [x] Re-ingest replaces rather than upserts, so a withdrawn grant actually
+      goes; scoped to one funder so it cannot touch another's history
+- [ ] Verify against the live API (egress-blocked here; must be run from the
+      deployment or a workstation)
+- [ ] Resolve licence and publisher automatically from 360Giving's own
+      registry metadata rather than asking the operator to copy it
 - [ ] Quartiles need the grants themselves — the org aggregate gives mean, min,
       max and total but no median, so the distribution chart cannot be fed from
       it. This is what makes ingestion a batch job rather than a lookup

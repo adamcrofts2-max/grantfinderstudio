@@ -6,6 +6,7 @@
  * client, with no build error to warn you.
  */
 
+import { NO_VALUES, type FormValues } from '@/app/formValues';
 import type { CompanyMatch } from '@/ingestion/companieshouse/normalise';
 
 export interface SearchState {
@@ -35,9 +36,25 @@ export interface ManualState {
   message: string;
   /** Per-field problems, so a form does not have to be retyped. */
   errors: Record<string, string>;
+  /** What was typed, so a rejected form is not handed back empty. */
+  values: FormValues;
 }
 
-export const EMPTY_MANUAL: ManualState = { saved: false, message: '', errors: {} };
+export const MANUAL_PROFILE_FIELDS = [
+  'legalName',
+  'legalForm',
+  'jurisdiction',
+  'region',
+  'companyNumber',
+  'incorporationDate',
+] as const;
+
+export const EMPTY_MANUAL: ManualState = {
+  saved: false,
+  message: '',
+  errors: {},
+  values: NO_VALUES,
+};
 
 /**
  * The legal forms an applicant can choose, in the words they would use.
@@ -67,9 +84,24 @@ export interface ProjectState {
   saved: boolean;
   message: string;
   errors: Record<string, string>;
+  /** What was typed, so a rejected form is not handed back empty. */
+  values: FormValues;
 }
 
-export const EMPTY_PROJECT: ProjectState = { saved: false, message: '', errors: {} };
+export const PROJECT_FIELDS = [
+  'projectName',
+  'description',
+  'amountSoughtGbp',
+  'durationMonths',
+  'capitalOrRevenue',
+] as const;
+
+export const EMPTY_PROJECT: ProjectState = {
+  saved: false,
+  message: '',
+  errors: {},
+  values: NO_VALUES,
+};
 
 /** Beneficiary groups as funders name them, so a criterion can actually match. */
 export const BENEFICIARY_CHOICES = [

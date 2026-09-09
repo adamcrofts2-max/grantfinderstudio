@@ -1398,6 +1398,18 @@ summary:focus-visible {
 
 .btn-small { padding: 0.35rem var(--s-3); font-size: var(--t-sm); }
 
+/* The licence block on the ingest form. Set apart because it is the part an
+   operator must not tab past: publishers choose their own licences, and a
+   wrong one here puts somebody else's terms on their data. */
+.ingest-licence {
+  margin: var(--s-6) 0 0; padding: var(--s-5);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+.ingest-licence legend {
+  padding: 0 var(--s-2); font-size: var(--t-sm); font-weight: 700;
+}
+
 @media (max-width: 640px) {
   .admin { padding: var(--s-5) var(--s-4) var(--s-7); }
   .admin-head { flex-direction: column; }

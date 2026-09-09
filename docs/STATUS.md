@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,060 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,094 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1030,3 +1030,74 @@ somebody made.
 The hero figure is still the placeholder art flagged in Phase 12. It shows more
 at hero size than it does in a small empty state, and it is the next thing this
 page needs.
+
+## Funder discovery: the missing write
+
+The connector, the normaliser, the funder-behaviour summary, the prospect
+matcher with its four tiers, and the `/funders` screen with its distribution
+charts were **all already built**. Not one of them had a row to work on,
+because nothing outside the demo seed had ever written to `funder_awards`. The
+whole discovery half of the product was a pipeline with no inlet.
+
+Three pieces close it:
+
+- **`src/db/awards.ts`** — upsert the funder and its dataset, then *replace*
+  its awards. Replace rather than upsert-by-id, because a re-ingest has to be
+  able to REMOVE a grant: a publisher who withdraws or corrects one would
+  otherwise leave the old row counting towards their median forever. Scoped to
+  the one funder, so re-ingesting one publisher cannot touch another's history.
+  Award ids are namespaced by funder — 360Giving ids are only unique within a
+  publisher, and an unnamespaced key silently drops one of a colliding pair.
+- **`src/ingestion/threesixtygiving/http.ts`** — the only file in the ingestion
+  path that does I/O. 2 requests a second as published, a timeout, a size cap,
+  and a loud failure on a non-200 or a non-JSON body. That last one matters
+  more than it looks: a publisher outage serving an HTML error page would
+  otherwise parse as a funder with no grants, and the ingest would cheerfully
+  delete every award we hold for them.
+- **`src/ingestion/threesixtygiving/ingest.ts`** — fetch, normalise, persist.
+  The fetch happens *before* the transaction opens: a paginating ingest of
+  fifty pages at two a second holds a connection for half a minute otherwise,
+  and a publisher outage must not be able to empty a funder we already have.
+  There is a test for exactly that.
+
+**Per funder, not the whole corpus.** A trust somebody is actually being asked
+about is worth more than a million rows nobody wanted, and a targeted ingest
+finishes inside a request rather than needing a job runner this product does
+not have. `/admin/funders` is where an operator runs it.
+
+**The licence is typed, not guessed.** Publishers choose their own open licence
+and some are share-alike, so the form pre-fills nothing and the ingest refuses
+without both a licence and an attribution. Defaulting to "CC BY 4.0" because it
+is the common case would put the wrong terms on somebody else's data every time
+an operator tabbed past the field. Resolving it from 360Giving's registry
+metadata is a follow-up for whoever can reach the live API.
+
+**Not verified against the live API.** Egress here reaches Anthropic and GitHub
+only. Everything between the HTTP boundary and the database is covered against
+fixtures and the real schema; the wire itself has to be exercised from the
+deployment or a workstation before this is trusted.
+
+## Every form in the product lost what you typed
+
+Found by driving the ingest form: submitting with one bad character handed back
+**eight empty boxes**, including an attribution line copied from a licence page.
+
+React resets an uncontrolled form once its action resolves. That is right for a
+form that succeeded and wrong for one that did not — and it was true of five
+forms, worse for a CIC typing a fund in than for an operator.
+
+`src/app/formValues.ts` echoes the submission back; every input reads its
+`defaultValue` from it; successful actions clear it so the form is ready for
+the next entry.
+
+**Selects needed more than that.** `defaultValue` is applied when an element
+MOUNTS. React's reset clears a `<select>` and then re-renders rather than
+remounting, so the default never lands and the choice is lost — while text
+inputs, which React restores from their default, survive. Each select is now
+keyed on the submission timestamp, so it remounts and the default applies.
+Only the selects are keyed, not the whole form, so the remount does not steal
+focus from whatever is being typed.
+
+Verified in a browser across all five: ManualProfile, ProjectForm,
+ManualFundForm, AddFact and the ingest form all keep every field, selects
+included, after a rejected submit.

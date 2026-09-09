@@ -6,7 +6,8 @@ import { getDatabase, withAdmin } from '@/db';
 import { ensureFunderNamed, insertManualFund } from '@/db/catalogue';
 import { readManualFund } from '@/domain/opportunity/manual';
 import { requireOrganisationId } from '@/app/session';
-import type { ManualFundFormState } from '@/app/ManualFundForm';
+import { MANUAL_FUND_FIELDS, type ManualFundFormState } from '@/app/ManualFundForm';
+import { NO_VALUES, readValues } from '@/app/formValues';
 
 /**
  * A fund a CIC typed in themselves.
@@ -30,6 +31,7 @@ export async function addOwnFundAction(
   const organisationId = await requireOrganisationId();
 
   const read = (name: string): string => String(formData.get(name) ?? '');
+  const values = readValues(formData, MANUAL_FUND_FIELDS);
   const { fund, errors } = readManualFund({
     funderName: read('funderName'),
     title: read('title'),
@@ -43,7 +45,7 @@ export async function addOwnFundAction(
   });
 
   if (fund === null) {
-    return { saved: false, message: 'Check the highlighted fields.', errors };
+    return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
   try {
@@ -63,6 +65,7 @@ export async function addOwnFundAction(
       saved: false,
       message: 'That could not be saved. Nothing has been added.',
       errors: {},
+      values,
     };
   }
 
@@ -73,5 +76,7 @@ export async function addOwnFundAction(
     saved: true,
     message: `Added. ${fund.title} is on your list, and only yours.`,
     errors: {},
+    // Cleared on success: ready for the next fund.
+    values: NO_VALUES,
   };
 }

@@ -10,7 +10,10 @@ import {
   type ManualState,
   type ProjectState,
   type SearchState,
+  MANUAL_PROFILE_FIELDS,
+  PROJECT_FIELDS,
 } from './state';
+import { NO_VALUES, readValues } from '@/app/formValues';
 import { loadMasterKey } from '@/secrets/crypto';
 import { readCredentialSecret } from '@/secrets/store';
 import {
@@ -189,6 +192,9 @@ export async function saveManualProfileAction(
   formData: FormData,
 ): Promise<ManualState> {
   const read = (name: string): string => String(formData.get(name) ?? '').trim();
+  // Echoed back on every failure path: a rejected form must not cost somebody
+  // the six fields they just typed.
+  const values = readValues(formData, MANUAL_PROFILE_FIELDS);
 
   const legalName = read('legalName');
   const legalForm = read('legalForm');
@@ -210,7 +216,7 @@ export async function saveManualProfileAction(
   }
 
   if (Object.keys(errors).length > 0) {
-    return { saved: false, message: 'Check the highlighted fields.', errors };
+    return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
   try {
@@ -234,6 +240,7 @@ export async function saveManualProfileAction(
       saved: false,
       message: 'We could not save that. Nothing has been changed — please try again.',
       errors: {},
+      values,
     };
   }
 
@@ -244,6 +251,8 @@ export async function saveManualProfileAction(
     saved: true,
     message: 'Saved. These are recorded as your own declaration, not as verified against the register.',
     errors: {},
+    // Cleared on success: the page moves on to the project.
+    values: NO_VALUES,
   };
 }
 
@@ -261,6 +270,7 @@ export async function saveProjectAction(
   formData: FormData,
 ): Promise<ProjectState> {
   const read = (name: string): string => String(formData.get(name) ?? '').trim();
+  const values = readValues(formData, PROJECT_FIELDS);
 
   const name = read('projectName');
   const description = read('description');
@@ -292,7 +302,7 @@ export async function saveProjectAction(
   }
 
   if (Object.keys(errors).length > 0) {
-    return { saved: false, message: 'Check the highlighted fields.', errors };
+    return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
   try {
@@ -315,10 +325,16 @@ export async function saveProjectAction(
       saved: false,
       message: 'We could not save that. Nothing has been changed — please try again.',
       errors: {},
+      values,
     };
   }
 
   revalidatePath('/');
   revalidatePath('/onboarding');
-  return { saved: true, message: 'Saved. Every fund is now checked against this.', errors: {} };
+  return {
+    saved: true,
+    message: 'Saved. Every fund is now checked against this.',
+    errors: {},
+    values: NO_VALUES,
+  };
 }

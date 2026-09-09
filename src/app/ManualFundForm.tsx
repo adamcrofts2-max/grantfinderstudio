@@ -4,12 +4,34 @@ import { useActionState } from 'react';
 
 import { DEADLINE_KINDS } from '@/domain/opportunity/manual';
 import { JURISDICTIONS } from '@/domain/types';
+import { NO_VALUES, selectKey, valueOf, type FormValues } from '@/app/formValues';
+
+export const MANUAL_FUND_FIELDS = [
+  'funderName',
+  'title',
+  'sourceUrl',
+  'minAmountGbp',
+  'maxAmountGbp',
+  'deadlineKind',
+  'deadline',
+  'jurisdiction',
+  'summary',
+] as const;
 
 export interface ManualFundFormState {
   saved: boolean;
   message: string;
   errors: Record<string, string>;
+  /** What was typed, so a rejected form is not handed back empty. */
+  values: FormValues;
 }
+
+export const EMPTY_MANUAL_FUND: ManualFundFormState = {
+  saved: false,
+  message: '',
+  errors: {},
+  values: NO_VALUES,
+};
 
 const JURISDICTION_LABEL: Record<string, string> = {
   england: 'England',
@@ -53,6 +75,7 @@ export function ManualFundForm({
 }) {
   const [state, submit, saving] = useActionState(action, initial);
   const error = (field: string): string | undefined => state.errors[field];
+  const was = (field: string): string => valueOf(state.values, field);
 
   const problem = (field: string) =>
     error(field) === undefined ? null : (
@@ -73,6 +96,7 @@ export function ManualFundForm({
           aria-invalid={error('funderName') !== undefined}
           aria-describedby={error('funderName') === undefined ? undefined : 'funderName-error'}
           required
+          defaultValue={was('funderName')}
         />
         <p className="hint">The trust, foundation, council or company behind the money.</p>
         {problem('funderName')}
@@ -87,6 +111,7 @@ export function ManualFundForm({
           placeholder="Community Buildings Fund"
           aria-invalid={error('title') !== undefined}
           required
+          defaultValue={was('title')}
         />
         <p className="hint">Their name for it, so you recognise it on their website later.</p>
         {problem('title')}
@@ -103,6 +128,7 @@ export function ManualFundForm({
           type="url"
           inputMode="url"
           placeholder="https://example.org/our-grants"
+          defaultValue={was('sourceUrl')}
         />
         <p className="hint">So you can go straight back to the guidance when you apply.</p>
         {problem('sourceUrl')}
@@ -114,7 +140,9 @@ export function ManualFundForm({
             Smallest grant <span className="hint">(optional)</span>
           </label>
           <input id="minAmountGbp" className="input" name="minAmountGbp" inputMode="numeric"
-            placeholder="5000" />
+            placeholder="5000"
+          defaultValue={was('minAmountGbp')}
+        />
           {problem('minAmountGbp')}
         </div>
         <div className="field" style={{ flex: '1 1 9rem' }}>
@@ -122,7 +150,9 @@ export function ManualFundForm({
             Largest grant <span className="hint">(optional)</span>
           </label>
           <input id="maxAmountGbp" className="input" name="maxAmountGbp" inputMode="numeric"
-            placeholder="25000" />
+            placeholder="25000"
+          defaultValue={was('maxAmountGbp')}
+        />
           {problem('maxAmountGbp')}
         </div>
       </div>
@@ -133,7 +163,8 @@ export function ManualFundForm({
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
         <label className="label" htmlFor="deadlineKind">The closing date</label>
-        <select id="deadlineKind" className="input" name="deadlineKind" defaultValue="unknown">
+        <select key={selectKey(state.values, 'deadlineKind')} id="deadlineKind" className="input" name="deadlineKind"
+          defaultValue={was('deadlineKind') === '' ? 'unknown' : was('deadlineKind')}>
           {DEADLINE_KINDS.map((kind) => (
             <option key={kind} value={kind}>{DEADLINE_LABEL[kind] ?? kind}</option>
           ))}
@@ -149,7 +180,9 @@ export function ManualFundForm({
           Date <span className="hint">(leave blank if there is none)</span>
         </label>
         <input id="deadline" className="input" name="deadline" type="date"
-          aria-invalid={error('deadline') !== undefined} />
+          aria-invalid={error('deadline') !== undefined}
+          defaultValue={was('deadline')}
+        />
         <p className="hint">Use the calendar button — the typed order follows your browser.</p>
         {problem('deadline')}
       </div>
@@ -158,7 +191,8 @@ export function ManualFundForm({
         <label className="label" htmlFor="jurisdiction">
           Where they fund <span className="hint">(optional)</span>
         </label>
-        <select id="jurisdiction" className="input" name="jurisdiction" defaultValue="">
+        <select key={selectKey(state.values, 'jurisdiction')} id="jurisdiction" className="input" name="jurisdiction"
+          defaultValue={was('jurisdiction')}>
           <option value="">Not sure</option>
           {JURISDICTIONS.map((j) => (
             <option key={j} value={j}>{JURISDICTION_LABEL[j] ?? j}</option>
@@ -172,6 +206,7 @@ export function ManualFundForm({
           Anything worth remembering <span className="hint">(optional)</span>
         </label>
         <textarea id="summary" className="input" name="summary" rows={3}
+          defaultValue={was('summary')}
           placeholder="Only for capital work. They said to ring first." />
       </div>
 

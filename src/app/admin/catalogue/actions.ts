@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { withAdmin } from '@/db';
 import { deleteSharedFund, ensureFunderNamed, insertManualFund } from '@/db/catalogue';
 import { readManualFund } from '@/domain/opportunity/manual';
+import { MANUAL_FUND_FIELDS } from '@/app/ManualFundForm';
+import { NO_VALUES, readValues } from '@/app/formValues';
 
 import { requireAdmin } from '../session';
 import type { CatalogueFormState } from './state';
@@ -28,6 +30,7 @@ export async function addSharedFundAction(
   await requireAdmin();
 
   const read = (name: string): string => String(formData.get(name) ?? '');
+  const values = readValues(formData, MANUAL_FUND_FIELDS);
   const { fund, errors } = readManualFund({
     funderName: read('funderName'),
     title: read('title'),
@@ -41,7 +44,7 @@ export async function addSharedFundAction(
   });
 
   if (fund === null) {
-    return { saved: false, message: 'Check the highlighted fields.', errors };
+    return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
   try {
@@ -56,6 +59,7 @@ export async function addSharedFundAction(
       saved: false,
       message: 'That could not be saved. Nothing has been added.',
       errors: {},
+      values,
     };
   }
 
@@ -66,6 +70,7 @@ export async function addSharedFundAction(
     saved: true,
     message: `Added. Every organisation on this deployment can now see ${fund.title}.`,
     errors: {},
+    values: NO_VALUES,
   };
 }
 

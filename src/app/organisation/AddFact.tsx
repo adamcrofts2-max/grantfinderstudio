@@ -4,6 +4,8 @@ import { useActionState, useState } from 'react';
 
 import { readableClaim, SUGGESTED_CLAIMS } from '@/domain/provenance/self-declared';
 
+import { valueOf } from '@/app/formValues';
+
 import { addFactAction } from './actions';
 import { EMPTY_SELF_DECLARED } from './state';
 
@@ -39,6 +41,7 @@ const CLAIM_HINT: Record<string, string> = {
 export function AddFact({ known, open = false }: { known: string[]; open?: boolean }) {
   const [state, submit, saving] = useActionState(addFactAction, EMPTY_SELF_DECLARED);
   const [claim, setClaim] = useState('');
+  const was = (field: string): string => valueOf(state.values, field);
 
   const remaining = SUGGESTED_CLAIMS.filter((suggested) => !known.includes(suggested));
   const choices = remaining.length > 0 ? remaining : SUGGESTED_CLAIMS;
@@ -87,6 +90,7 @@ export function AddFact({ known, open = false }: { known: string[]; open?: boole
               id="customClaim"
               className="input"
               name="customClaim"
+              defaultValue={was('customClaim')}
               placeholder="Accreditations"
             />
             <p className="hint">
@@ -102,6 +106,7 @@ export function AddFact({ known, open = false }: { known: string[]; open?: boole
               className="input"
               name="value"
               rows={3}
+              defaultValue={was('value')}
               aria-invalid={state.errors['value'] !== undefined}
               required
             />

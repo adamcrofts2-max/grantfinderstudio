@@ -1,5 +1,5 @@
 import { isWriterAvailable } from '@/app/drafting';
-import { ManualFundForm } from '@/app/ManualFundForm';
+import { EMPTY_MANUAL_FUND, ManualFundForm } from '@/app/ManualFundForm';
 
 import { AddOpportunity } from './AddOpportunity';
 import { addOwnFundAction } from './manual-actions';
@@ -48,7 +48,7 @@ export default async function AddOpportunityPage() {
                 <ManualFundForm
                   action={addOwnFundAction}
                   submitLabel="Add this fund"
-                  initial={{ saved: false, message: '', errors: {} }}
+                  initial={EMPTY_MANUAL_FUND}
                 />
               </div>
             </div>
@@ -68,7 +68,7 @@ export default async function AddOpportunityPage() {
               <ManualFundForm
                 action={addOwnFundAction}
                 submitLabel="Add this fund"
-                initial={{ saved: false, message: '', errors: {} }}
+                initial={EMPTY_MANUAL_FUND}
               />
             </div>
           </section>

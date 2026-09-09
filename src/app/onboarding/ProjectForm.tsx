@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 
+import { selectKey, valueOf } from '@/app/formValues';
+
 import { saveProjectAction } from './actions';
 import { BENEFICIARY_CHOICES, EMPTY_PROJECT, SPEND_CHOICES } from './state';
 
@@ -16,6 +18,7 @@ import { BENEFICIARY_CHOICES, EMPTY_PROJECT, SPEND_CHOICES } from './state';
 export function ProjectForm({ open = false }: { open?: boolean }) {
   const [state, save, saving] = useActionState(saveProjectAction, EMPTY_PROJECT);
   const error = (field: string): string | undefined => state.errors[field];
+  const was = (field: string): string => valueOf(state.values, field);
 
   return (
     // Open when this is the step the guide just sent them to. A newcomer told
@@ -37,7 +40,9 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
         <div className="field" style={{ marginTop: 'var(--s-4)' }}>
           <label className="label" htmlFor="projectName">Project name</label>
           <input id="projectName" className="input" name="projectName" required
-            placeholder="Green Skills Programme" />
+            placeholder="Green Skills Programme"
+              defaultValue={was('projectName')}
+            />
           {error('projectName') ? (
             <p className="hint" style={{ color: 'var(--negative)' }}>{error('projectName')}</p>
           ) : null}
@@ -48,7 +53,9 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
             What it does <span className="hint">(optional)</span>
           </label>
           <textarea id="description" className="input" name="description" rows={3}
-            placeholder="A twelve-week practical skills course for young people aged 14 to 19." />
+            placeholder="A twelve-week practical skills course for young people aged 14 to 19."
+            defaultValue={was('description')}
+          />
         </div>
 
         <div className="row" style={{ marginTop: 'var(--s-4)', alignItems: 'flex-start' }}>
@@ -57,7 +64,9 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
               How much you need <span className="hint">(optional)</span>
             </label>
             <input id="amountSoughtGbp" className="input" name="amountSoughtGbp"
-              inputMode="numeric" placeholder="25000" />
+              inputMode="numeric" placeholder="25000"
+              defaultValue={was('amountSoughtGbp')}
+            />
             <p className="hint">In pounds. This decides which funds are the right size.</p>
             {error('amountSoughtGbp') ? (
               <p className="hint" style={{ color: 'var(--negative)' }}>{error('amountSoughtGbp')}</p>
@@ -69,7 +78,9 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
               Over how many months <span className="hint">(optional)</span>
             </label>
             <input id="durationMonths" className="input" name="durationMonths"
-              inputMode="numeric" placeholder="12" />
+              inputMode="numeric" placeholder="12"
+              defaultValue={was('durationMonths')}
+            />
             {error('durationMonths') ? (
               <p className="hint" style={{ color: 'var(--negative)' }}>{error('durationMonths')}</p>
             ) : null}
@@ -78,7 +89,8 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
 
         <div className="field" style={{ marginTop: 'var(--s-4)' }}>
           <label className="label" htmlFor="capitalOrRevenue">What the money is for</label>
-          <select id="capitalOrRevenue" className="input" name="capitalOrRevenue" defaultValue="">
+          <select key={selectKey(state.values, 'capitalOrRevenue')} id="capitalOrRevenue" className="input" name="capitalOrRevenue"
+            defaultValue={was('capitalOrRevenue')}>
             <option value="">Not sure yet</option>
             {SPEND_CHOICES.map((choice) => (
               <option key={choice.value} value={choice.value}>{choice.label}</option>
