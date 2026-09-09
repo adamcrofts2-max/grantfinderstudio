@@ -280,6 +280,34 @@ rendered as a sentence.
       one or two by hand too, so a typed fund can be checked rather than only
       tracked
 
+## Phase 14 — Funder discovery from awarded grants
+The half of the product the landing page now promises. 360Giving publishes what
+UK funders have GIVEN, under CC BY 4.0 — which answers "who has actually written
+this cheque before", where no source answers "what is open".
+
+- [ ] Ingest funders and awards from the 360Giving API (2 req/sec, limit/offset,
+      60 grants and 1000 orgs per page)
+- [ ] Per-funder enrichment first, not the whole corpus: a funder somebody is
+      already looking at is worth more than a million rows nobody asked for
+- [ ] Quartiles need the grants themselves — the org aggregate gives mean, min,
+      max and total but no median, so the distribution chart cannot be fed from
+      it. This is what makes ingestion a batch job rather than a lookup
+- [ ] Match funders to an organisation on size, area and beneficiary group,
+      each match citing the grants it came from
+- [ ] Never present awarded-grant data as an open call. A funder who gave in
+      2023 may be closed now, and the freshness vocabulary already has words
+      for that
+- [ ] Attribution and licence on every screen that shows it (CC BY 4.0)
+
+### AI search for open calls — still undecided
+Not on the landing page, and not to be put there until this is settled. The
+research already rules out a crawled index (sui generis database right, funder
+terms, s29A being non-commercial only). What is left is a licensed index or a
+page fetched on demand for the user who asked, extracted to facts and a link
+rather than a copy. An AI web search is closer to the second than the first,
+but "current but unverified" is a different reliability profile from 360Giving's
+"evidenced but historical", and the two must not be averaged into one list.
+
 ## Phase 13 — The operator console
 Everything the person running the service needs, and nothing that belongs to a
 customer. Structural, not disciplined: `app_operator` holds no grant on any
@@ -320,16 +348,26 @@ annotation inside the working screens.**
 - [x] Line-character figure and empty states on tracker, applications, funders
 - [ ] Replace the placeholder figure with real illustration
 - [ ] More than one figure — one drawing across three empty states will wear thin
-- [x] Landing page, built for real rather than mocked. Leads on the claim
-      nobody else makes — there is no list of open funds and we will not
-      pretend there is
+- [x] Landing page, built for real rather than mocked
+- [x] Re-position it: the first version led with "this is not a search engine",
+      which was true and badly under-sold. Finding funders IS half the product
+      — from awarded grants, which funders DO publish. Three beats now: find,
+      weigh, write
+- [x] Show the product on it. The real DistributionBar and RecommendationPill
+      are imported and rendered, so the page cannot claim a behaviour the
+      product does not have; every invented figure is captioned as invented
 - [x] Fix white-on-accent: every primary button measured 2.13:1 in dark mode
 - [x] Darken `--ink-faint`; at 4.43:1 it was a hair under AA and it carries
       every hint, eyebrow and caption in the product
 - [ ] Pricing. Deliberately absent from the landing page until it is decided —
       an invented figure is a promise made to somebody in a fortnight
-- [ ] A worked example on the landing page: what a verdict actually looks
-      like, labelled as an illustration rather than passed off as real
+- [x] A worked example on the landing page, labelled as an illustration
+- [ ] Take the "In build" marker off the Find section — it must not be there
+      when real users arrive, so either the 360Giving corpus lands first or the
+      section comes out
+- [ ] Replace the placeholder line-character art. It is no longer on the
+      landing page (the product's own charts carry the hero instead) but it
+      still fronts three empty states
 - [ ] A title that reports a finding on more screens than the tracker — today it
       is the only one that earns a highlighter
 

@@ -1019,132 +1019,312 @@ summary:focus-visible {
   .setup-mark { width: 24px; height: 24px; }
 }
 /* ---------- The front door ------------------------------------------------
-   The one page a stranger sees. Wider measure and larger type than the app —
-   this is read standing up on a phone by somebody deciding whether to bother,
-   not worked in — but the same tokens throughout, so it cannot drift into
-   looking like a different product's marketing site. */
+   The one page a stranger sees, and the only place in the product that is
+   selling rather than working. It gets a wider measure, a display step above
+   anything the app uses, full-bleed tinted bands and alternating splits — the
+   rhythm a website has and a tool does not.
 
-.lp { max-width: 68rem; margin: 0 auto; padding: 0 var(--s-5) var(--s-8); }
+   Same tokens throughout, so it cannot drift into looking like a different
+   product's marketing site, and so it flips for dark mode with everything
+   else. */
 
-.lp-top {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-4); padding: var(--s-5) 0;
+.lp { --lp-gutter: var(--s-5); }
+.lp-hero,
+.lp-steps-list,
+.lp-feature,
+.lp-band-in,
+.lp-start,
+.lp-foot-in {
+  max-width: 72rem; margin-inline: auto;
+  padding-inline: var(--lp-gutter);
 }
+
+/* ---- Navigation ---- */
+.lp-nav {
+  position: sticky; top: 0; z-index: 20;
+  /* 94%, not 88%: content scrolls UNDER this bar, and the worst case for a
+     translucent header is a dark card sliding beneath light text. The blur
+     keeps the glassy feel; the extra opacity keeps the worst case legible. */
+  background: color-mix(in srgb, var(--canvas) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-fast) var(--ease);
+}
+/* The rule appears only once there is something above it to separate from. */
+.lp-nav:has(+ #main) { border-bottom-color: var(--line); }
+.lp-nav-in {
+  max-width: 72rem; margin-inline: auto; padding: var(--s-3) var(--lp-gutter);
+  display: flex; align-items: center; gap: var(--s-5);
+}
+.lp-nav-links { display: flex; gap: var(--s-5); margin-inline: auto; }
+.lp-nav-links a {
+  color: var(--ink-soft); font-size: var(--t-sm); font-weight: 600;
+  text-decoration: none;
+}
+.lp-nav-links a:hover { color: var(--ink); }
+.lp-nav-actions { display: flex; align-items: center; gap: var(--s-4); }
 .lp-signin { font-weight: 650; font-size: var(--t-sm); }
 
+/* ---- Hero ---- */
 .lp-hero {
-  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: var(--s-7); align-items: center;
-  padding: var(--s-7) 0 var(--s-8);
+  padding-block: var(--s-8);
 }
 .lp-title {
   font-family: var(--font-display, ui-sans-serif), var(--font-sans);
-  /* 4.4vw, not 5.5: at around 900px the larger step put the headline at 49px
-     in a 430px column and stranded "are" on a line of its own. */
-  font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 800;
-  letter-spacing: -0.03em; line-height: 1.08;
-  margin: var(--s-3) 0 0;
+  font-size: clamp(2.1rem, 4.6vw, 3.5rem); font-weight: 800;
+  letter-spacing: -0.032em; line-height: 1.06;
+  margin: var(--s-3) 0 0; text-wrap: balance;
 }
 /* The swipe is tuned for a card heading. On display type at three times that
-   size the same 8%/84% left the ascenders of "th" and "k" sticking out of the
-   top of the mark, which reads as clipping rather than as a highlighter. */
+   size the same 8%/84% left the ascenders poking out of the top of the mark,
+   which reads as clipping rather than as a mark somebody made. */
 .lp-title .hl { top: 1%; height: 94%; }
 .lp-lede {
-  margin: var(--s-5) 0 0; max-width: 34rem;
+  margin: var(--s-5) 0 0; max-width: 36rem;
   font-size: var(--t-md); line-height: 1.62; color: var(--ink-soft);
 }
-.lp-actions {
-  display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-6);
-}
+.lp-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-6); }
 .lp-cta { padding: 0.8rem var(--s-6); font-size: var(--t-md); }
-.lp-quiet {
-  margin: var(--s-4) 0 0; color: var(--ink-faint); font-size: var(--t-sm);
-}
-/* The figure is decoration. It goes when there is no room for it rather than
-   squashing the words it sits beside. */
-.lp-hero-art .figure-stage { max-width: 300px; }
+.lp-quiet { margin: var(--s-4) 0 0; color: var(--ink-faint); font-size: var(--t-sm); }
 
-/* A hairline before each section, so the page has a rhythm rather than four
-   blocks of text drifting apart. */
-.lp-truth, .lp-does, .lp-wont, .lp-start {
-  padding: var(--s-7) 0; border-top: 1px solid var(--line);
+/* ---- The three steps ---- */
+.lp-steps { border-block: 1px solid var(--line); background: var(--surface-sunken); }
+.lp-steps-list {
+  list-style: none; margin: 0; padding-block: var(--s-8);
+  display: grid; gap: var(--s-6);
+  /* Exactly three, so they are declared as three. auto-fit fitted a fourth
+     track at 1440 and left the row unbalanced with an empty column. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.lp-steps-list li {
+  display: grid; gap: var(--s-3); align-content: start;
+  padding-left: var(--s-5); border-left: 2px solid var(--accent-line);
+}
+.lp-steps-list p { margin: 0; color: var(--ink-soft); font-size: var(--t-base); line-height: 1.65; }
+.lp-step-n {
+  width: 34px; height: 34px; border-radius: var(--r-full);
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--on-accent);
+  font-weight: 800; font-size: var(--t-base);
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+}
+.lp-step-h {
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-lg); font-weight: 800; letter-spacing: -0.02em; margin: 0;
+}
+
+/* ---- Alternating feature splits ---- */
+.lp-feature {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-7); align-items: center;
+  padding-block: var(--s-8);
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 5rem;
+}
+/* Words on the right for every other one, so the page does not read as a
+   column of identical rows. Order rather than direction, so the DOM stays in
+   reading order for anyone not seeing the grid. */
+.lp-feature-flip .lp-feature-words { order: 2; }
 
 .lp-h2 {
   font-family: var(--font-display, ui-sans-serif), var(--font-sans);
-  font-size: clamp(1.35rem, 3vw, 1.875rem); font-weight: 800;
-  letter-spacing: -0.02em; line-height: 1.2;
-  margin: 0 0 var(--s-4); max-width: 32rem;
-}
-.lp-h3 {
-  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
-  font-size: var(--t-md); font-weight: 700; letter-spacing: -0.01em;
-  margin: 0 0 var(--s-3);
+  font-size: clamp(1.4rem, 2.6vw, 2rem); font-weight: 800;
+  letter-spacing: -0.022em; line-height: 1.18;
+  margin: var(--s-3) 0 var(--s-4); max-width: 24ch; text-wrap: balance;
 }
 .lp-body {
-  margin: 0 0 var(--s-4); max-width: 40rem;
-  font-size: var(--t-base); line-height: 1.65; color: var(--ink-soft);
+  margin: 0 0 var(--s-4); max-width: 38rem;
+  font-size: var(--t-base); line-height: 1.68; color: var(--ink-soft);
 }
 .lp-body:last-child { margin-bottom: 0; }
-.lp-note {
-  margin: var(--s-4) 0 0; padding-top: var(--s-3);
+.lp-body strong { color: var(--ink); }
+
+.lp-note-inline {
+  margin: var(--s-5) 0 0; padding-left: var(--s-4);
+  border-left: 2px solid var(--accent-line);
+  font-size: var(--t-sm); color: var(--ink-faint); line-height: 1.6;
+}
+.lp-note-inline strong { color: var(--ink-soft); }
+
+/* An honest status marker. It comes down when the thing it describes ships,
+   and not before. */
+.lp-status {
+  margin: var(--s-5) 0 0; padding: var(--s-4) var(--s-4) var(--s-4) var(--s-5);
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: var(--t-sm); color: var(--ink-soft); line-height: 1.6;
+}
+.lp-status-tag {
+  display: inline-block; margin-right: var(--s-2);
+  font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+
+/* ---- The live examples ---- */
+.lp-demo {
+  margin: 0;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+}
+.lp-demo-body { padding: var(--s-5); }
+.lp-demo-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3); margin-bottom: var(--s-4); flex-wrap: wrap;
+}
+.lp-demo-title { font-weight: 700; font-size: var(--t-base); }
+.lp-demo-read, .lp-demo-lead {
+  margin: var(--s-4) 0 0; font-size: var(--t-sm); color: var(--ink-soft); line-height: 1.6;
+}
+.lp-demo-lead { font-size: var(--t-base); color: var(--ink); font-weight: 600; margin-top: 0; }
+/* The caption sits OUTSIDE the card body, on its own strip: it is about the
+   card rather than part of it, and a reader must not be able to mistake the
+   invented figures above for real ones. */
+.lp-demo-cap {
+  padding: var(--s-3) var(--s-5);
   border-top: 1px solid var(--line);
-  font-size: var(--t-sm); color: var(--ink-faint);
+  background: var(--surface-sunken);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  font-size: var(--t-xs); color: var(--ink-faint); line-height: 1.5;
 }
 
-.lp-grid {
+.lp-demo-figures {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-3); margin: var(--s-5) 0 0;
+  padding: var(--s-4) 0; border-block: 1px solid var(--line);
+}
+.lp-demo-figures dt {
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.lp-demo-figures dd {
+  margin: var(--s-1) 0 0;
+  font-family: var(--font-display, ui-sans-serif), var(--font-sans);
+  font-size: var(--t-lg); font-weight: 800; letter-spacing: -0.02em;
+}
+.lp-demo-checks { list-style: none; margin: var(--s-4) 0 0; padding: 0; display: grid; gap: var(--s-3); }
+.lp-demo-checks li {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-3);
+  align-items: start; font-size: var(--t-sm); color: var(--ink-soft); line-height: 1.5;
+}
+.lp-demo-checks q { font-style: italic; }
+
+.lp-draft { display: grid; gap: var(--s-4); }
+.lp-draft p {
+  margin: 0; font-size: var(--t-sm); line-height: 1.6;
+  padding-left: var(--s-4); border-left: 2px solid var(--positive-line);
+}
+.lp-draft-open { border-left-color: var(--caution-line) !important; }
+.lp-cite {
+  display: block; margin-top: var(--s-2);
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--positive);
+}
+.lp-cite-open { color: var(--caution); }
+
+/* The funder-match list, drawn the way the shortlist screen draws it. */
+.lp-match {
   list-style: none; margin: 0; padding: 0;
-  display: grid; gap: var(--s-4);
-  /* Two across, not three. Four cards in a three-column grid leave an orphan
-     on the second row and a column of dead space beside it. */
-  /* min() so the track can shrink below its own minimum on a narrow screen.
-     A bare minmax(24rem, 1fr) cannot, and forced the whole page to scroll
-     sideways at 390px — caught by measuring scrollWidth, not by looking. */
-  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-md); overflow: hidden;
 }
-.lp-card { display: flex; flex-direction: column; }
-/* The aside sits at the foot of its card whatever the card above it does, so
-   one card carrying a note does not stretch a hole into the others. */
-.lp-card .lp-note { margin-top: auto; }
+.lp-match li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-4); padding: var(--s-5);
+  border-top: 1px solid var(--line);
+}
+.lp-match li:first-child { border-top: 0; }
+.lp-match-name { margin: 0; font-weight: 700; font-size: var(--t-base); }
+.lp-match-why {
+  margin: var(--s-1) 0 0; font-size: var(--t-sm); color: var(--ink-faint); line-height: 1.5;
+}
+.lp-feature-art > .lp-demo-cap {
+  border: 0; background: none; padding: var(--s-3) 0 0;
+}
 
+/* ---- The refusals band ---- */
+.lp-band { background: var(--surface-sunken); border-bottom: 1px solid var(--line); }
+.lp-band-in { padding-block: var(--s-8); }
 .lp-wont-list {
   list-style: none; margin: 0; padding: 0;
-  display: grid; gap: var(--s-5); max-width: 44rem;
+  display: grid; gap: var(--s-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
 }
 .lp-wont-list li {
-  font-size: var(--t-base); line-height: 1.65; color: var(--ink-soft);
-  padding-left: var(--s-5); border-left: 2px solid var(--line-strong);
+  font-size: var(--t-sm); line-height: 1.65; color: var(--ink-soft);
+  padding-left: var(--s-4); border-left: 2px solid var(--line-strong);
 }
 .lp-wont-list strong { color: var(--ink); }
 
-.lp-start { border-bottom: 1px solid var(--line); }
+/* ---- Close ---- */
+.lp-start { padding-block: var(--s-8); text-align: center; }
+.lp-start .lp-h2, .lp-start .lp-body { margin-inline: auto; }
+.lp-start .lp-actions { justify-content: center; }
 
-.lp-foot {
-  padding: var(--s-6) 0 0;
-  display: flex; flex-wrap: wrap; gap: var(--s-3);
+.lp-foot { border-top: 1px solid var(--line); background: var(--surface-sunken); }
+.lp-foot-in {
+  padding-block: var(--s-6);
+  display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-5);
   justify-content: space-between;
   color: var(--ink-faint); font-size: var(--t-sm);
 }
 .lp-foot p { margin: 0; }
+.lp-foot-em { color: var(--ink-soft); font-weight: 600; }
 
-/* The hero stacks earlier than the rest needs to: its two columns leave the
-   headline too narrow for its own type well before the phone breakpoint.
-   Kept as its own query — folding it into the one below stretched the buttons
-   to 420px on a tablet, because widening one rule's breakpoint drags every
-   rule sharing the block with it. */
+/* ---- Narrow ---- */
 @media (max-width: 1000px) {
-  .lp-hero { grid-template-columns: 1fr; gap: var(--s-5); padding: var(--s-5) 0 var(--s-6); }
-  /* Below the words: a reader deciding whether to bother should meet the
-     sentence first, not the drawing. */
-  .lp-hero-art { order: 2; }
-  .lp-hero-art .figure-stage { max-width: 200px; margin-inline: 0; }
+  .lp-hero { grid-template-columns: 1fr; gap: var(--s-6); padding-block: var(--s-6) var(--s-6); }
+  .lp-feature { grid-template-columns: 1fr; gap: var(--s-5); padding-block: var(--s-7); }
+  /* Words first on every split once they stack. Alternating sides is a
+     two-column effect; in one column it just puts half the pictures before
+     the sentence that explains them. */
+  .lp-feature-flip .lp-feature-words { order: 0; }
+  .lp-nav-links { display: none; }
 }
 
-/* Phone. Full-width stacked buttons are a phone idiom and look wrong on a
-   tablet, so they stay here. */
+@media (max-width: 780px) {
+  .lp-steps-list { grid-template-columns: 1fr; gap: var(--s-5); }
+}
+
 @media (max-width: 640px) {
-  .lp-truth, .lp-does, .lp-wont, .lp-start { padding: var(--s-6) 0; }
+  .lp { --lp-gutter: var(--s-4); }
+  .lp-hero { padding-block: var(--s-5) var(--s-5); }
+  .lp-steps-list, .lp-band-in, .lp-start { padding-block: var(--s-6); }
+  .lp-feature { padding-block: var(--s-6); }
   .lp-actions .btn { flex: 1 1 12rem; text-align: center; }
+  .lp-demo-figures { grid-template-columns: repeat(3, 1fr); gap: var(--s-2); }
+  .lp-match li { flex-direction: column; align-items: flex-start; gap: var(--s-3); }
+}
+
+/* A little arrival, done by the browser with no JavaScript shipped for it.
+   Scroll-driven where supported, nothing at all where not.
+
+   TRANSFORM ONLY, and that is the whole lesson here. The first version faded
+   from opacity 0, and anything that stops the timeline advancing — an unusual
+   browser, a print, a full-page capture — left every section below the fold
+   permanently INVISIBLE. An enhancement must never default to hiding the
+   content it decorates. A few pixels of offset is the worst this can now do.
+
+   The reduced-motion block at the foot of this file overrides it either way. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-feature-words,
+    .lp-feature-art,
+    .lp-steps-list li,
+    .lp-band-in {
+      animation: lp-rise linear both;
+      animation-timeline: view();
+      /* Finished well before the element is centred: an item still animating
+         when the reader reaches it is an item they are waiting for. */
+      animation-range: entry 5% cover 26%;
+    }
+  }
+}
+@keyframes lp-rise {
+  from { transform: translateY(12px); }
+  to   { transform: none; }
 }
 
 /* ---------- The console ----------------------------------------------------

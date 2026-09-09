@@ -895,35 +895,97 @@ form when that step is what somebody was sent to do.
 
 ## The landing page
 
+`/` is two pages: the front door to a stranger, their list of funds to somebody
+signed in.
+
+### The positioning was wrong first time
+
+The first version led with **"this is not a search engine"**. True, and badly
+under-sold: finding funders is half the product. The correction is not to claim
+a database of open calls — there isn't one and there is not going to be, for
+the reasons under "what we will not build" — but to say what is actually true:
+
+> Funders rarely publish what is open. They do publish what they have already
+> given.
+
+Awarded-grant data, through 360Giving and under CC BY 4.0, answers the question
+a directory cannot: not "who might fund this" but who has written this cheque
+before, to an organisation your size, in your area. That is real discovery on
+evidence. The page now has three beats — **find, weigh, write** — and the
+"there is no list" point survives as the *reason discovery works backwards*
+rather than as the whole story.
+
+The Writer got a section of its own too, and it deserved one: it sees only
+confirmed facts, every sentence must name the fact behind it, and a sentence
+citing something we did not supply is thrown away before anyone sees it. That
+is a real differentiator and the first version buried it in a bullet.
+
+**Not on the page:** AI search for open calls. Still undecided, and it will not
+be advertised before it is settled.
+
+### It shows the product, without a fake screenshot
+
+`src/app/landing/Examples.tsx` imports the real `DistributionBar` and
+`RecommendationPill` and renders them. Not screenshots, not redrawn marketing
+versions — so the page cannot depict a behaviour the product does not have, and
+cannot drift away from it either: a change to the chart changes the landing
+page.
+
+Every figure in them is invented, and every one carries a caption saying so, on
+its own strip outside the card body. A landing page carrying a plausible-looking
+funder with plausible-looking grant sizes is a fabricated record, and this
+product's whole argument is that it does not fabricate.
+
+**The `In build` marker on the Find section is load-bearing.** The screens, the
+schema, the matching and the chart are finished; the 360Giving corpus is not
+ingested. The marker comes down when it lands, and it must not still be there
+when real users arrive.
+
+### What makes it read as a website rather than documentation
+
+A sticky translucent header with section links; a hero carrying a live product
+artefact rather than prose; a three-step band as the spine; alternating splits
+so the page is not a column of identical rows; a tinted band for the refusals;
+a centred close; a structured footer with the data attribution. Display type a
+step above anything the app uses, `text-wrap: balance` on the headings, and a
+scroll-driven arrival animation.
+
+### The animation bug worth remembering
+
+The first version of that animation faded from `opacity: 0` on a
+`view()` timeline. Anything that stops the timeline advancing — an unusual
+browser, a print, a full-page screen capture — left **every section below the
+fold permanently invisible**. It was caught in a full-page screenshot that came
+back as a black rectangle.
+
+The rule it produced: an enhancement must never default to hiding the content
+it decorates. It is transform-only now, so the worst it can do is leave
+something twelve pixels low.
+
+### Two more measurement notes
+
+The sticky header's background is `color-mix(… 94%, transparent)`, raised from
+88%: content scrolls *under* it, and the worst case for a translucent bar is a
+dark card sliding beneath light text.
+
+A contrast probe reported the nav link at 2.86:1 and it was the probe that was
+wrong — `color-mix` reports as `color(srgb 0.96 0.97 0.98 / 0.88)`, and reading
+those floats as 0–255 makes the background nearly black. The real figure is
+6.86:1. Worth recording because the instrument has now lied twice in this
+project, once about `<details>` visibility and once here.
+
+
+
 `/` is now two pages: the front door to a stranger, their list of funds to
 somebody signed in. Until this existed a visitor was redirected to a password
 box for a product they had never heard of.
 
-### The one claim it must not make
+### Still deliberately absent
 
-Every funding product on the market sells a DATABASE — search thousands of
-grants, never miss an opportunity. This one has no database of open funds and
-is never going to have one: there is no machine-readable source of open UK
-trust and foundation calls, and building one by crawling runs into the sui
-generis database right and most funders' own terms (see "what we will not
-build" in the roadmap).
-
-So the page leads with the thing that is true and that nobody else says:
-**there is no list of open funds, and we are not going to pretend there is.**
-What it sells is judgement about a fund you already found — a smaller promise,
-and one it can keep. The four capability sections describe only shipped
-behaviour, and the trust section is phrased as refusals, because "it will tell
-you not to apply" is a stronger signal than another list of features.
-
-Every number on the page is checkable: ten criterion kinds are the ten in
-`domain/eligibility/types.ts`; the Find a Grant figure is the research in
-PRODUCT_ARCHITECTURE.md §2.3 (roughly 119–121 grants, central government only).
-
-**Deliberately absent:** testimonials, a customer count, logos, "£2m raised" —
-there are no customers yet, and a landing page that opens with an invented
-number has already told the reader what kind of product this is. And no
-pricing, because it has not been decided; a figure invented here is a promise
-made to somebody in a fortnight.
+Testimonials, a customer count, logos, "£2m raised" — there are no customers
+yet, and a landing page opening with an invented number has already told the
+reader what kind of product this is. And no pricing: it is not decided, and a
+figure invented here is a promise made to somebody in a fortnight.
 
 ### Two accessibility failures it turned up
 
