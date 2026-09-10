@@ -208,6 +208,8 @@ export interface RegisterProfile {
   incorporatedOn: string | null;
   jurisdiction: string | null;
   address: string | null;
+  /** County or town from the registered office, for matching on area. */
+  area: string | null;
 }
 
 /**
@@ -244,6 +246,11 @@ export async function saveRegisterProfile(
     `UPDATE organisation_profiles
        SET legal_name = $2, company_number = $3, form = COALESCE($4, form),
            incorporation_date = $5, jurisdiction = COALESCE($6, jurisdiction),
+           -- COALESCE, not overwrite: somebody who typed "Wells" and then ran
+           -- the lookup should keep their own answer over the register's
+           -- county only if the register has nothing. Region drives matching,
+           -- and it was never set by this route at all.
+           region = COALESCE(region, $7),
            updated_at = now()
      WHERE organisation_id = $1`,
     [
@@ -253,6 +260,7 @@ export async function saveRegisterProfile(
       profile.legalForm,
       profile.incorporatedOn,
       profile.jurisdiction,
+      profile.area,
     ],
   );
 

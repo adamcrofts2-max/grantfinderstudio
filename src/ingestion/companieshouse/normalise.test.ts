@@ -97,6 +97,7 @@ describe('toCompanyMatch', () => {
       status: 'active',
       isCic: true,
       legalForm: 'cic_limited_by_guarantee',
+      area: null,
       incorporatedOn: '2020-01-15',
       address: '1 Fictional Street, Wells',
     });
@@ -127,6 +128,33 @@ describe('toCompanyMatch', () => {
 });
 
 describe('toCompanyProfile', () => {
+  it('keeps the county separately, because area matching turns on it', () => {
+    // The address was flattened to one string and the county discarded, so
+    // the register route left organisation_profiles.region null — and anybody
+    // who looked their company up rather than typing it in silently got
+    // funder matching on cause and size only.
+    const withCounty = toCompanyProfile({
+      company_name: 'FICTIONAL CIC',
+      company_number: '11111111',
+      registered_office_address: {
+        address_line_1: '4 Mill Lane',
+        locality: 'Wells',
+        region: 'Somerset',
+        postal_code: 'BA5 2AA',
+      },
+    });
+    expect(withCounty?.area).toBe('Somerset');
+  });
+
+  it('falls back to the town when no county is published', () => {
+    const townOnly = toCompanyProfile({
+      company_name: 'FICTIONAL CIC',
+      company_number: '11111111',
+      registered_office_address: { address_line_1: '4 Mill Lane', locality: 'Wells' },
+    });
+    expect(townOnly?.area).toBe('Wells');
+  });
+
   it('maps a full profile', () => {
     const profile = toCompanyProfile({
       company_name: 'FICTIONAL CIC',
@@ -147,6 +175,7 @@ describe('toCompanyProfile', () => {
       isCic: true,
       jurisdiction: 'uk_wide',
       address: '1 Fictional Street, Wells, BA5 0AA',
+      area: 'Wells',
       ceasedOn: null,
     });
   });

@@ -2,7 +2,7 @@
  * Accessibility sweep, with axe, across every screen in the product.
  *
  * Signed out, as a customer with data, and as an operator in the console —
- * nineteen screens, against WCAG 2.0/2.1/2.2 A and AA.
+ * twenty screens, against WCAG 2.0/2.1/2.2 A and AA.
  *
  * Needs a dev server and a browser, so it is NOT part of `npm test`: that
  * suite runs without either, and a test that silently skips is worse than one
@@ -76,7 +76,7 @@ await t.fill('#durationMonths', '12');
 await t.locator('form:has(#projectName) button[type=submit]').click();
 await t.waitForTimeout(3500);
 
-for (const [path, label] of [['/', 'home'], ['/funders', 'funders'], ['/tracker', 'tracker'],
+for (const [path, label] of [['/', 'home'], ['/grants', 'grants'], ['/funders', 'funders'], ['/tracker', 'tracker'],
   ['/applications', 'applications'], ['/organisation', 'organisation'], ['/documents', 'documents'],
   ['/opportunities/add', 'add a fund']]) {
   await t.goto(`${B}${path}`, { waitUntil: 'networkidle' });

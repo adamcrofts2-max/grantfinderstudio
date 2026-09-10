@@ -340,6 +340,19 @@ this cheque before", where no source answers "what is open".
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never
       a crawl
+- [x] **Search the awarded grants themselves** — `/grants`. The product was
+      showing funder-level medians and burying the individual grants behind a
+      disclosure, when "who like us has been given money, how much, and by
+      whom" is the question people arrive with. Text, area, kind of work and
+      amount band, landing on "grants like mine" derived from the applicant's
+      own details
+- [x] Carry a grant's title and description through the ingest. Neither was
+      read from the payload and the schema column was never written, so every
+      text search over real ingested data matched nothing and looked like a
+      working search
+- [x] Set the region from the register. The address was flattened to one
+      string and the county discarded, so anybody who looked their company up
+      rather than typing it in silently got matching on cause and size only
 - [ ] "Organisations like mine": find recipients in the award data whose
       profile resembles the applicant's, then rank who funded THEM — rather
       than matching only on the applicant's own profile

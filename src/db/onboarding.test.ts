@@ -186,6 +186,7 @@ describe('recording what the register says', () => {
     incorporatedOn: '2019-04-02',
     jurisdiction: 'england',
     address: '4 Mill Lane, Wells, Somerset, BA5 2AA',
+    area: 'Somerset',
   };
 
   const setUp = async (organisationId: string, userId: string) => {
@@ -195,6 +196,35 @@ describe('recording what the register says', () => {
     );
     await ensureOrganisation(db, organisationId, userId, register.name);
   };
+
+  it('sets the region, which is what area matching turns on', async () => {
+    // The register route left it null: the address was flattened to one
+    // string and the county thrown away, so anybody who looked their company
+    // up rather than typing it in got matching on cause and size only.
+    await setUp(ORG, USER);
+    await saveRegisterProfile(db, ORG, register);
+    const r = await db.query<{ region: string | null }>(
+      'SELECT region FROM organisation_profiles WHERE organisation_id = $1',
+      [ORG],
+    );
+    expect(r.rows[0]?.region).toBe('Somerset');
+  });
+
+  it('keeps a region the applicant typed themselves', async () => {
+    // Their own answer beats the register's county; the register only fills a
+    // gap.
+    await setUp(ORG, USER);
+    await db.query(
+      `UPDATE organisation_profiles SET region = 'Wells' WHERE organisation_id = $1`,
+      [ORG],
+    );
+    await saveRegisterProfile(db, ORG, register);
+    const r = await db.query<{ region: string | null }>(
+      'SELECT region FROM organisation_profiles WHERE organisation_id = $1',
+      [ORG],
+    );
+    expect(r.rows[0]?.region).toBe('Wells');
+  });
 
   it('writes a fact for every field the register gave', async () => {
     await setUp(ORG, USER);

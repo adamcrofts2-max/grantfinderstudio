@@ -18,7 +18,7 @@ import {
 import { loadAllFunderAwards } from './queries.js';
 import { createTestDatabase, type TestDatabase } from './testing/harness.js';
 import type { Queryable } from './client.js';
-import type { Award } from '../domain/funder/behaviour.js';
+import type { IngestedAward } from '../ingestion/threesixtygiving/normalise.js';
 import type { SourceDataset } from '../ingestion/threesixtygiving/types.js';
 
 let harness: TestDatabase;
@@ -43,7 +43,7 @@ const dataset: SourceDataset = {
   retrievedAt: '2026-09-09T00:00:00.000Z',
 };
 
-const award = (over: Partial<Award> = {}): Award => ({
+const award = (over: Partial<IngestedAward> = {}): IngestedAward => ({
   id: 'g1',
   amountGbp: 9000,
   awardedOn: '2025-06-01',
@@ -51,6 +51,8 @@ const award = (over: Partial<Award> = {}): Award => ({
   jurisdiction: 'england',
   region: 'Somerset',
   tags: ['Children and young people'],
+  title: 'Green Skills Programme',
+  description: 'Practical environmental skills for young people.',
   ...over,
 });
 

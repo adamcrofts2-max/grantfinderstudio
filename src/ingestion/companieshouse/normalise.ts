@@ -108,6 +108,19 @@ export function toJurisdiction(value: unknown): Jurisdiction | null {
   return raw === undefined || raw === null ? null : (JURISDICTIONS.get(raw) ?? null);
 }
 
+/**
+ * The county or town, for matching on area.
+ *
+ * `region` first because that is where Companies House puts the county —
+ * "Somerset" — and a county is what a funder's published grants are labelled
+ * with. `locality` is the town, which is the next best thing.
+ */
+export function areaFromAddress(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const address = value as RawAddress;
+  return text(address.region) ?? text(address.locality);
+}
+
 export function formatAddress(value: unknown): string | null {
   if (typeof value !== 'object' || value === null) return null;
   const address = value as RawAddress;
@@ -131,6 +144,17 @@ export interface CompanyMatch {
   legalForm: LegalForm | null;
   incorporatedOn: string | null;
   address: string | null;
+  /**
+   * The county or town from the registered office, kept SEPARATE from the
+   * flattened address.
+   *
+   * The address was being reduced to one string, so the register route left
+   * `organisation_profiles.region` null — and region is one of the three
+   * things funder matching and grant search turn on. Anybody who found their
+   * company on Companies House rather than typing it in got matching on cause
+   * and size only, silently.
+   */
+  area: string | null;
 }
 
 export function toCompanyMatch(raw: RawSearchItem): CompanyMatch | null {
@@ -146,6 +170,7 @@ export function toCompanyMatch(raw: RawSearchItem): CompanyMatch | null {
     legalForm: toLegalForm(raw.company_type, raw.company_subtype),
     incorporatedOn: isoDate(raw.date_of_creation),
     address: text(raw.address_snippet) ?? formatAddress(raw.address),
+    area: areaFromAddress(raw.address),
   };
 }
 
@@ -168,6 +193,7 @@ export function toCompanyProfile(raw: RawCompanyProfile): CompanyProfile | null 
     legalForm: toLegalForm(raw.type, raw.subtype),
     incorporatedOn: isoDate(raw.date_of_creation),
     address: formatAddress(raw.registered_office_address),
+    area: areaFromAddress(raw.registered_office_address),
     jurisdiction: toJurisdiction(raw.jurisdiction),
     ceasedOn: isoDate(raw.date_of_cessation),
   };

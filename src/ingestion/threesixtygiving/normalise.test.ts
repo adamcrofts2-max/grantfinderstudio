@@ -111,7 +111,33 @@ describe('normaliseGrant', () => {
       jurisdiction: 'england',
       region: 'Somerset',
       tags: ['Young people'],
+      title: null,
+      description: null,
     });
+  });
+
+  it('carries the title and description, which say what the money paid for', () => {
+    // Neither was read from the payload at all, and the schema column was
+    // never written by the real ingest — so a search over awarded grants had
+    // nothing to match on but a recipient's name, and looked like a working
+    // search. `RawGrant` declared both fields, which is why it read as handled.
+    const result = normaliseGrant(
+      grant({ title: 'Green Skills Programme', description: 'Practical skills for 14-19s.' }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.award.title).toBe('Green Skills Programme');
+    expect(result.award.description).toBe('Practical skills for 14-19s.');
+  });
+
+  it('keeps publisher text inert and bounded, as everything else from a source', () => {
+    const result = normaliseGrant(
+      grant({ title: `Skills\u0000 programme`, description: 'x'.repeat(5000) }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.award.title).toBe('Skills programme');
+    expect(result.award.description?.length).toBe(2000);
   });
 
   it('rejects a record with no id', () => {

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,192 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,221 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1805,3 +1805,87 @@ distribution chart, "Your £24k sits in the middle half of what they give", its
 website link, and "Add a fund from them" pre-filling both fields. Then a second
 organisation through the same Companies House lookup — no 5xx, where before the
 fix it produced the exception.
+
+
+## Searching the grants themselves (2026-09-10)
+
+The product could rank funders and could not show you a grant. `/funders`
+summarised a funder's whole record into a median, a range and a count — and put
+the individual awards behind a "See the grants behind this" disclosure. But the
+question an applicant actually arrives with is **"who like us has been given
+money, how much, and by whom"**, and the answer to that is a list of award
+records, each one checkable.
+
+`/grants` is that list. Free text over the recipient, the title and the
+description; area; kind of work; and an amount band. It lands on **grants like
+yours** — derived from the applicant's own region, beneficiary groups and ask —
+so the first screen is useful before anybody types. `q` in the query string
+marks that the form has been used, so a cleared field afterwards stays cleared.
+
+A GET form, deliberately: a search belongs in the URL, where it can be
+bookmarked, shared with a colleague and reloaded without resubmitting.
+
+### Two faults that made it useless, both in the pipe rather than the screen
+
+**The ingest never carried what a grant was FOR.** `normaliseGrant` read
+neither `title` nor `description` from the payload, and the INSERT in
+`awards.ts` did not list the `description` column that has existed since 0001.
+Both fields are declared in `RawGrant`, so the types said they were handled,
+and the demo seed writes a description — so it looked right in development.
+The consequence: a text search over real ingested data had nothing to match but
+a recipient's name, and returned nothing while looking like a working search.
+0012 adds `title`, because 360Giving publishes a short label and a longer
+purpose as different things.
+
+**The register never set the region.** `formatAddress` flattened the registered
+office to one string and threw the county away, so `organisation_profiles.region`
+stayed null on the Companies House route. Region is one of the three things
+both funder matching and grant search turn on, so anybody who looked their
+company up — the route we had just spent a day making work — silently got
+matching on cause and size only. `areaFromAddress` keeps it: `region` first
+because that is where Companies House puts the county, `locality` as the
+fallback. `COALESCE(region, …)` on write, so somebody's own answer still beats
+the register's.
+
+### Two design calls, both the /organisation lesson again
+
+Consecutive grants share a funder, so a primary "Add a fund from them" button
+per row is five identical calls to action for one target — the wall the fact
+list had before it became a list. It is a quiet link.
+
+And the "why this resembles you" lines are shown only after a MANUAL search.
+Under the derived "like mine" filters every row matches by construction, so the
+same two lines repeat down the page and distinguish nothing; the banner says it
+once. After a manual search they are informative again, because the result no
+longer selects for them.
+
+### The trigram index is optional on purpose
+
+`CREATE EXTENSION IF NOT EXISTS pg_trgm` skips only when the extension is
+already installed — when it is UNAVAILABLE it raises, which would take the
+migration and therefore the whole deployment with it. PGlite has no pg_trgm at
+all, and a managed host may restrict extensions. The block swallows its own
+failure and the index is created only if the extension exists: losing it costs
+a sequential scan over one table of published data, and losing the deployment
+costs everything.
+
+### Walked as a user, on the production build
+
+Console claim → Companies House key → ingest ("6 grants loaded, 6 grants
+written from 1 page") → sign up on a 390px viewport → find the CIC on the
+register → confirm → project → `/grants`:
+
+    5 grants of 6 held.
+    2025-06-15 · THE STUB COMMUNITY FOUNDATION
+    £40,000 to Recipient Org 6
+    Grant to community organisation 6
+    Practical skills work with young people.
+    Somerset · Education and training
+    Awarded in Somerset, where you are.
+    Around the size you are asking for.
+
+The £8,000 grant is absent because the derived band is half to double a £24,000
+ask. "Awarded in Somerset, where you are" is the region fix; the title and
+description lines are the ingest fix; and `text=skills` now returns rows where
+before it returned none. No horizontal scroll at 390px, no 5xx, axe clean
+across twenty screens.

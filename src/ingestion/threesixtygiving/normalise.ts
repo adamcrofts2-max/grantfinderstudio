@@ -20,8 +20,22 @@ import type { Award } from '../../domain/funder/behaviour.js';
 import type { Jurisdiction } from '../../domain/types.js';
 import type { RawGrant, RawLocation, RawOrganisation } from './types.js';
 
+/**
+ * An award as ingested: the domain's `Award` plus the publisher's own text.
+ *
+ * The domain type stays minimal on purpose — it is what the BEHAVIOUR
+ * analysis needs, and a median or an interquartile range has no use for a
+ * grant's title. But the text is the only field saying what the money paid
+ * for, so persistence and the grant search do need it. Extending here keeps
+ * presentation text out of a type used for statistics.
+ */
+export interface IngestedAward extends Award {
+  title: string | null;
+  description: string | null;
+}
+
 export type NormaliseResult =
-  | { ok: true; award: Award }
+  | { ok: true; award: IngestedAward }
   | { ok: false; id: string | null; reason: string };
 
 /** Publisher text is untrusted; keep it inert and bounded. */
@@ -145,6 +159,11 @@ export function normaliseGrant(raw: RawGrant): NormaliseResult {
       amountGbp: amount,
       awardedOn,
       recipientName: firstOrganisationName(raw.recipientOrganization),
+      // The only free text saying what the money paid for, and it was read
+      // from the payload nowhere until now — so a search over awarded grants
+      // had nothing to match but a recipient's name.
+      title: sanitiseText(raw.title),
+      description: sanitiseText(raw.description),
       jurisdiction: jurisdictionFromLocations(locations),
       region: regionFromLocations(locations),
       tags,
@@ -153,7 +172,7 @@ export function normaliseGrant(raw: RawGrant): NormaliseResult {
 }
 
 export interface NormaliseBatch {
-  awards: Award[];
+  awards: IngestedAward[];
   rejected: Array<{ id: string | null; reason: string }>;
 }
 
@@ -164,7 +183,7 @@ export interface NormaliseBatch {
  * counting it twice would skew both the award count and the median.
  */
 export function normaliseGrants(raws: readonly RawGrant[]): NormaliseBatch {
-  const awards: Award[] = [];
+  const awards: IngestedAward[] = [];
   const rejected: NormaliseBatch['rejected'] = [];
   const seen = new Set<string>();
 

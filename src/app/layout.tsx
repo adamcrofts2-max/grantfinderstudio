@@ -31,13 +31,17 @@ export const metadata: Metadata = {
 
 const NAV = [
   { href: '/', label: 'Opportunities', icon: '◎' },
+  // The grants come before the funder summaries deliberately: "who like us
+  // has been funded" is the question people actually arrive with, and the
+  // funder-level view is one level up from it.
+  { href: '/grants', label: 'Search grants', icon: '⌕' },
   { href: '/funders', label: 'Who funds this', icon: '◈' },
   { href: '/opportunities/add', label: 'Add a fund', icon: '＋' },
   { href: '/tracker', label: 'Tracker', icon: '◷' },
   { href: '/applications', label: 'Applications', icon: '✎' },
   { href: '/organisation', label: 'Your organisation', icon: '⌂' },
   { href: '/documents', label: 'Documents', icon: '❒' },
-  { href: '/onboarding', label: 'Find your company', icon: '⌕' },
+  { href: '/onboarding', label: 'Find your company', icon: '⌂' },
 ];
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

@@ -15,7 +15,7 @@
  */
 
 import type { Queryable } from './client.js';
-import type { Award } from '../domain/funder/behaviour.js';
+import type { IngestedAward } from '../ingestion/threesixtygiving/normalise.js';
 import type { SourceDataset } from '../ingestion/threesixtygiving/types.js';
 import type { Jurisdiction } from '../domain/types.js';
 
@@ -93,7 +93,7 @@ export async function upsertFunder(tx: Queryable, funder: IngestedFunder): Promi
 export async function replaceFunderAwards(
   tx: Queryable,
   funderId: string,
-  awards: readonly Award[],
+  awards: readonly IngestedAward[],
   sourceDatasetId: string,
 ): Promise<number> {
   await tx.query('DELETE FROM funder_awards WHERE funder_id = $1', [funderId]);
@@ -103,8 +103,8 @@ export async function replaceFunderAwards(
     await tx.query(
       `INSERT INTO funder_awards
          (id, funder_id, recipient_name, amount_gbp, awarded_on, jurisdiction,
-          region, tags, source_dataset_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          region, tags, source_dataset_id, title, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         // Namespaced by funder: two publishers can and do use the same local
         // grant identifier, and a collision would drop one of them.
@@ -117,6 +117,8 @@ export async function replaceFunderAwards(
         award.region,
         award.tags,
         sourceDatasetId,
+        award.title,
+        award.description,
       ],
     );
     written += 1;

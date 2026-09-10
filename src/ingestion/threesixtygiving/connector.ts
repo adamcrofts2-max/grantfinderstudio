@@ -15,7 +15,7 @@
  *     configured origin before being followed.
  */
 
-import type { Award } from '../../domain/funder/behaviour.js';
+import type { IngestedAward } from './normalise.js';
 import { normaliseGrants } from './normalise.js';
 import type { RawGrant, RawPage, SourceDataset } from './types.js';
 
@@ -39,7 +39,7 @@ export interface ConnectorOptions {
 }
 
 export interface IngestResult {
-  awards: Award[];
+  awards: IngestedAward[];
   rejected: Array<{ id: string | null; reason: string }>;
   pagesFetched: number;
   /** True when maxPages stopped us before the data ran out. */

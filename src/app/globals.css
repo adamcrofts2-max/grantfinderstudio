@@ -365,6 +365,18 @@ a:hover { color: var(--accent-hover); }
 
 .stack { display: flex; flex-direction: column; gap: var(--s-4); }
 .row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+
+/* Form fields side by side, collapsing rather than squeezing.
+   `min(Xrem, 100%)` on the track minimum, because a bare minmax() floor
+   cannot shrink below itself and produced horizontal scroll at 390px. */
+.fields-2 {
+  display: grid; gap: var(--s-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+}
+.fields-3 {
+  display: grid; gap: var(--s-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+}
 .row-between { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
 
 /* ---------- Controls ----------------------------------------------------- */

@@ -47,7 +47,7 @@ const B = process.env['BASE_URL'] ?? 'http://localhost:3000';
  * That is the assertion that matters: a 500 here is a page that cannot render.
  */
 const ROUTES = [
-  '/', '/sign-in', '/sign-up', '/onboarding', '/organisation', '/funders',
+  '/', '/sign-in', '/sign-up', '/onboarding', '/organisation', '/grants', '/funders',
   '/opportunities/add', '/tracker', '/applications', '/documents',
   '/admin', '/admin/sign-in', '/admin/funders', '/admin/catalogue',
   '/admin/accounts', '/admin/admins', '/admin/sandbox', '/admin/settings',
