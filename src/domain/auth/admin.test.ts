@@ -6,6 +6,7 @@ import {
   adminSessionExpiry,
   claimAvailability,
   claimSecretProblem,
+  normaliseClaimSecret,
   restoreRefusal,
   standDownRefusal,
 } from './admin.js';
@@ -122,5 +123,31 @@ describe('bringing an admin back', () => {
 
   it('is refused for somebody who was never stood down', () => {
     expect(restoreRefusal({ targetDisabled: false })).toContain('already');
+  });
+});
+
+
+describe('the claim secret as it is typed in', () => {
+  const configured = 'Zx0J9m2QpL7vT4rN8sB6yH1kW3eC5gA=';
+
+  it('matches a secret pasted with the trailing space a phone keyboard adds', () => {
+    // The configured value is trimmed when the environment is read, so an
+    // untrimmed submission was being held to a standard the other side of the
+    // comparison did not meet.
+    expect(normaliseClaimSecret(`${configured} `)).toBe(configured);
+  });
+
+  it('matches one pasted with a newline, as a copy from a terminal carries', () => {
+    expect(normaliseClaimSecret(`${configured}\n`)).toBe(configured);
+  });
+
+  it('leaves the secret itself alone', () => {
+    expect(normaliseClaimSecret(configured)).toBe(configured);
+  });
+
+  it('does not make an empty submission into anything', () => {
+    // Absent stays absent: this must not turn "typed nothing" into a match
+    // against an unset secret, which `claimAvailability` refuses separately.
+    expect(normaliseClaimSecret('   ')).toBe('');
   });
 });

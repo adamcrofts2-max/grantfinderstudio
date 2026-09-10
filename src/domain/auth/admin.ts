@@ -155,3 +155,21 @@ export function restoreRefusal(change: Pick<RosterChange, 'targetDisabled'>): st
   if (!change.targetDisabled) return 'That admin can already sign in.';
   return null;
 }
+
+/**
+ * Tidy a claim secret before it is compared.
+ *
+ * `readEnvironment` already trims the CONFIGURED value, so the two sides were
+ * being held to different standards: a secret pasted with a trailing space —
+ * which is what a phone keyboard does after a paste or a tapped suggestion —
+ * could never match a value that had been trimmed, and the reply is the
+ * deliberately unhelpful "Those details do not match". One of five attempts
+ * per half hour, spent on a space.
+ *
+ * Trimming the supplied value costs nothing. A secret whose entropy lives in
+ * its surrounding whitespace is not a secret, and the configured side is
+ * trimmed anyway, so no value that previously matched stops matching.
+ */
+export function normaliseClaimSecret(raw: string): string {
+  return raw.trim();
+}

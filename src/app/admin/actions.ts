@@ -24,6 +24,7 @@ import {
   adminPasswordProblems,
   adminSessionExpiry,
   claimAvailability,
+  normaliseClaimSecret,
 } from '@/domain/auth/admin';
 import { describeWait } from '@/domain/auth/throttle';
 import { readEnvironment } from '@/env';
@@ -133,7 +134,8 @@ export async function adminClaimAction(
 ): Promise<AdminAuthState> {
   const email = normaliseEmail(String(formData.get('email') ?? ''));
   const password = String(formData.get('password') ?? '');
-  const secret = String(formData.get('secret') ?? '');
+  // Trimmed, because the configured value is. See `normaliseClaimSecret`.
+  const secret = normaliseClaimSecret(String(formData.get('secret') ?? ''));
 
   const configured = readEnvironment().adminClaimSecret;
   const existing = await withAdmin((tx) => countAdmins(tx));
