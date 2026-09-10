@@ -97,6 +97,39 @@ credentials. Deployment protection is now a choice rather than a necessity —
 useful while the deployment is private and a nuisance the moment you want
 somebody to sign up.
 
+## Checking a real build against a real database
+
+`npm test` cannot see three whole classes of fault, and the first real
+deployment found one of each. The suite runs against PGlite as a superuser, in
+a dev bundle, with no client/server boundary applied — so it misses anything
+that depends on the bundler, on the database role, or on rendering.
+
+    createdb gfs                       # any Postgres; a non-superuser owner is realistic
+    export DATABASE_URL='postgres://owner:pw@127.0.0.1:5432/gfs'
+    export APP_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+    npm run build && npm run smoke
+
+It serves the production build, reports `/api/health`, and asserts that no
+route returns a 5xx — printing the server's own stack when one does, which is
+the whole point: a server-side exception's detail lives in the log, never in
+the response.
+
+`BASE_URL=https://your-app.vercel.app npm run smoke` checks a deployed server
+instead of starting one.
+
+The three gaps, for the record:
+
+- **The bundler.** A `'use server'` module importing a plain value from a
+  `'use client'` module receives a client-reference proxy rather than the
+  value. Adding a fund by hand threw "fields is not iterable" and could never
+  have worked in a real build; Vitest imports the array normally.
+- **The database role.** PGlite connects as a superuser, and superusers bypass
+  Row-Level Security regardless of FORCE. A non-superuser owner is refused
+  writes the tests sail through.
+- **Rendering.** A server action that invalidates nothing leaves the page it
+  was called from serving stale content — onboarding saved an organisation and
+  went on offering the search box.
+
 ## Rehearsed against a real Postgres
 
 This was run end to end against PostgreSQL 16 as a **non-superuser owner**,
