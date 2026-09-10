@@ -16,7 +16,7 @@ export function AdminShell({
   children,
 }: {
   email: string;
-  active: 'overview' | 'funders' | 'catalogue' | 'accounts' | 'admins' | 'settings';
+  active: 'overview' | 'funders' | 'catalogue' | 'accounts' | 'admins' | 'sandbox' | 'settings';
   children: ReactNode;
 }) {
   const tab = (id: typeof active, href: string, label: string) => (
@@ -44,6 +44,7 @@ export function AdminShell({
         {tab('catalogue', '/admin/catalogue', 'Shared catalogue')}
         {tab('accounts', '/admin/accounts', 'Accounts')}
         {tab('admins', '/admin/admins', 'Admins')}
+        {tab('sandbox', '/admin/sandbox', 'Sandbox')}
         {tab('settings', '/admin/settings', 'Services')}
       </nav>
 

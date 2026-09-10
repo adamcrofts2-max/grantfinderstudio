@@ -34,6 +34,16 @@ describe('migrations.generated.ts', () => {
     }
   });
 
+  it('lists every migration file, so one added to the folder cannot be forgotten', () => {
+    // The check above is one-directional and that turned out to matter: a new
+    // .sql file is picked up by the generator automatically, but `MIGRATIONS`
+    // is written by hand, so a migration could sit in the folder, be read by
+    // anyone reviewing the schema, and never run anywhere. It would not fail —
+    // it would just be absent, and the failure would surface later as a
+    // missing column in an unrelated page.
+    expect([...MIGRATIONS].toSorted()).toEqual(Object.keys(MIGRATION_SQL).toSorted());
+  });
+
   it('refuses a migration it has no SQL for, rather than applying nothing', async () => {
     // Silently treating a missing migration as empty would leave a database
     // that reports itself migrated while missing tables.

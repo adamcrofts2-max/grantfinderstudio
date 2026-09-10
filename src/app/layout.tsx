@@ -131,6 +131,23 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 )}
               </nav>
               <div className="main">
+                {/* Unmissable, on every screen, and sticky.
+                    A populated sandbox looks exactly like a real
+                    organisation's account — which is the point, and also the
+                    danger: a screenshot of it could be shown as a customer's
+                    work, or read as real data by whoever is looking over the
+                    operator's shoulder. So the label travels with the content
+                    rather than sitting on one screen. */}
+                {session.sandbox ? (
+                  <p className="sandbox-bar">
+                    <span aria-hidden="true">◆</span>
+                    <span>
+                      <strong>Sandbox.</strong> This is your own practice
+                      organisation, not a customer’s. Nothing here is real.
+                    </span>
+                    <a href="/admin/sandbox">Back to the console</a>
+                  </p>
+                ) : null}
                 <main id="main">{children}</main>
               </div>
             </div>

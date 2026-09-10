@@ -311,6 +311,21 @@ a:hover { color: var(--accent-hover); }
 .nav-icon { width: 1rem; text-align: center; flex: 0 0 auto; }
 
 .main { min-width: 0; }
+
+/* The sandbox label.
+   Sticky at the top of the scrolling column rather than a one-off notice on
+   the home screen: the whole product is reachable from here, and a label that
+   only appears on the first page is a label that is not there when somebody
+   takes a screenshot of the fifth. */
+.sandbox-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--s-2) var(--s-3); flex-wrap: wrap;
+  padding: var(--s-2) var(--s-5);
+  background: var(--caution-bg); color: var(--caution);
+  border-bottom: 1px solid var(--caution-line);
+  font-size: var(--t-sm); font-weight: 550;
+}
+.sandbox-bar a { color: inherit; margin-left: auto; font-weight: 650; }
 .page { max-width: 60rem; margin: 0 auto; padding: var(--s-6) var(--s-5) var(--s-8); }
 .page-narrow { max-width: 44rem; }
 
@@ -1475,6 +1490,14 @@ summary:focus-visible {
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 .admin-reading dd { margin: var(--s-2) 0 0; }
+
+/* Prose pairs rather than stat tiles: a claim and the reason it holds. */
+.admin-notes { margin: var(--s-4) 0 0; display: grid; gap: var(--s-4); }
+.admin-note dt { font-weight: 650; }
+.admin-note dd {
+  margin: var(--s-1) 0 0; color: var(--ink-soft);
+  font-size: var(--t-sm); line-height: 1.65;
+}
 .admin-value-figure {
   display: block;
   font-family: var(--font-display, ui-sans-serif), var(--font-sans);

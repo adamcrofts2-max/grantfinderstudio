@@ -24,7 +24,8 @@ export async function readAccountSummary(tx: Queryable): Promise<AccountSummary>
   const { rows } = await tx.query<{ total: number; recent: number }>(
     `SELECT count(*)::int AS total,
             count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS recent
-       FROM users`,
+       FROM users
+      WHERE sandbox_of_admin IS NULL`,
   );
   return { total: rows[0]?.total ?? 0, lastSevenDays: rows[0]?.recent ?? 0 };
 }
@@ -50,7 +51,11 @@ export async function readAccounts(tx: Queryable, limit = 100): Promise<AccountR
     name: string | null;
     created_at: Date | string;
   }>(
+    // Sandboxes are the operator's own practice organisations, not signups.
+    // Listing them here would make the console lie to the person reading it,
+    // and the first numbers anybody looks at after a launch are these.
     `SELECT id, email, name, created_at FROM users
+      WHERE sandbox_of_admin IS NULL
       ORDER BY created_at DESC
       LIMIT $1`,
     [limit],

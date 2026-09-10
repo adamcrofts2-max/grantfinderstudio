@@ -364,6 +364,20 @@ Postgres.
       because an emailed console password is one sitting in an inbox
 - [x] Change the console password from inside the console — the current one is
       required, and every other session for the account is ended
+- [x] Let an operator see the product as a customer does, without being able to
+      see a customer. `/admin/sandbox` opens an ordinary customer session over
+      an organisation derived from the admin id — no parameter anywhere names
+      an organisation, so there is nothing to aim at somebody else
+- [x] Close a one-directional check: `MIGRATIONS` is hand-written while the SQL
+      map is generated, so a migration could sit in the folder and never run
+- [ ] A populated sandbox for demos, and the decision it needs: fictional
+      funders are SHARED reference data, so seeding them puts them in front of
+      real customers. Tenant-scoped and org-private content (facts, project,
+      pasted funds, an application) can be seeded safely; the funders side
+      wants a real 360Giving ingest instead
+- [ ] Customer-granted support access — time-boxed, single-organisation,
+      audit-logged, visible to the customer while live. NOT an admin-initiated
+      view: build it the day a real customer is stuck
 - [ ] An audit trail of what an operator changed in the shared catalogue
 - [ ] First-run moment on onboarding
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no

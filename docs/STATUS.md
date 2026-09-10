@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,154 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,169 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1408,3 +1408,89 @@ the same row, and the code checked one before the other rather than asking
 which was newer. Every outcome now carries the millisecond it was produced and
 the row shows the latest. A stale success message is a lie about what the
 database currently says.
+
+
+## The operator's sandbox (2026-09-10)
+
+An operator needs to see the product the way a customer sees it. The console
+cannot show them — `app_operator` holds no grant on a single tenant table, and
+46 tests assert it table by table, which is what makes the promise on the
+sign-in page true rather than aspirational.
+
+The obvious fix is a button that opens somebody's account, and that is the door
+every leaked support tool has gone through. But notice where the danger
+actually lives: an impersonation tool is dangerous because it takes WHICH
+ORGANISATION as an input and then has to be careful about it for ever.
+
+So there is no input.
+
+`/admin/sandbox` opens an organisation whose id is a pure function of the
+admin's id. No form field, query string or path segment anywhere in the flow
+names an organisation, so there is nothing to point at a customer — and that is
+one sentence, not a permission check that every future edit has to preserve.
+`src/db/sandbox.test.ts` asserts the derivation and asserts a sandbox delete
+reaches only the organisation the tenant context names.
+
+What the operator ends up holding is not a special view. It is an ordinary
+customer session — same cookie, same expiry, same Row-Level Security, same
+policies — over an organisation that happens to be theirs.
+
+### Three properties worth having
+
+**The sandbox account has no password row.** Sign-in reads `user_passwords`, so
+there is no password that works, for anybody, ever — including whoever learns
+the address. Not a rule the code applies; an absent row. The address is at
+`.invalid`, reserved by RFC 2606, so it cannot collide with a real signup or
+receive mail.
+
+**It starts empty, and can be emptied again.** Empty is what a real new
+customer meets, and it is the state most worth testing and hardest to get back
+to. "Empty it and start again" deletes the organisation and lets everything
+cascade; the user row survives, so the unique index still reserves this admin's
+sandbox and the next click rebuilds rather than races.
+
+**It is not counted as a customer.** `readAccountSummary` and `readAccounts`
+exclude sandboxes. The first number anybody looks at after a launch should not
+be the operator's own practice runs.
+
+### Where the flag lives, and why it had to go there
+
+`users.sandbox_of_admin`, and the choice was forced by who reads it. The
+console's account list runs through `app_operator`, which is granted SELECT on
+`users` and nothing tenant-scoped — so `users` is the only table where a flag
+can live if the customer counts are going to exclude sandboxes. On the other
+side, the product needs to label every screen, and the session is already being
+resolved on the owner connection on every request: `loadSession` now joins
+`users` and carries `sandbox` down with the session the app already has. One
+column, one reader each side, no duplicated state and no new grant.
+
+The label is sticky at the top of the scrolling column rather than a notice on
+the home screen. A sandbox looks exactly like a real organisation's account —
+which is the point, and also the risk: a screenshot of the fifth screen could
+be shown as a customer's work.
+
+### What is deliberately absent
+
+**Funders.** A populated sandbox would want them, and funders are SHARED
+reference data — seeding fictional ones puts them in front of real customers.
+The funders side gets populated by a real 360Giving ingest instead, which is
+genuine data that benefits every tenant. Tenant-scoped and org-private content
+could still be seeded safely (facts, a project, pasted funds private by RLS
+since 0004, an application), and that is the open roadmap item.
+
+**Support access.** The sandbox is safe *because* it cannot be aimed, and
+support access is aimed by definition. If a real customer is ever stuck, the
+shape is: the customer grants it, from their own screen, time-boxed, one
+organisation, written to the audit log, and visible to them while it is live.
+Not the admin taking it.
+
+### A one-directional check, found by walking into it
+
+`MIGRATIONS` in `migrate.ts` is written by hand; `migrations.generated.ts` is
+generated from the folder. The drift test asserted every listed migration has
+SQL — but not that every migration file is listed. So 0011 sat in the folder,
+was inlined by the generator, would have been read by anyone reviewing the
+schema, and ran nowhere. It surfaced as `column "sandbox_of_admin" does not
+exist` in a test, which is the lucky version; in a deployment it would have
+surfaced later as a missing column in an unrelated page. The test is now
+bidirectional.

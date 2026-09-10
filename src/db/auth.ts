@@ -29,6 +29,15 @@ export interface SessionRecord {
   /** Null until onboarding creates an organisation for a new account. */
   organisationId: string | null;
   expiresAt: Date;
+  /**
+   * True when this is an operator's own sandbox rather than a customer.
+   *
+   * Joined here rather than read separately because the session is already
+   * being resolved on the owner connection on every request, and `app_user`
+   * cannot read `users` at all (0009). One join, no second round trip, and no
+   * screen has to remember to ask.
+   */
+  sandbox: boolean;
 }
 
 /** Look an account up by address. Normalised on both sides — see 0007. */
@@ -114,10 +123,12 @@ export async function loadSession(
     user_id: string;
     organisation_id: string | null;
     expires_at: string | Date;
+    sandbox_of_admin: string | null;
   }>(
-    `SELECT user_id, organisation_id, expires_at
-       FROM sessions
-      WHERE id = $1 AND expires_at > $2`,
+    `SELECT s.user_id, s.organisation_id, s.expires_at, u.sandbox_of_admin
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+      WHERE s.id = $1 AND s.expires_at > $2`,
     [tokenHash, now.toISOString()],
   );
   const row = rows[0];
@@ -126,6 +137,7 @@ export async function loadSession(
     userId: row.user_id,
     organisationId: row.organisation_id,
     expiresAt: new Date(row.expires_at),
+    sandbox: row.sandbox_of_admin !== null,
   };
 }
 
