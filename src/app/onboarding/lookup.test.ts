@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { lookupAvailableFrom } from './lookup.js';
+import { lookupAvailableFrom, lookupStateFrom } from './lookup.js';
 import type { CredentialStatus } from '@/secrets/store';
 
 const status = (over: Partial<CredentialStatus> = {}): CredentialStatus => ({
@@ -47,5 +47,22 @@ describe('offering the company search', () => {
     // The whole bug. A base URL says where to ask; a key says whether we may.
     // This function cannot see the environment at all, which is the fix.
     expect(lookupAvailableFrom.length).toBe(1);
+  });
+});
+
+
+describe('what the console reports about the lookup', () => {
+  it('separates a stored-but-failing key from no key at all', () => {
+    // Collapsing these is what made the original bug invisible: the console
+    // said "No key" while a key sat in the store, so the screen an operator
+    // would check to find out why the search had gone told them the wrong
+    // thing, and sent them to add a key they had already added.
+    expect(lookupStateFrom(status())).toBe('absent');
+    expect(lookupStateFrom(status({ masked: '••1234', lastCheckOk: false }))).toBe('failing');
+    expect(lookupStateFrom(status({ masked: '••1234', lastCheckOk: true }))).toBe('available');
+  });
+
+  it('counts a never-checked key as available, matching the search', () => {
+    expect(lookupStateFrom(status({ masked: '••1234', lastCheckOk: null }))).toBe('available');
   });
 });

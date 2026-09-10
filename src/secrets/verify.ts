@@ -55,6 +55,61 @@ async function verifyAnthropic(key: string): Promise<VerificationResult> {
   }
 }
 
+/**
+ * What a Companies House response status means for the key.
+ *
+ * Pure, and separated from the fetch because the real service is unreachable
+ * from the build environment — so the mapping was never exercised anywhere,
+ * and it was wrong in a way that cost somebody their first real deployment.
+ *
+ * The old check probed `/company/00000006` and treated every non-OK status as
+ * a bad key. Two problems, one fatal:
+ *
+ *  - A 404 means AUTHENTICATED BUT NOT FOUND. An unauthenticated request, or
+ *    one with a bad key, gets 401. So a 404 proves the key works — and
+ *    reporting it as "Companies House returned 404" marked a perfectly good
+ *    key as failing, which then hid the company search from the onboarding
+ *    screen with no explanation anywhere a person would look.
+ *  - Probing one hard-coded company number makes the check depend on that
+ *    company continuing to exist. It is not the API's job to keep a
+ *    twelve-digit historical registration alive for our health check.
+ *
+ * 401 is the only status that means "this key is wrong", and it is the only
+ * one reported that way now.
+ */
+export function interpretCompaniesHouseStatus(status: number): VerificationResult {
+  if (status === 401) {
+    return {
+      ok: false,
+      note: 'Companies House rejected that key. Check you copied all of it, and that it is a REST API key for a LIVE application — a test-application key only works against their sandbox.',
+    };
+  }
+  if (status === 403) {
+    return {
+      ok: false,
+      note: 'That key is valid but not permitted to read company data. In your Companies House application, check it is a REST key rather than a streaming key.',
+    };
+  }
+  if (status === 429) {
+    return { ok: false, note: 'Companies House rate-limited the check. The key may be fine — try again shortly.' };
+  }
+  if (status === 404) {
+    // Authenticated. The register simply had nothing for the probe, which is
+    // not a fact about the key.
+    return { ok: true, note: 'Connected. Company lookups are working.' };
+  }
+  if (status >= 500) {
+    return {
+      ok: false,
+      note: `Companies House is having trouble (${status}). The key may be fine — try again shortly.`,
+    };
+  }
+  if (status >= 400) {
+    return { ok: false, note: `Companies House returned ${status}.` };
+  }
+  return { ok: true, note: 'Connected. Company lookups are working.' };
+}
+
 async function verifyCompaniesHouse(key: string): Promise<VerificationResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -66,20 +121,16 @@ async function verifyCompaniesHouse(key: string): Promise<VerificationResult> {
   try {
     // Companies House uses HTTP basic auth with the key as the username.
     const auth = Buffer.from(`${key}:`).toString('base64');
-    const response = await fetch(`${baseUrl}/company/00000006`, {
-      headers: { Authorization: `Basic ${auth}` },
-      signal: controller.signal,
-    });
-    if (response.status === 401) {
-      return { ok: false, note: 'Companies House rejected that key.' };
-    }
-    if (response.status === 429) {
-      return { ok: false, note: 'Companies House rate-limited the check. Try again shortly.' };
-    }
-    if (!response.ok) {
-      return { ok: false, note: `Companies House returned ${response.status}.` };
-    }
-    return { ok: true, note: 'Connected. Company lookups are working.' };
+    // Search rather than a specific company: it answers 200 for any key that
+    // works, and depends on no single registration continuing to exist.
+    const response = await fetch(
+      `${baseUrl}/search/companies?q=community&items_per_page=1`,
+      {
+        headers: { Authorization: `Basic ${auth}` },
+        signal: controller.signal,
+      },
+    );
+    return interpretCompaniesHouseStatus(response.status);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       return { ok: false, note: 'Companies House did not respond in time.' };

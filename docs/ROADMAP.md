@@ -374,6 +374,16 @@ Postgres.
       gated it on `COMPANIES_HOUSE_BASE_URL` — an optional test-endpoint
       override with a real default that nobody sets — rather than on a stored
       key. The console's overview tile was wrong the same way
+- [x] Fix the Companies House verification. It probed one hard-coded company
+      number and read every non-OK status as a bad key — but a 404 means
+      AUTHENTICATED and not found, so a working key was recorded as failing and
+      the search stayed hidden. Now probes search, and only 401 means the key
+      is wrong
+- [x] "Test the stored key again" — a verdict outlives the code that reached
+      it, so deploying the fix changed nothing until the check could be re-run
+      without re-pasting the key
+- [x] Report a stored-but-failing key as such on the console overview, instead
+      of "No key" — which sent an operator to add a key they already had
 - [x] A recovery path for a forgotten console password: any admin can set
       another's, and the roster says plainly that one admin means no way back
 - [ ] A populated sandbox for demos, and the decision it needs: fictional

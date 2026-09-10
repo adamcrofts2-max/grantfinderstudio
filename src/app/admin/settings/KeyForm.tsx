@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { removeKeyAction, saveKeyAction } from './actions';
+import { recheckKeyAction, removeKeyAction, saveKeyAction } from './actions';
 import { EMPTY_ACTION } from './state';
 import type { CredentialStatus, ProviderId } from '@/secrets/store';
 
@@ -34,13 +34,20 @@ export function KeyForm({
 }) {
   const [saveState, save, saving] = useActionState(saveKeyAction, EMPTY_ACTION);
   const [removeState, remove, removing] = useActionState(removeKeyAction, EMPTY_ACTION);
+  const [recheckState, recheck, rechecking] = useActionState(recheckKeyAction, EMPTY_ACTION);
 
+  /**
+   * The latest outcome for this provider.
+   *
+   * By timestamp, not by the order they are written: save, remove and
+   * re-check can each hold a result for the same provider, so a failed save
+   * would otherwise keep captioning a key that a later re-check has just
+   * proved fine.
+   */
   const result =
-    saveState.provider === provider.id
-      ? saveState
-      : removeState.provider === provider.id
-        ? removeState
-        : null;
+    [saveState, removeState, recheckState]
+      .filter((state) => state.provider === provider.id)
+      .toSorted((a, b) => b.at - a.at)[0] ?? null;
 
   // Prefer the state the action just returned, so a save cannot leave the
   // badge saying "Not connected" beside a message saying "Connected".
@@ -122,9 +129,24 @@ export function KeyForm({
             {saving ? 'Checking…' : 'Save and test'}
           </button>
           {current.masked === null ? null : (
-            <button className="btn btn-secondary" type="submit" formAction={remove} disabled={removing}>
-              {removing ? 'Removing…' : 'Remove'}
-            </button>
+            <>
+              {/* formNoValidate, because the key field above is `required` and
+                  this button is not asking for one. Without it the browser
+                  blocks the submission with no request, no error and no log —
+                  the same silent failure the ingest dry-run button had. */}
+              <button
+                className="btn btn-secondary"
+                type="submit"
+                formAction={recheck}
+                formNoValidate
+                disabled={rechecking}
+              >
+                {rechecking ? 'Testing…' : 'Test the stored key again'}
+              </button>
+              <button className="btn btn-secondary" type="submit" formAction={remove} formNoValidate disabled={removing}>
+                {removing ? 'Removing…' : 'Remove'}
+              </button>
+            </>
           )}
         </div>
       </form>

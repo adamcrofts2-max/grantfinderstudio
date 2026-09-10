@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,178 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,187 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1552,3 +1552,61 @@ there is only one, in a banner rather than a footnote:
 
 Verified end to end in a browser: reset a second admin's password from the
 roster, then signed in as them with it.
+
+
+## The company search, part two (2026-09-10)
+
+Fixing the wrong predicate was not enough: a Companies House key was added, and
+the search still did not appear. Three faults in a row, each hiding the next.
+
+### A 404 is not a bad key
+
+`verifyCompaniesHouse` probed `/company/00000006` and treated every non-OK
+status as a failure. So the check depended on one hard-coded historical
+registration continuing to exist — and when the register answered 404, a
+perfectly good key was recorded as `last_check_ok = false`.
+
+The reasoning was wrong, not just the company number. **An unauthenticated
+request, or one with a bad key, gets 401.** A 404 therefore PROVES the key
+authenticated; the register simply had nothing at that path, which is not a
+fact about the key at all.
+
+Now it probes `/search/companies?q=community&items_per_page=1` — answers 200
+for any key that works, and depends on no single registration surviving — and
+`interpretCompaniesHouseStatus` is a pure function with its own tests. Pure
+because the real service is unreachable from the build environment: left as a
+condition inline, the mapping was exercised by nothing except somebody's first
+real deployment. 401 is the only status reported as the key being wrong, and it
+now names the usual cause — a test-application key authenticates only against
+the sandbox, so against the live base URL it looks exactly like a typo.
+
+### A verdict outlives the code that reached it
+
+Deploying that fix changed nothing, because the check only ran on save. The
+stored key kept its stale "failing" verdict, and recovering meant re-pasting a
+key that was never wrong — a poor thing to ask of somebody who has just been
+told their key is fine.
+
+`recordCredentialCheck` writes back only the outcome, never the ciphertext, and
+**"Test the stored key again"** on the Services screen re-runs the check
+against what is already there. It carries `formNoValidate`, because the key
+field beside it is `required` and the browser would otherwise block the
+submission with no request, no error and no log — the same silent failure the
+ingest dry-run button had.
+
+### "No key" was a lie about a key that was there
+
+The console's overview tile collapsed three states into two, so a stored key
+that failed its check read as "No key" — sending an operator to add a key they
+had already added, on the one screen they would check to find out why the
+search had gone. `lookupStateFrom` keeps `absent`, `failing` and `available`
+distinct, and the failing case now says where the explanation is.
+
+### The pattern in all three
+
+Every one of these was a boolean that answered a slightly different question
+from the one being asked — is the base URL set (rather than: do we have a key),
+did the response succeed (rather than: did the key authenticate), is a key
+working (rather than: is one stored). None could fail loudly, and each made the
+next one harder to see. All three are now pure functions with the distinctions
+named, which is the only way a condition nothing can exercise stays honest.

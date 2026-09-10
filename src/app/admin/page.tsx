@@ -8,7 +8,7 @@ import {
 import { checkConfiguration, readEnvironment } from '@/env';
 import { THROTTLE } from '@/domain/auth/throttle';
 import { isWriterAvailable } from '@/app/drafting';
-import { lookupIsAvailable } from '@/app/onboarding/lookup';
+import { readLookupState } from '@/app/onboarding/lookup';
 
 import { requireAdmin } from './session';
 import { AdminShell } from './AdminShell';
@@ -55,7 +55,7 @@ export default async function AdminOverviewPage() {
   const problems = checkConfiguration(env);
 
   const writerAvailable = await isWriterAvailable();
-  const lookupAvailable = await lookupIsAvailable();
+  const lookupState = await readLookupState();
 
   let accounts = { total: 0, lastSevenDays: 0 };
   let catalogue = { funders: 0, sharedOpportunities: 0, tenantOpportunities: 0 };
@@ -134,11 +134,18 @@ export default async function AdminOverviewPage() {
             // ordinary deployment — so this tile said "Not configured" while
             // a working key sat in the credential store, and the onboarding
             // screen hid its search box for the same reason.
-            value: lookupAvailable ? 'Available' : 'No key',
-            tone: lookupAvailable ? 'good' : 'caution',
-            note: lookupAvailable
-              ? undefined
-              : 'Organisations enter their own details, recorded as self-declared rather than verified. Add a Companies House key under Services to have their legal form read from the register instead.',
+            value:
+              lookupState === 'available' ? 'Available'
+              : lookupState === 'failing' ? 'Key not working'
+              : 'No key',
+            tone: lookupState === 'available' ? 'good' : 'caution',
+            note:
+              lookupState === 'available' ? undefined
+              : lookupState === 'failing'
+                // The state that used to be reported as "No key", which sent
+                // an operator looking for a key they had already added.
+                ? 'A key is stored but its last check failed, so the company search is hidden. Open Services and use “Test the stored key again” — the note there says what the register replied.'
+                : 'Organisations enter their own details, recorded as self-declared rather than verified. Add a Companies House key under Services to have their legal form read from the register instead.',
           },
           {
             label: 'Credential storage',

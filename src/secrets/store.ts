@@ -105,6 +105,37 @@ export async function saveCredential(
   );
 }
 
+/**
+ * Record a fresh verification against the key already stored.
+ *
+ * Separate from `saveCredential` because it must NOT touch the ciphertext:
+ * this is for re-testing a key without asking anybody to paste it again, and
+ * a re-check that could rewrite the secret would be a way to lose it.
+ *
+ * It exists because a verdict outlives the code that reached it. The Companies
+ * House check used to read a 404 as a bad key, which marked a working key as
+ * failing — and deploying the fix changed nothing, because the check only ran
+ * on save. Without this, recovering meant re-pasting a key that was never
+ * wrong.
+ */
+export async function recordCredentialCheck(
+  db: Queryable,
+  provider: ProviderId,
+  verification: VerificationResult,
+  updatedByAdmin: string | null,
+): Promise<void> {
+  await db.query(
+    `UPDATE app_credentials
+        SET last_checked_at = now(),
+            last_check_ok = $2,
+            last_check_note = $3,
+            updated_by_admin = $4,
+            updated_at = now()
+      WHERE provider = $1`,
+    [provider, verification.ok, verification.note, updatedByAdmin],
+  );
+}
+
 export async function deleteCredential(db: Queryable, provider: ProviderId): Promise<void> {
   await db.query('DELETE FROM app_credentials WHERE provider = $1', [provider]);
 }

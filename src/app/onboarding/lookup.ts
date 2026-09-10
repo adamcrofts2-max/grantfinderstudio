@@ -23,6 +23,19 @@ import { readCredentialStatuses, type CredentialStatus } from '@/secrets/store';
  * A base URL says WHERE to ask. A key says WHETHER we may. Only the second
  * decides whether the feature exists.
  */
+export type LookupState = 'available' | 'failing' | 'absent';
+
+/**
+ * The three states, kept distinct because collapsing them is what made the
+ * original bug so hard to see: the console reported "No key" while a key sat
+ * in the store, so the one screen an operator would check to find out why the
+ * search had gone told them the wrong thing.
+ */
+export function lookupStateFrom(status: CredentialStatus): LookupState {
+  if (status.masked === null) return 'absent';
+  return status.lastCheckOk === false ? 'failing' : 'available';
+}
+
 export function lookupAvailableFrom(status: CredentialStatus): boolean {
   // Stored is not the same as working — the rule `isWriterAvailable` already
   // applies. A key whose last check failed cannot look anything up, and
@@ -38,13 +51,24 @@ export function lookupAvailableFrom(status: CredentialStatus): boolean {
  * that cannot work.
  */
 export async function lookupIsAvailable(): Promise<boolean> {
+  return (await readLookupState()) === 'available';
+}
+
+/**
+ * The same read, keeping the distinction the console needs.
+ *
+ * Fails to 'absent' rather than throwing, which is the safe direction: with no
+ * lookup the manual form becomes the page rather than sitting behind a
+ * disclosure under a box that cannot work.
+ */
+export async function readLookupState(): Promise<LookupState> {
   try {
     return await withAdmin(async (tx) => {
       const { companies_house: lookup } = await readCredentialStatuses(tx);
-      return lookupAvailableFrom(lookup);
+      return lookupStateFrom(lookup);
     });
   } catch (error) {
     console.error('[grantfinderstudio] could not read the lookup credential:', error);
-    return false;
+    return 'absent';
   }
 }
