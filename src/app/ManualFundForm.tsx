@@ -1,37 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useId } from 'react';
 
 import { DEADLINE_KINDS } from '@/domain/opportunity/manual';
 import { JURISDICTIONS } from '@/domain/types';
-import { NO_VALUES, selectKey, valueOf, type FormValues } from '@/app/formValues';
-
-export const MANUAL_FUND_FIELDS = [
-  'funderName',
-  'title',
-  'sourceUrl',
-  'minAmountGbp',
-  'maxAmountGbp',
-  'deadlineKind',
-  'deadline',
-  'jurisdiction',
-  'summary',
-] as const;
-
-export interface ManualFundFormState {
-  saved: boolean;
-  message: string;
-  errors: Record<string, string>;
-  /** What was typed, so a rejected form is not handed back empty. */
-  values: FormValues;
-}
-
-export const EMPTY_MANUAL_FUND: ManualFundFormState = {
-  saved: false,
-  message: '',
-  errors: {},
-  values: NO_VALUES,
-};
+import { selectKey, valueOf } from '@/app/formValues';
+import { type ManualFundFormState } from '@/app/manualFundState';
 
 const JURISDICTION_LABEL: Record<string, string> = {
   england: 'England',
@@ -65,6 +39,7 @@ export function ManualFundForm({
   action,
   submitLabel,
   initial,
+  funder,
 }: {
   action: (
     previous: ManualFundFormState,
@@ -72,29 +47,68 @@ export function ManualFundForm({
   ) => Promise<ManualFundFormState>;
   submitLabel: string;
   initial: ManualFundFormState;
+  /**
+   * The funder this fund is known to come from, when somebody arrived here
+   * from their award history rather than from a blank page. Carried as an id
+   * so the fund attaches to that exact funder, not to a second one created
+   * from however the name was typed.
+   */
+  funder?: { id: string; name: string; website: string | null } | undefined;
 }) {
   const [state, submit, saving] = useActionState(action, initial);
+
+  /**
+   * Field ids, unique to this instance of the form.
+   *
+   * They used to be the bare field names, and this component is rendered on a
+   * page that ALSO carries the paste route — which has its own `sourceUrl`
+   * input. Two elements with one id is invalid HTML, and the practical damage
+   * is that the second label points at the first input: a screen-reader user
+   * tabbing to "Link to their page" is told the name of a box somewhere else
+   * on the page. axe did not catch it because the duplicate-id rule was
+   * retired in axe 4.
+   */
+  const uid = useId();
+  const fid = (field: string): string => `${uid}-${field}`;
   const error = (field: string): string | undefined => state.errors[field];
-  const was = (field: string): string => valueOf(state.values, field);
+  /**
+   * What to show in a field.
+   *
+   * A rejected submission wins, so nobody retypes eight fields to fix one.
+   * Otherwise the known funder pre-fills, on the first render only — after a
+   * submission `state.values` carries whatever the person actually typed,
+   * including a name they deliberately corrected.
+   */
+  const was = (field: string): string => {
+    const submitted = valueOf(state.values, field);
+    if (submitted !== '') return submitted;
+    if (funder === undefined || state.values !== initial.values) return submitted;
+    if (field === 'funderName') return funder.name;
+    if (field === 'sourceUrl') return funder.website ?? '';
+    return submitted;
+  };
 
   const problem = (field: string) =>
     error(field) === undefined ? null : (
-      <p className="hint" style={{ color: 'var(--negative)' }} id={`${field}-error`}>
+      <p className="hint" style={{ color: 'var(--negative)' }} id={`${fid(field)}-error`}>
         {error(field)}
       </p>
     );
 
   return (
     <form action={submit}>
+      {funder === undefined ? null : (
+        <input type="hidden" name="funderId" value={funder.id} />
+      )}
       <div className="field">
-        <label className="label" htmlFor="funderName">Who is offering it</label>
+        <label className="label" htmlFor={fid('funderName')}>Who is offering it</label>
         <input
-          id="funderName"
+          id={fid('funderName')}
           className="input"
           name="funderName"
           placeholder="The Wells Trust"
           aria-invalid={error('funderName') !== undefined}
-          aria-describedby={error('funderName') === undefined ? undefined : 'funderName-error'}
+          aria-describedby={error('funderName') === undefined ? undefined : `${fid('funderName')}-error`}
           required
           defaultValue={was('funderName')}
         />
@@ -103,9 +117,9 @@ export function ManualFundForm({
       </div>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="title">What the fund is called</label>
+        <label className="label" htmlFor={fid('title')}>What the fund is called</label>
         <input
-          id="title"
+          id={fid('title')}
           className="input"
           name="title"
           placeholder="Community Buildings Fund"
@@ -118,11 +132,11 @@ export function ManualFundForm({
       </div>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="sourceUrl">
+        <label className="label" htmlFor={fid('sourceUrl')}>
           Link to their page <span className="hint">(optional)</span>
         </label>
         <input
-          id="sourceUrl"
+          id={fid('sourceUrl')}
           className="input"
           name="sourceUrl"
           type="url"
@@ -136,20 +150,20 @@ export function ManualFundForm({
 
       <div className="row" style={{ marginTop: 'var(--s-4)', alignItems: 'flex-start' }}>
         <div className="field" style={{ flex: '1 1 9rem' }}>
-          <label className="label" htmlFor="minAmountGbp">
+          <label className="label" htmlFor={fid('minAmountGbp')}>
             Smallest grant <span className="hint">(optional)</span>
           </label>
-          <input id="minAmountGbp" className="input" name="minAmountGbp" inputMode="numeric"
+          <input id={fid('minAmountGbp')} className="input" name="minAmountGbp" inputMode="numeric"
             placeholder="5000"
           defaultValue={was('minAmountGbp')}
         />
           {problem('minAmountGbp')}
         </div>
         <div className="field" style={{ flex: '1 1 9rem' }}>
-          <label className="label" htmlFor="maxAmountGbp">
+          <label className="label" htmlFor={fid('maxAmountGbp')}>
             Largest grant <span className="hint">(optional)</span>
           </label>
-          <input id="maxAmountGbp" className="input" name="maxAmountGbp" inputMode="numeric"
+          <input id={fid('maxAmountGbp')} className="input" name="maxAmountGbp" inputMode="numeric"
             placeholder="25000"
           defaultValue={was('maxAmountGbp')}
         />
@@ -162,8 +176,8 @@ export function ManualFundForm({
       </p>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="deadlineKind">The closing date</label>
-        <select key={selectKey(state.values, 'deadlineKind')} id="deadlineKind" className="input" name="deadlineKind"
+        <label className="label" htmlFor={fid('deadlineKind')}>The closing date</label>
+        <select key={selectKey(state.values, 'deadlineKind')} id={fid('deadlineKind')} className="input" name="deadlineKind"
           defaultValue={was('deadlineKind') === '' ? 'unknown' : was('deadlineKind')}>
           {DEADLINE_KINDS.map((kind) => (
             <option key={kind} value={kind}>{DEADLINE_LABEL[kind] ?? kind}</option>
@@ -176,10 +190,10 @@ export function ManualFundForm({
       </div>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="deadline">
+        <label className="label" htmlFor={fid('deadline')}>
           Date <span className="hint">(leave blank if there is none)</span>
         </label>
-        <input id="deadline" className="input" name="deadline" type="date"
+        <input id={fid('deadline')} className="input" name="deadline" type="date"
           aria-invalid={error('deadline') !== undefined}
           defaultValue={was('deadline')}
         />
@@ -188,10 +202,10 @@ export function ManualFundForm({
       </div>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="jurisdiction">
+        <label className="label" htmlFor={fid('jurisdiction')}>
           Where they fund <span className="hint">(optional)</span>
         </label>
-        <select key={selectKey(state.values, 'jurisdiction')} id="jurisdiction" className="input" name="jurisdiction"
+        <select key={selectKey(state.values, 'jurisdiction')} id={fid('jurisdiction')} className="input" name="jurisdiction"
           defaultValue={was('jurisdiction')}>
           <option value="">Not sure</option>
           {JURISDICTIONS.map((j) => (
@@ -202,10 +216,10 @@ export function ManualFundForm({
       </div>
 
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
-        <label className="label" htmlFor="summary">
+        <label className="label" htmlFor={fid('summary')}>
           Anything worth remembering <span className="hint">(optional)</span>
         </label>
-        <textarea id="summary" className="input" name="summary" rows={3}
+        <textarea id={fid('summary')} className="input" name="summary" rows={3}
           defaultValue={was('summary')}
           placeholder="Only for capital work. They said to ring first." />
       </div>

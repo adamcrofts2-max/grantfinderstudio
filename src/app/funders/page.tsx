@@ -39,7 +39,29 @@ const TIER = {
 
 const ORDER: ProspectTier[] = ['area_and_cause', 'cause', 'area', 'no_overlap', 'not_characterised'];
 
-function ProspectCard({ prospect, yourAskGbp }: { prospect: Prospect; yourAskGbp: number | null }) {
+/**
+ * One matched funder, and what to do about it.
+ *
+ * The card used to end at the evidence. It said "this funder gives £15k–£31k
+ * in Somerset for work with young people" and offered no button at all — the
+ * only way onward was a sentence at the foot of the page suggesting you go and
+ * find the fund yourself. The product did the hard part and then let go
+ * exactly where a person needs it most.
+ *
+ * The evidence answers "who should I approach, and for how much". It cannot
+ * answer "are they open" — 360Giving records money already given, and no
+ * public source carries open calls. So the two things offered here are the two
+ * that honestly follow: go and look at their page, or tell us what you found.
+ */
+function ProspectCard({
+  prospect,
+  yourAskGbp,
+  website,
+}: {
+  prospect: Prospect;
+  yourAskGbp: number | null;
+  website: string | null;
+}) {
   const badge = TIER[prospect.tier].badge;
   return (
     <section className="card">
@@ -87,6 +109,31 @@ function ProspectCard({ prospect, yourAskGbp }: { prospect: Prospect; yourAskGbp
           </span>
         </div>
       </div>
+
+      <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+        <a
+          className="btn btn-primary btn-small"
+          href={`/opportunities/add?funder=${encodeURIComponent(prospect.funderId)}`}
+        >
+          Add a fund from them
+        </a>
+        {website === null ? (
+          <span className="hint">
+            No website published in their grant data, so search for their name to find their
+            funding page.
+          </span>
+        ) : (
+          <a
+            className="btn btn-secondary btn-small"
+            href={website}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Their funding page
+            <span className="sr-only"> for {prospect.funderName} (opens in a new tab)</span>
+          </a>
+        )}
+      </div>
     </section>
   );
 }
@@ -113,6 +160,10 @@ export default async function FundersPage() {
   }));
 
   const { organisation, project } = page;
+  // Kept out of the domain's `Prospect`: a website is where to go and look,
+  // not part of judging fit, and the matcher should stay a pure function of
+  // the award history.
+  const websiteFor = new Map(page.funders.map((f) => [f.funderId, f.website]));
   const prospects =
     organisation === null
       ? []
@@ -183,6 +234,7 @@ export default async function FundersPage() {
                   key={p.funderId}
                   prospect={p}
                   yourAskGbp={project?.amountSoughtGbp ?? null}
+                  website={websiteFor.get(p.funderId) ?? null}
                 />
               ))}
             </div>

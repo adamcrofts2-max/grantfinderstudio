@@ -314,6 +314,27 @@ this cheque before", where no source answers "what is open".
 - [ ] Quartiles need the grants themselves — the org aggregate gives mean, min,
       max and total but no median, so the distribution chart cannot be fed from
       it. This is what makes ingestion a batch job rather than a lookup
+- [x] Give a matched funder somewhere to go. The prospect card ended at the
+      evidence with no control at all — `funders.website` was stored from the
+      first ingest and rendered nowhere — so the product did the hard part and
+      let go exactly where a person needs it
+- [x] Join the two halves: `/opportunities/add?funder=<id>` carries the funder
+      you picked, pre-fills their name and page, and attaches the fund to that
+      exact funder rather than to a second one made from however you typed it
+- [x] Fix duplicate `id` attributes on the add-a-fund page — the paste route
+      and the typed form both used `sourceUrl`, so the second label pointed at
+      the first input. axe 4 retired the duplicate-id rule, so nothing caught it
+- [x] Fix adding a fund by hand, which could not work in a real build: a
+      `'use server'` module imported a plain array from a `'use client'`
+      module, so the bundler handed it a client-reference proxy and the action
+      threw "fields is not iterable" before validating anything
+- [ ] "Check if they're open" — fetch the funder's own page on demand for the
+      person who asked, extract whether anything is open and by when, keep the
+      extraction private to that tenant. One page because a human asked, never
+      a crawl
+- [ ] "Organisations like mine": find recipients in the award data whose
+      profile resembles the applicant's, then rank who funded THEM — rather
+      than matching only on the applicant's own profile
 - [ ] Match funders to an organisation on size, area and beneficiary group,
       each match citing the grants it came from
 - [ ] Never present awarded-grant data as an open call. A funder who gave in

@@ -1,13 +1,39 @@
 import { isWriterAvailable } from '@/app/drafting';
-import { EMPTY_MANUAL_FUND, ManualFundForm } from '@/app/ManualFundForm';
+import { ManualFundForm } from '@/app/ManualFundForm';
+import { EMPTY_MANUAL_FUND } from '@/app/manualFundState';
+import { withOperator } from '@/db';
+import { findFunderById } from '@/db/catalogue';
 
 import { AddOpportunity } from './AddOpportunity';
 import { addOwnFundAction } from './manual-actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AddOpportunityPage() {
+export default async function AddOpportunityPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const writerAvailable = await isWriterAvailable();
+
+  /**
+   * The funder somebody just picked on /funders, if they came from there.
+   *
+   * This is the join that was missing. The product would tell you who had
+   * funded work like yours and then send you to a blank form, so the fund you
+   * came back with attached to a funder created from whatever you typed —
+   * beside, but not joined to, the award history that sent you there.
+   *
+   * Operator scope: funders are shared reference data that every tenant reads
+   * and none writes, so there is nothing tenant-specific to leak and no id
+   * here that could name anything but a funder.
+   */
+  const raw = (await searchParams)['funder'];
+  const wanted = typeof raw === 'string' ? raw : null;
+  const funder =
+    wanted === null || wanted === ''
+      ? undefined
+      : ((await withOperator((tx) => findFunderById(tx, wanted))) ?? undefined);
 
   return (
     <div className="page page-narrow">
@@ -24,6 +50,26 @@ export default async function AddOpportunityPage() {
           your typing the few things that matter.
         </p>
       </header>
+
+      {funder === undefined ? null : (
+        <section className="card" style={{ marginBottom: 'var(--s-5)' }}>
+          <h2 className="card-title">A fund from {funder.name}</h2>
+          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+            The funder whose grants you were just looking at. Whatever you add here is joined to
+            that award history, so what they typically give sits beside what you are asking for.
+            {funder.website === null ? null : (
+              <>
+                {' '}
+                <a href={funder.website} target="_blank" rel="noreferrer noopener">
+                  Open their funding page
+                  <span className="sr-only"> for {funder.name} (opens in a new tab)</span>
+                </a>{' '}
+                to find what is open.
+              </>
+            )}
+          </p>
+        </section>
+      )}
 
       {/* Two routes, and which one leads depends on what this deployment can
           actually do. Leading with the reader where there is no key is how you
@@ -49,6 +95,7 @@ export default async function AddOpportunityPage() {
                   action={addOwnFundAction}
                   submitLabel="Add this fund"
                   initial={EMPTY_MANUAL_FUND}
+                  funder={funder}
                 />
               </div>
             </div>
@@ -69,6 +116,7 @@ export default async function AddOpportunityPage() {
                 action={addOwnFundAction}
                 submitLabel="Add this fund"
                 initial={EMPTY_MANUAL_FUND}
+                funder={funder}
               />
             </div>
           </section>

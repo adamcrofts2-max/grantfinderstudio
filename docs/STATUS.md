@@ -1661,3 +1661,75 @@ search → confirm → project on a 390px viewport. It now reports:
 That override was written for staging and contract tests. It turns out to be
 the only way to exercise a connector this environment cannot reach, and it
 should be used on every path that talks to somebody else's API.
+
+
+## Closing the loop from a funder to a fund (2026-09-10)
+
+The product could tell you who had funded work like yours. Then it stopped.
+
+`findProspects` ranks funders against the applicant's profile — size band from
+the award distribution, region overlap, cause overlap from award tags — and
+`/funders` sorts them into tiers with an honest account of what the evidence
+does and does not mean. And the card ended there. No link, no button, nothing.
+The only route onward was a sentence at the foot of the page suggesting that
+finding the fund was the reader's problem.
+
+`funders.website` had been captured by the ingest form since the day it was
+written and rendered on no screen at all.
+
+### What 360Giving can and cannot answer
+
+Worth writing down, because the gap is permanent rather than a missing
+feature. 360Giving records grants ALREADY AWARDED: funder, recipient, amount,
+date, sometimes a cause tag and a location. It carries no deadlines, no
+eligibility, no application windows, and no signal that a programme still
+exists — those fields are not in the standard, because it is a transparency
+standard for money that has already gone out.
+
+So the evidence answers **"who should I approach, and for how much"**. Nothing
+public answers **"are they open"**. That has to come from the funder's own page.
+
+### The three joins
+
+**The card now offers the two things that honestly follow.** "Their funding
+page" when the award data published one, and a named alternative when it did
+not — searching for their name, rather than a dead end dressed as an absence.
+
+**`/opportunities/add?funder=<id>` carries the funder through.** The lead-in
+names them, their name and page pre-fill, and a hidden id attaches the fund to
+that exact funder row. `ensureFunderNamed` matches case-insensitively and would
+usually have found it anyway — but "usually" means one typo silently splits a
+funder in two, and the award history stops lining up with the application built
+from it.
+
+**Pre-fill yields to what was typed.** A rejected submission wins over the
+prop, so nobody loses a name they deliberately corrected.
+
+### Two faults found by walking it
+
+**Duplicate `id="sourceUrl"`.** The paste route and the typed form both used
+it, on the same page. Invalid HTML, and the practical damage is that the second
+label points at the first input — a screen-reader user tabbing to "Link to
+their page" is told the name of a box elsewhere on the page. The form's ids now
+come from `useId`, so two instances can never collide. axe missed it because
+the duplicate-id rule was retired in axe 4.
+
+**Adding a fund by hand could not work in a real build.** `manual-actions.ts`
+is `'use server'` and imported `MANUAL_FUND_FIELDS` — a plain array — from
+`ManualFundForm.tsx`, which is `'use client'`. The bundler replaces such an
+import with a client-reference proxy, so `readValues(formData, fields)` threw
+"fields is not iterable" and the action died before validating a single field.
+The route meant to work with NO API KEY AT ALL was the one that could not work.
+
+Vitest imports the array normally, because the client boundary is a bundler
+behaviour rather than a runtime one. `src/app/admin/settings/state.ts` already
+existed for the sibling rule — a `'use server'` module may only export async
+functions — and both point at the same discipline: shared constants and types
+belong in a module with no directive. `src/app/manualFundState.ts` is that
+module now.
+
+Walked end to end afterwards: three prospect cards, one with a website and two
+without, `?funder=f_youth` carried through, name and page pre-filled, no
+duplicate ids on the page, the fund saved — *"Added. Youth Futures — spring
+round is on your list, and only yours"* — no second funder row created, and the
+fund reaching the tracker.

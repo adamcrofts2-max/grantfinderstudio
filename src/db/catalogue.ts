@@ -22,6 +22,26 @@ import type { ManualFund } from '../domain/opportunity/manual.js';
  * wells trust" are one funder and a duplicate splits their award history in
  * two.
  */
+/**
+ * One funder by id, for carrying a matched funder into the fund you found.
+ *
+ * Funders are SHARED reference data — every tenant reads all of them and none
+ * writes them — so an id arriving from a form leaks nothing and can only ever
+ * name a real funder. It is still looked up rather than trusted: an id for a
+ * funder that does not exist would otherwise become a foreign key violation
+ * at the end of a form somebody had just filled in.
+ */
+export async function findFunderById(
+  tx: Queryable,
+  id: string,
+): Promise<{ id: string; name: string; website: string | null } | null> {
+  const { rows } = await tx.query<{ id: string; name: string; website: string | null }>(
+    'SELECT id, name, website FROM funders WHERE id = $1',
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
 export async function ensureFunderNamed(
   tx: Queryable,
   name: string,

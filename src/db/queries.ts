@@ -330,11 +330,21 @@ export async function assessAll(
  */
 export async function loadAllFunderAwards(
   tx: Queryable,
-): Promise<Array<{ funderId: string; funderName: string; awards: Award[] }>> {
+): Promise<
+  Array<{ funderId: string; funderName: string; website: string | null; awards: Award[] }>
+> {
   const r = await tx.query<
-    AwardRow & { funder_id: string; funder_name: string; award_id: string | null }
+    AwardRow & {
+      funder_id: string;
+      funder_name: string;
+      funder_website: string | null;
+      award_id: string | null;
+    }
   >(
-    `SELECT f.id AS funder_id, f.name AS funder_name,
+    // `website` was stored by the ingest from the first day and rendered
+    // nowhere, so a matched funder was a dead end: the product told you who
+    // funds work like yours and gave you no way to go and look.
+    `SELECT f.id AS funder_id, f.name AS funder_name, f.website AS funder_website,
             a.id AS award_id, a.amount_gbp::text AS amount_gbp,
             a.awarded_on::text AS awarded_on, a.recipient_name,
             a.jurisdiction, a.region, a.tags
@@ -343,11 +353,15 @@ export async function loadAllFunderAwards(
      ORDER BY f.name, a.awarded_on`,
   );
 
-  const byFunder = new Map<string, { funderId: string; funderName: string; awards: Award[] }>();
+  const byFunder = new Map<
+    string,
+    { funderId: string; funderName: string; website: string | null; awards: Award[] }
+  >();
   for (const row of r.rows) {
     const entry = byFunder.get(row.funder_id) ?? {
       funderId: row.funder_id,
       funderName: row.funder_name,
+      website: row.funder_website,
       awards: [],
     };
     if (row.award_id !== null) {

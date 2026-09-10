@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 
 import { getDatabase, withAdmin } from '@/db';
-import { ensureFunderNamed, insertManualFund } from '@/db/catalogue';
+import { ensureFunderNamed, findFunderById, insertManualFund } from '@/db/catalogue';
 import { readManualFund } from '@/domain/opportunity/manual';
 import { requireOrganisationId } from '@/app/session';
-import { MANUAL_FUND_FIELDS, type ManualFundFormState } from '@/app/ManualFundForm';
+import { MANUAL_FUND_FIELDS, type ManualFundFormState } from '@/app/manualFundState';
 import { NO_VALUES, readValues } from '@/app/formValues';
 
 /**
@@ -52,9 +52,22 @@ export async function addOwnFundAction(
     // Funders are shared reference data: the tenant role reads them and does
     // not write them, so this one insert takes the operator path, as the
     // pasted-guidance route does.
-    const funderId = await withAdmin((tx) =>
-      ensureFunderNamed(tx, fund.funderName, `funder_typed_${organisationId}`),
-    );
+    // Prefer the funder the person actually picked.
+    //
+    // Arriving from a matched funder on /funders carries its id, so the fund
+    // attaches to the SAME row whose award history they were just reading —
+    // rather than to a second funder created from however they happened to
+    // type the name. `ensureFunderNamed` matches case-insensitively and would
+    // usually find it, but "usually" here means a typo silently splits a
+    // funder in two and the evidence stops lining up with the application.
+    const picked = read('funderId').trim();
+    const funderId = await withAdmin(async (tx) => {
+      if (picked !== '') {
+        const existing = await findFunderById(tx, picked);
+        if (existing !== null) return existing.id;
+      }
+      return ensureFunderNamed(tx, fund.funderName, `funder_typed_${organisationId}`);
+    });
     const database = await getDatabase();
     await database.withTenant(organisationId, (tx) =>
       insertManualFund(tx, fund, funderId, organisationId),

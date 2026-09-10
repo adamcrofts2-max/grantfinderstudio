@@ -93,13 +93,16 @@ export async function seedDemoData(db: Queryable): Promise<void> {
   `);
 
   await db.query(`
-    INSERT INTO funders (id, name, jurisdiction, stated_priorities, source_dataset_id)
+    INSERT INTO funders (id, name, website, jurisdiction, stated_priorities, source_dataset_id)
     VALUES
-      ('f_youth', 'The Fictional Youth Trust', 'england',
-       'Young people, education and employability.', 'demo_ds'),
-      ('f_heritage', 'The Fictional Heritage Foundation', 'uk_wide',
+      -- One with a website and two without, so both states of the prospect
+      -- card are visible in development: "their funding page" and "no website
+      -- published, search for their name".
+      ('f_youth', 'The Fictional Youth Trust', 'https://example.org/fictional-youth-trust/grants',
+       'england', 'Young people, education and employability.', 'demo_ds'),
+      ('f_heritage', 'The Fictional Heritage Foundation', NULL, 'uk_wide',
        'Buildings and heritage conservation.', 'demo_ds'),
-      ('f_coast', 'The Fictional Coastal Fund', 'england',
+      ('f_coast', 'The Fictional Coastal Fund', NULL, 'england',
        'Coastal communities and the natural environment.', 'demo_ds')
     ON CONFLICT (id) DO NOTHING
   `);

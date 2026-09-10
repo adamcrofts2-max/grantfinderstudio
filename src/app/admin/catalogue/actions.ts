@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { withAdmin } from '@/db';
 import { deleteSharedFund, ensureFunderNamed, insertManualFund } from '@/db/catalogue';
 import { readManualFund } from '@/domain/opportunity/manual';
-import { MANUAL_FUND_FIELDS } from '@/app/ManualFundForm';
+import { MANUAL_FUND_FIELDS } from '@/app/manualFundState';
 import { NO_VALUES, readValues } from '@/app/formValues';
 
 import { requireAdmin } from '../session';
