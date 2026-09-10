@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,169 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,178 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1494,3 +1494,61 @@ schema, and ran nowhere. It surfaced as `column "sandbox_of_admin" does not
 exist` in a test, which is the lucky version; in a deployment it would have
 surfaced later as a missing column in an unrelated page. The test is now
 bidirectional.
+
+
+## Two things the first real deployment found (2026-09-10)
+
+Both were reported as missing features. Both were bugs, and neither could have
+been caught by the suite as it stood.
+
+### The company search was hidden on every real deployment
+
+Onboarding's whole promise is "we will look you up on Companies House so you do
+not have to type this". The screen decided whether to offer the search by
+asking whether `COMPANIES_HOUSE_BASE_URL` was set — which is an OPTIONAL
+override for pointing the connector at a test endpoint. It has a real default,
+and nobody sets it in production. So the answer was always "no lookup", the
+manual form became the page, and the feature appeared not to exist.
+
+The console's overview tile read "Not configured" for the same reason, while a
+verified key sat in the credential store. Two screens agreeing on the wrong
+question, which is why it read as a design decision rather than a fault.
+
+A base URL says WHERE to ask. A key says WHETHER we may. Only the second
+decides whether the feature exists.
+
+The fix is `lookupAvailableFrom`, and it is a pure function on purpose: the
+real API is unreachable from the build environment, so the "yes" branch cannot
+be walked in a browser here. Left as a condition inline it would have stayed a
+branch nothing exercised — which is exactly how it survived. It now matches the
+rule `isWriterAvailable` already used: stored is not the same as working, so a
+key whose last check failed does not count, while one never checked does.
+
+### There was no way back into the console
+
+The console was claimed, the eight-hour session expired, and that was that. The
+claim route closes permanently on the first admin — deliberately, and it should
+— there is no reset email by design, and `changeAdminPasswordAction` demands
+the current password. One forgotten password and the only recovery was an
+UPDATE typed against the live database.
+
+This is the failure that was already reasoned about when the roster refused to
+stand the last admin down, and then left open one door along.
+
+Any admin can now set another admin's password, and every session the target
+holds is deleted with it — the usual reason to reset a password is that the
+account is out of its owner's control, and leaving their sessions alive would
+make the reset cosmetic. Your own account is the one refusal: use the
+change-password form, which asks for the current one, so that a console left
+open on an unlocked laptop is not a way to take the account.
+
+That makes a SECOND ADMIN the recovery path, so the roster now says so while
+there is only one, in a banner rather than a footnote:
+
+> You are the only admin, so there is no way back in if you lose your password.
+> There is deliberately no reset email — an admin console whose security is a
+> mailbox is not secure — and the one-time claim closed permanently when you
+> used it.
+
+Verified end to end in a browser: reset a second admin's password from the
+roster, then signed in as them with it.

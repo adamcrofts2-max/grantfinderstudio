@@ -8,6 +8,7 @@ import {
 import { checkConfiguration, readEnvironment } from '@/env';
 import { THROTTLE } from '@/domain/auth/throttle';
 import { isWriterAvailable } from '@/app/drafting';
+import { lookupIsAvailable } from '@/app/onboarding/lookup';
 
 import { requireAdmin } from './session';
 import { AdminShell } from './AdminShell';
@@ -54,6 +55,7 @@ export default async function AdminOverviewPage() {
   const problems = checkConfiguration(env);
 
   const writerAvailable = await isWriterAvailable();
+  const lookupAvailable = await lookupIsAvailable();
 
   let accounts = { total: 0, lastSevenDays: 0 };
   let catalogue = { funders: 0, sharedOpportunities: 0, tenantOpportunities: 0 };
@@ -127,12 +129,16 @@ export default async function AdminOverviewPage() {
           },
           {
             label: 'Company lookup',
-            value: env.companiesHouseBaseUrl === null ? 'Not configured' : 'Configured',
-            tone: 'plain',
-            note:
-              env.companiesHouseBaseUrl === null
-                ? 'Organisations enter their own details, recorded as self-declared rather than verified.'
-                : undefined,
+            // The KEY, not the base-URL override this used to read. That
+            // override is optional, has a real default and is set on no
+            // ordinary deployment — so this tile said "Not configured" while
+            // a working key sat in the credential store, and the onboarding
+            // screen hid its search box for the same reason.
+            value: lookupAvailable ? 'Available' : 'No key',
+            tone: lookupAvailable ? 'good' : 'caution',
+            note: lookupAvailable
+              ? undefined
+              : 'Organisations enter their own details, recorded as self-declared rather than verified. Add a Companies House key under Services to have their legal form read from the register instead.',
           },
           {
             label: 'Credential storage',

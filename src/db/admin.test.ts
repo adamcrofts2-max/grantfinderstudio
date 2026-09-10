@@ -12,6 +12,7 @@ import {
   claimFirstAdmin,
   countAdmins,
   countEnabledAdmins,
+  deleteAdminSessionsFor,
   deleteOtherAdminSessions,
   disableAdmin,
   enableAdmin,
@@ -235,5 +236,35 @@ describe('the roster', () => {
 
     expect(await loadAdminSession(tx(), 'this-browser')).not.toBeNull();
     expect(await loadAdminSession(tx(), 'somewhere-else')).toBeNull();
+  });
+});
+
+
+describe('recovering a forgotten console password', () => {
+  beforeEach(async () => {
+    await claimFirstAdmin(tx(), { id: 'a1', email: 'first@example.org', passwordHash: 'h1' });
+    await insertAdmin(tx(), { id: 'a2', email: 'second@example.org', passwordHash: 'h2' });
+  });
+
+  it('lets one admin replace another password and signs them out everywhere', async () => {
+    // The console's only recovery path: no reset email exists by design, and
+    // the claim route closed on the first admin.
+    await createAdminSession(tx(), { id: 'theirs', adminId: 'a2', expiresAt: soon() });
+    await createAdminSession(tx(), { id: 'mine', adminId: 'a1', expiresAt: soon() });
+
+    await setAdminPassword(tx(), 'a2', 'h2-new');
+    await deleteAdminSessionsFor(tx(), 'a2');
+
+    expect(await readAdminPassword(tx(), 'a2')).toBe('h2-new');
+    // Cosmetic otherwise: the usual reason to reset a password is that the
+    // account is out of its owner's control.
+    expect(await loadAdminSession(tx(), 'theirs')).toBeNull();
+    expect(await loadAdminSession(tx(), 'mine')).not.toBeNull();
+  });
+
+  it('leaves the other admin able to sign in', async () => {
+    await deleteAdminSessionsFor(tx(), 'a2');
+    expect(await readAdminPassword(tx(), 'a1')).toBe('h1');
+    expect((await findAdminById(tx(), 'a1'))?.disabledAt).toBeNull();
   });
 });

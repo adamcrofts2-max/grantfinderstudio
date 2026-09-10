@@ -1,12 +1,13 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 
 import { ADMIN_CONSTANTS } from '@/domain/auth/admin';
 
 import {
   addAdminAction,
   changeAdminPasswordAction,
+  resetAdminPasswordAction,
   restoreAdminAction,
   standDownAdminAction,
 } from './actions';
@@ -60,6 +61,12 @@ export function Roster({ admins }: { admins: AdminRowView[] }) {
     changeAdminPasswordAction,
     EMPTY_ROSTER,
   );
+  const [resetState, resetPassword, resetting] = useActionState(
+    resetAdminPasswordAction,
+    EMPTY_ROSTER,
+  );
+  /** Which row has its reset form open. One at a time. */
+  const [resettingId, setResettingId] = useState<string | null>(null);
 
   /**
    * The latest outcome for one row.
@@ -69,7 +76,7 @@ export function Roster({ admins }: { admins: AdminRowView[] }) {
    * is a restored admin still captioned "stood down".
    */
   const rowState = (id: string): RosterState | null => {
-    const candidates = [downState, backState].filter((s) => s.adminId === id);
+    const candidates = [downState, backState, resetState].filter((s) => s.adminId === id);
     return candidates.toSorted((a, b) => b.at - a.at)[0] ?? null;
   };
 
@@ -81,6 +88,24 @@ export function Roster({ admins }: { admins: AdminRowView[] }) {
           Everybody who can open this console. Standing somebody down takes effect at once —
           the sessions they hold are deleted rather than left to expire.
         </p>
+
+        {/* One admin is a lockout waiting to happen, and it is worth saying
+            plainly rather than leaving somebody to find out: there is no
+            password-reset email by design, and the claim route closed for good
+            on the first admin. A second admin IS the recovery path. */}
+        {admins.length === 1 ? (
+          <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              <strong>You are the only admin, so there is no way back in if you lose your
+              password.</strong>{' '}
+              There is deliberately no reset email — an admin console whose security is a
+              mailbox is not secure — and the one-time claim closed permanently when you used
+              it. Add a second admin below and either of you can reset the other. Until you
+              do, recovering this console means SQL typed against the live database.
+            </span>
+          </div>
+        ) : null}
 
         <ul className="admin-list" style={{ marginTop: 'var(--s-4)' }}>
           {admins.map((admin) => {
@@ -99,25 +124,73 @@ export function Roster({ admins }: { admins: AdminRowView[] }) {
                       : `last signed in ${admin.lastSignedInAt}`}
                   </p>
                   {outcome === null ? null : <Outcome state={outcome} />}
+
+                  {resettingId === admin.id ? (
+                    <form action={resetPassword} className="fact-edit">
+                      <input type="hidden" name="adminId" value={admin.id} />
+                      <label className="sr-only" htmlFor={`reset-${admin.id}`}>
+                        A new password for {admin.email}
+                      </label>
+                      <input
+                        id={`reset-${admin.id}`}
+                        className="input"
+                        name="next"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder={`New password for ${admin.email}`}
+                        required
+                      />
+                      <button
+                        className="btn btn-primary btn-small"
+                        type="submit"
+                        disabled={resetting}
+                      >
+                        {resetting ? 'Setting…' : 'Set it'}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
 
-                {admin.disabled ? (
-                  <form action={restore}>
-                    <input type="hidden" name="adminId" value={admin.id} />
-                    <button className="btn btn-secondary btn-small" type="submit" disabled={restoring}>
-                      {restoring ? 'Working…' : 'Bring back'}
-                    </button>
-                  </form>
-                ) : admin.isYou ? (
-                  <span className="hint">Only another admin can stand you down</span>
-                ) : (
-                  <form action={standDown}>
-                    <input type="hidden" name="adminId" value={admin.id} />
-                    <button className="btn btn-secondary btn-small" type="submit" disabled={standingDown}>
-                      {standingDown ? 'Working…' : 'Stand down'}
-                    </button>
-                  </form>
-                )}
+                <div className="fact-do">
+                  {admin.isYou ? (
+                    <span className="hint">Only another admin can stand you down</span>
+                  ) : (
+                    <>
+                      <button
+                        className="link-quiet"
+                        type="button"
+                        onClick={() =>
+                          setResettingId(resettingId === admin.id ? null : admin.id)
+                        }
+                      >
+                        {resettingId === admin.id ? 'Cancel' : 'Set a new password'}
+                      </button>
+                      {admin.disabled ? (
+                        <form action={restore}>
+                          <input type="hidden" name="adminId" value={admin.id} />
+                          <button
+                            className="btn btn-secondary btn-small"
+                            type="submit"
+                            disabled={restoring}
+                          >
+                            {restoring ? 'Working…' : 'Bring back'}
+                          </button>
+                        </form>
+                      ) : (
+                        <form action={standDown}>
+                          <input type="hidden" name="adminId" value={admin.id} />
+                          <button
+                            className="btn btn-secondary btn-small"
+                            type="submit"
+                            disabled={standingDown}
+                          >
+                            {standingDown ? 'Working…' : 'Stand down'}
+                          </button>
+                        </form>
+                      )}
+                    </>
+                  )}
+                </div>
               </li>
             );
           })}

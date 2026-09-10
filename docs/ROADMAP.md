@@ -370,6 +370,12 @@ Postgres.
       an organisation, so there is nothing to aim at somebody else
 - [x] Close a one-directional check: `MIGRATIONS` is hand-written while the SQL
       map is generated, so a migration could sit in the folder and never run
+- [x] Fix the company search being hidden on every real deployment. The page
+      gated it on `COMPANIES_HOUSE_BASE_URL` — an optional test-endpoint
+      override with a real default that nobody sets — rather than on a stored
+      key. The console's overview tile was wrong the same way
+- [x] A recovery path for a forgotten console password: any admin can set
+      another's, and the roster says plainly that one admin means no way back
 - [ ] A populated sandbox for demos, and the decision it needs: fictional
       funders are SHARED reference data, so seeding them puts them in front of
       real customers. Tenant-scoped and org-private content (facts, project,

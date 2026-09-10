@@ -281,3 +281,15 @@ export async function deleteOtherAdminSessions(
     keepTokenHash,
   ]);
 }
+
+/**
+ * End every session an admin holds.
+ *
+ * Used when another admin resets their password: the point of a reset is
+ * usually that the account is out of the owner's control, and leaving the
+ * existing sessions alive would make the reset cosmetic. `disableAdmin` does
+ * the same thing for the same reason.
+ */
+export async function deleteAdminSessionsFor(tx: Queryable, adminId: string): Promise<void> {
+  await tx.query('DELETE FROM admin_sessions WHERE admin_id = $1', [adminId]);
+}

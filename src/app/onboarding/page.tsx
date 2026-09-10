@@ -1,7 +1,7 @@
-import { readEnvironment } from '@/env';
 import { readSetupProgress } from '@/app/setup';
 
 import { CompanySearch } from './CompanySearch';
+import { lookupIsAvailable } from './lookup';
 import { ManualProfile } from './ManualProfile';
 import { ProjectForm } from './ProjectForm';
 
@@ -43,7 +43,10 @@ export default async function OnboardingPage() {
   // No lookup configured means the search can only ever fail. Leading with a
   // box that cannot work, and hiding the one that can behind a disclosure, is
   // a maze — so when it is unavailable the manual form is the page.
-  const lookupAvailable = readEnvironment().companiesHouseBaseUrl !== null;
+  //
+  // What makes it available is a stored KEY, not the optional base-URL
+  // override this used to read. See `lookupIsAvailable`.
+  const lookupAvailable = await lookupIsAvailable();
 
   return (
     <div className="page page-narrow">

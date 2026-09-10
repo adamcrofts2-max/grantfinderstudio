@@ -7,6 +7,7 @@ import {
   claimAvailability,
   claimSecretProblem,
   normaliseClaimSecret,
+  resetPasswordRefusal,
   restoreRefusal,
   standDownRefusal,
 } from './admin.js';
@@ -149,5 +150,19 @@ describe('the claim secret as it is typed in', () => {
     // Absent stays absent: this must not turn "typed nothing" into a match
     // against an unset secret, which `claimAvailability` refuses separately.
     expect(normaliseClaimSecret('   ')).toBe('');
+  });
+});
+
+
+describe('resetting another admin password', () => {
+  it('is allowed, because it is the console\'s only recovery path', () => {
+    // No email to send a reset to, and the claim route closed on the first
+    // admin. Without this a forgotten password is an UPDATE against
+    // production.
+    expect(resetPasswordRefusal({ actorId: 'a', targetId: 'b' })).toBeNull();
+  });
+
+  it('refuses your own, which is what the current-password form is for', () => {
+    expect(resetPasswordRefusal({ actorId: 'a', targetId: 'a' })).toContain('current one');
   });
 });

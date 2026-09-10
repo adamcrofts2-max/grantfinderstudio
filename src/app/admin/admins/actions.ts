@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { withAdmin } from '@/db';
 import {
   countEnabledAdmins,
+  deleteAdminSessionsFor,
   deleteOtherAdminSessions,
   disableAdmin,
   enableAdmin,
@@ -18,6 +19,7 @@ import { hashPassword, verifyPassword } from '@/auth/password';
 import { isPlausibleEmail, normaliseEmail } from '@/domain/auth/account';
 import {
   adminPasswordProblems,
+  resetPasswordRefusal,
   restoreRefusal,
   standDownRefusal,
 } from '@/domain/auth/admin';
@@ -209,6 +211,65 @@ export async function changeAdminPasswordAction(
     message:
       'Changed. Anywhere else you were signed in to the console has been signed out; this browser stays.',
     adminId: 'self',
+    at: now(),
+  };
+}
+
+/**
+ * Set another admin's password for them.
+ *
+ * The console's only recovery path, and the reason a deployment wants two
+ * admins from the first day. There is no address to send a reset link to, by
+ * design — an admin console with an email-driven reset is an admin console
+ * whose security is a mailbox — and the claim route closed permanently on the
+ * first admin. So the way back from a forgotten password is another admin, or
+ * it is SQL typed against production.
+ *
+ * Every session the target holds is deleted. The usual reason to reset
+ * somebody's password is that the account is out of their control, and leaving
+ * their sessions alive would make the reset cosmetic.
+ */
+export async function resetAdminPasswordAction(
+  _previous: RosterState,
+  formData: FormData,
+): Promise<RosterState> {
+  const session = await requireAdmin();
+  const targetId = String(formData.get('adminId') ?? '');
+  const next = String(formData.get('next') ?? '');
+
+  const refusal = resetPasswordRefusal({ actorId: session.adminId, targetId });
+  if (refusal !== null) {
+    return { ...EMPTY_ROSTER, ok: false, message: refusal, adminId: targetId, at: now() };
+  }
+
+  const target = await withAdmin((tx) => findAdminById(tx, targetId));
+  if (target === null) {
+    return { ...EMPTY_ROSTER, ok: false, message: 'No such admin.', adminId: targetId, at: now() };
+  }
+
+  const problems = adminPasswordProblems(next, target.email);
+  if (problems.length > 0) {
+    return {
+      ok: false,
+      message: 'Their password has not changed.',
+      problems,
+      adminId: targetId,
+      at: now(),
+      email: '',
+    };
+  }
+
+  const hash = await hashPassword(next);
+  await withAdmin(async (tx) => {
+    await setAdminPassword(tx, targetId, hash);
+    await deleteAdminSessionsFor(tx, targetId);
+  });
+
+  revalidatePath('/admin/admins');
+  return {
+    ...EMPTY_ROSTER,
+    message: `Set. ${target.email} is signed out everywhere and will need the new password. Hand it over directly, not by email.`,
+    adminId: targetId,
     at: now(),
   };
 }

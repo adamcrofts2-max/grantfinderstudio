@@ -173,3 +173,28 @@ export function restoreRefusal(change: Pick<RosterChange, 'targetDisabled'>): st
 export function normaliseClaimSecret(raw: string): string {
   return raw.trim();
 }
+
+/**
+ * Why one admin may not set another's password, or null if they may.
+ *
+ * Any admin may reset any OTHER admin's password, and that is deliberate
+ * rather than lax: it is the console's only recovery path. An admin who loses
+ * their password has no other way back — the claim route closed permanently on
+ * the first admin, and there is no email to send a reset to. Without this, a
+ * forgotten password means an UPDATE typed against production, which is what
+ * happened the first time somebody's console session expired.
+ *
+ * Which is also why a deployment with ONE admin has no recovery at all, and
+ * why the roster says so until there are two.
+ *
+ * The one refusal is your own account: use the change-password form, which
+ * demands the current password. A console left open on an unlocked laptop
+ * should not be a way to take the account, and "reset my own password without
+ * knowing it" is exactly that.
+ */
+export function resetPasswordRefusal(change: { actorId: string; targetId: string }): string | null {
+  if (change.actorId === change.targetId) {
+    return 'To change your own password, use the form below — it asks for your current one, so that a console left open cannot be used to take the account.';
+  }
+  return null;
+}
