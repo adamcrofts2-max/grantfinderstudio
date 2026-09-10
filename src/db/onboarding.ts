@@ -200,3 +200,96 @@ export async function saveProject(
     ],
   );
 }
+
+export interface RegisterProfile {
+  name: string;
+  companyNumber: string;
+  legalForm: string | null;
+  incorporatedOn: string | null;
+  jurisdiction: string | null;
+  address: string | null;
+}
+
+/**
+ * Record what the Companies House register says. TENANT path.
+ *
+ * Lifted out of `confirmCompanyAction`, which held the only fact-writing SQL
+ * outside this module and was the only writer that got it wrong. Every other
+ * one — `saveSelfDeclaredProfile` here, `addFact` in the workspace — keys a
+ * fact as `self_<organisation>_<claim>` and upserts. This one keyed it
+ * `ch_<companyNumber>_<claim>` and plain INSERTed, which failed two ways:
+ *
+ *  - **Confirming twice threw.** `facts_pkey` rejected the second write, the
+ *    server action had no handler for it, and the page became "Application
+ *    error: a server-side exception has occurred". Onboarding is explicitly
+ *    also how somebody corrects their own details, so this is a supported
+ *    journey, not an edge case.
+ *  - **Two organisations could not confirm the same company.** The key is
+ *    global and carried no organisation, so the second tenant to look up a
+ *    given company number crashed. A cross-tenant collision in a product whose
+ *    whole promise is that tenants cannot touch each other.
+ *
+ * The confirmation rule is the interesting part of the upsert. A fact somebody
+ * has already checked keeps its confirmation only while the register still
+ * says the same thing; if the value has CHANGED, the confirmation is withdrawn,
+ * because what they confirmed is no longer what we hold. Anything else would
+ * let an application quote a figure nobody ever checked.
+ */
+export async function saveRegisterProfile(
+  tx: Queryable,
+  organisationId: string,
+  profile: RegisterProfile,
+): Promise<void> {
+  await tx.query(
+    `UPDATE organisation_profiles
+       SET legal_name = $2, company_number = $3, form = COALESCE($4, form),
+           incorporation_date = $5, jurisdiction = COALESCE($6, jurisdiction),
+           updated_at = now()
+     WHERE organisation_id = $1`,
+    [
+      organisationId,
+      profile.name,
+      profile.companyNumber,
+      profile.legalForm,
+      profile.incorporatedOn,
+      profile.jurisdiction,
+    ],
+  );
+
+  // Facts carry where each value came from, so the interface can show a
+  // verified legal form differently from a self-declared one.
+  const facts: Array<[string, string | null]> = [
+    ['legal_name', profile.name],
+    ['company_number', profile.companyNumber],
+    ['legal_form', profile.legalForm],
+    ['incorporation_date', profile.incorporatedOn],
+    ['registered_office', profile.address],
+  ];
+
+  for (const [claim, value] of facts) {
+    if (value === null) continue;
+    await tx.query(
+      `INSERT INTO facts
+         (id, organisation_id, claim, value, source, source_ref, retrieved_at,
+          confidence_level)
+       VALUES ($1, $2, $3, $4, 'companies_house', $5, now(), 'high')
+       ON CONFLICT (id) DO UPDATE SET
+         value = EXCLUDED.value,
+         source_ref = EXCLUDED.source_ref,
+         retrieved_at = EXCLUDED.retrieved_at,
+         -- Keep a confirmation only while the register still says what was
+         -- confirmed. A changed value has never been checked by anybody.
+         confirmed_by = CASE
+           WHEN facts.value = EXCLUDED.value THEN facts.confirmed_by ELSE NULL END,
+         confirmed_at = CASE
+           WHEN facts.value = EXCLUDED.value THEN facts.confirmed_at ELSE NULL END`,
+      [
+        `ch_${organisationId}_${profile.companyNumber}_${claim}`,
+        organisationId,
+        claim,
+        value,
+        `companies-house:${profile.companyNumber}`,
+      ],
+    );
+  }
+}

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,187 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,192 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1733,3 +1733,75 @@ without, `?funder=f_youth` carried through, name and page pre-filled, no
 duplicate ids on the page, the fund saved — *"Added. Youth Futures — spring
 round is on your list, and only yours"* — no second funder row created, and the
 fund reaching the tracker.
+
+
+## The server-side exception, found (2026-09-10)
+
+A deployed page failed with "Application error: a server-side exception has
+occurred". Four faithful reproductions came back clean — production build, real
+PostgreSQL 16, a non-superuser owner, the real journey, and the pre-0011
+upgrade on populated data. It only appeared while walking the 360Giving ingest
+hand-off, and then the server log said it plainly:
+
+    duplicate key value violates unique constraint "facts_pkey"
+
+`confirmCompanyAction` held the only fact-writing SQL outside `src/db`, and it
+was the only writer that got it wrong:
+
+| writer | key | on conflict |
+|---|---|---|
+| `saveSelfDeclaredProfile` | `self_<org>_<claim>` | `DO UPDATE` |
+| `addFact` | `self_<org>_<claim>` | `DO UPDATE` |
+| `confirmCompanyAction` | `ch_<companyNumber>_<claim>` | none |
+
+Two ways to fall over, and the second is the serious one.
+
+**Confirming twice threw.** A plain INSERT against `facts_pkey`, with no
+handler in the action, so the page became the error above. And onboarding is
+explicitly also how somebody corrects their own details — the file says so —
+which makes this a supported journey rather than an edge case.
+
+**Two organisations could not confirm the same company.** `facts_pkey` is
+global and the key carried no organisation, so the second tenant to look up any
+given company number crashed. A cross-tenant collision in a product whose
+entire promise is that one tenant cannot reach another. Nothing was leaked —
+the second write failed rather than landing anywhere — but the door it failed
+at should not have existed.
+
+The fix is `saveRegisterProfile` in `src/db/onboarding.ts`, keyed
+`ch_<organisation>_<companyNumber>_<claim>` and upserting, which also moves the
+last stray tenant SQL out of an action.
+
+### The confirmation rule
+
+The interesting part of the upsert. A fact somebody has already checked keeps
+its confirmation only while the register still says the same thing; if the value
+has CHANGED, the confirmation is withdrawn:
+
+    confirmed_by = CASE WHEN facts.value = EXCLUDED.value
+                        THEN facts.confirmed_by ELSE NULL END
+
+What they confirmed is no longer what we hold, so it has been checked by
+nobody. Anything else would let an application quote a figure a person never
+saw — which is the one thing this product exists to prevent.
+
+### Why the suite could not have caught it
+
+Both failures need two things the test harness does not have: a second
+organisation, and a real primary key collision under a real driver. And my own
+first version of the new test walked straight into the neighbouring trap — it
+asserted that each tenant sees only its own facts, which is meaningless in a
+harness that connects as the PGlite SUPERUSER, because superusers bypass
+Row-Level Security regardless of FORCE. The assertion now counts by
+`organisation_id`; the isolation itself is proved in `rls.test.ts`, which drops
+to `app_user` first.
+
+### What the ingest walk showed
+
+Clean, on the production build, against a 360Giving stub over a real socket:
+dry run, then "The Stub Community Foundation — 6 grants loaded. 6 grants
+written from 1 page", then the funder reaching a customer's `/funders` with its
+distribution chart, "Your £24k sits in the middle half of what they give", its
+website link, and "Add a fund from them" pre-filling both fields. Then a second
+organisation through the same Companies House lookup — no 5xx, where before the
+fix it produced the exception.

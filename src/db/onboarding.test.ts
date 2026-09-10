@@ -18,6 +18,7 @@ import {
   ensureOrganisation,
   ensureUser,
   hasProfile,
+  saveRegisterProfile,
   saveSelfDeclaredProfile,
 } from './onboarding.js';
 
@@ -173,5 +174,111 @@ describe('hasProfile', () => {
     await ensureOrganisation(db, ORG, USER, profile.legalName);
     await saveSelfDeclaredProfile(db, ORG, USER, profile);
     expect(await hasProfile(db, ORG)).toBe(true);
+  });
+});
+
+
+describe('recording what the register says', () => {
+  const register = {
+    name: 'RIVERMEAD COMMUNITY VENTURES CIC',
+    companyNumber: '09876543',
+    legalForm: 'cic_limited_by_guarantee',
+    incorporatedOn: '2019-04-02',
+    jurisdiction: 'england',
+    address: '4 Mill Lane, Wells, Somerset, BA5 2AA',
+  };
+
+  const setUp = async (organisationId: string, userId: string) => {
+    await ensureUser(db, userId);
+    await db.exec(
+      `SELECT set_config('app.organisation_id', '${organisationId}', false);`,
+    );
+    await ensureOrganisation(db, organisationId, userId, register.name);
+  };
+
+  it('writes a fact for every field the register gave', async () => {
+    await setUp(ORG, USER);
+    await saveRegisterProfile(db, ORG, register);
+    const r = await db.query<{ claim: string }>('SELECT claim FROM facts ORDER BY claim');
+    expect(r.rows.map((row) => row.claim)).toEqual([
+      'company_number',
+      'incorporation_date',
+      'legal_form',
+      'legal_name',
+      'registered_office',
+    ]);
+  });
+
+  it('can be repeated, which is how somebody corrects their own details', async () => {
+    // It used to throw on the second call: a plain INSERT against
+    // `facts_pkey`, with no handler in the action, so the page became
+    // "Application error: a server-side exception has occurred".
+    await setUp(ORG, USER);
+    await saveRegisterProfile(db, ORG, register);
+    await expect(saveRegisterProfile(db, ORG, register)).resolves.toBeUndefined();
+
+    const r = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM facts');
+    expect(r.rows[0]?.n).toBe(5);
+  });
+
+  it('lets two organisations confirm the SAME company without colliding', async () => {
+    // The fact key carried the company number and no organisation, so
+    // `facts_pkey` is global: the second tenant to look up a given company
+    // crashed. A cross-tenant collision in a product whose whole promise is
+    // that one tenant cannot reach another.
+    await setUp('org_one', 'user_one');
+    await saveRegisterProfile(db, 'org_one', register);
+
+    await setUp('org_two', 'user_two');
+    await expect(saveRegisterProfile(db, 'org_two', register)).resolves.toBeUndefined();
+
+    // Counted by organisation rather than by what the connection can see:
+    // this harness connects as the PGlite SUPERUSER, and superusers bypass
+    // Row-Level Security regardless of FORCE, so "what a tenant sees" cannot
+    // be asserted here at all. That isolation is proved in `rls.test.ts`,
+    // which drops to `app_user` first. What matters here is only that both
+    // writes landed.
+    const counts = await db.query<{ organisation_id: string; n: number }>(
+      'SELECT organisation_id, count(*)::int AS n FROM facts GROUP BY organisation_id ORDER BY organisation_id',
+    );
+    expect(counts.rows).toEqual([
+      { organisation_id: 'org_one', n: 5 },
+      { organisation_id: 'org_two', n: 5 },
+    ]);
+  });
+
+  it('keeps a confirmation when the register still says the same thing', async () => {
+    await setUp(ORG, USER);
+    await saveRegisterProfile(db, ORG, register);
+    await db.query(
+      `UPDATE facts SET confirmed_by = $1, confirmed_at = now() WHERE claim = 'legal_name'`,
+      [USER],
+    );
+
+    await saveRegisterProfile(db, ORG, register);
+
+    const r = await db.query<{ confirmed_by: string | null }>(
+      `SELECT confirmed_by FROM facts WHERE claim = 'legal_name'`,
+    );
+    expect(r.rows[0]?.confirmed_by).toBe(USER);
+  });
+
+  it('withdraws a confirmation when the register has CHANGED', async () => {
+    // What they confirmed is no longer what we hold, so it has been checked by
+    // nobody. Keeping it would let an application quote an unchecked value.
+    await setUp(ORG, USER);
+    await saveRegisterProfile(db, ORG, register);
+    await db.query(
+      `UPDATE facts SET confirmed_by = $1, confirmed_at = now() WHERE claim = 'legal_name'`,
+      [USER],
+    );
+
+    await saveRegisterProfile(db, ORG, { ...register, name: 'RIVERMEAD VENTURES CIC' });
+
+    const r = await db.query<{ value: string; confirmed_by: string | null }>(
+      `SELECT value, confirmed_by FROM facts WHERE claim = 'legal_name'`,
+    );
+    expect(r.rows[0]?.value).toBe('RIVERMEAD VENTURES CIC');
+    expect(r.rows[0]?.confirmed_by).toBeNull();
   });
 });

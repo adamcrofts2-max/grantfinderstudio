@@ -328,6 +328,14 @@ this cheque before", where no source answers "what is open".
       `'use server'` module imported a plain array from a `'use client'`
       module, so the bundler handed it a client-reference proxy and the action
       threw "fields is not iterable" before validating anything
+- [x] Fix the crash on confirming a company from the register. The fact key
+      carried the company number and NO organisation, and the insert had no
+      `ON CONFLICT`, so confirming twice threw — and two organisations could
+      never confirm the same company, the second one crashing with
+      "Application error: a server-side exception has occurred"
+- [x] Walk the 360Giving ingest end to end on the production build against a
+      stub over a real socket: console → dry run → load → the funder reaching
+      a customer's prospect card with its website and both actions
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never

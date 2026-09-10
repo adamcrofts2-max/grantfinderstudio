@@ -17,6 +17,7 @@ import { loadMasterKey } from '@/secrets/crypto';
 import { readCredentialSecret } from '@/secrets/store';
 import {
   ensureOrganisation,
+  saveRegisterProfile,
   saveProject,
   saveSelfDeclaredProfile,
 } from '@/db/onboarding';
@@ -118,49 +119,10 @@ export async function confirmCompanyAction(
   const orgClaim = await claimOrganisation();
   const database = await getDatabase();
   await database.withTenant(orgClaim.organisationId, async (tx) => {
-    // On a fresh deployment there is no organisation yet, and this UPDATE
-    // would silently affect nothing. Both routes in create it first.
+    // On a fresh deployment there is no organisation yet, and the UPDATE
+    // inside saveRegisterProfile would silently affect nothing.
     await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, profile.name);
-    await tx.query(
-      `UPDATE organisation_profiles
-         SET legal_name = $2, company_number = $3, form = COALESCE($4, form),
-             incorporation_date = $5, jurisdiction = COALESCE($6, jurisdiction),
-             updated_at = now()
-       WHERE organisation_id = $1`,
-      [
-        orgClaim.organisationId,
-        profile.name,
-        profile.companyNumber,
-        profile.legalForm,
-        profile.incorporatedOn,
-        profile.jurisdiction,
-      ],
-    );
-
-    // Facts carry where each value came from, so the interface can show a
-    // verified legal form differently from a self-declared one.
-    const facts: Array<[string, string | null]> = [
-      ['legal_name', profile.name],
-      ['company_number', profile.companyNumber],
-      ['legal_form', profile.legalForm],
-      ['incorporation_date', profile.incorporatedOn],
-      ['registered_office', profile.address],
-    ];
-    for (const [claim, value] of facts) {
-      if (value === null) continue;
-      await tx.query(
-        `INSERT INTO facts
-           (id, organisation_id, claim, value, source, source_ref, retrieved_at, confidence_level)
-         VALUES ($1, $2, $3, $4, 'companies_house', $5, now(), 'high')`,
-        [
-          `ch_${profile.companyNumber}_${claim}`,
-          orgClaim.organisationId,
-          claim,
-          value,
-          `companies-house:${profile.companyNumber}`,
-        ],
-      );
-    }
+    await saveRegisterProfile(tx, orgClaim.organisationId, profile);
   });
   await commitOrganisation(orgClaim);
 
