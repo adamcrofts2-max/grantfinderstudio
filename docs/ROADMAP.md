@@ -382,6 +382,14 @@ Postgres.
 - [x] "Test the stored key again" — a verdict outlives the code that reached
       it, so deploying the fix changed nothing until the check could be re-run
       without re-pasting the key
+- [x] Fix onboarding not advancing after a Companies House confirmation.
+      `confirmCompanyAction` saved everything and invalidated nothing, so the
+      screen kept rendering the search box and the project step never arrived.
+      The invalidation now lives in `commitOrganisation`, which every write
+      path must call anyway
+- [x] Walk the lookup path end to end in a browser against a stub served over
+      a real socket, using the `COMPANIES_HOUSE_BASE_URL` override. It was the
+      only route through onboarding that had never run anywhere
 - [x] Report a stored-but-failing key as such on the console overview, instead
       of "No key" — which sent an operator to add a key they already had
 - [x] A recovery path for a forgotten console password: any admin can set

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { cache } from 'react';
+import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -151,8 +152,44 @@ export async function claimOrganisation(): Promise<OrganisationClaim> {
   };
 }
 
-/** Point the session at the organisation, now that its row exists. */
+/**
+ * Every screen whose content depends on how far setup has got.
+ *
+ * `/` carries "your next step", `/onboarding` decides between the lookup and
+ * the project, and `/organisation` lists the facts a save has just added.
+ */
+const SETUP_VIEWS = ['/', '/onboarding', '/organisation'] as const;
+
+/**
+ * Point the session at the organisation, and mark the setup screens stale.
+ *
+ * The revalidation lives HERE rather than in each action, and that is the
+ * whole point. `confirmCompanyAction` saved a profile, saved five facts,
+ * returned "Saved ... from the Companies House register" — and called no
+ * revalidation, so the page went on rendering "Let's find your organisation"
+ * with the search box, and the project step never arrived. The organisation
+ * was there; the screen did not know. A server action does not re-render the
+ * route it was called from unless something is invalidated, and `force-dynamic`
+ * does not change that: it governs how a page renders when it IS requested.
+ *
+ * The manual path did revalidate, which is why this survived — until the
+ * lookup became reachable, the manual path was the only way through onboarding
+ * on any real deployment.
+ *
+ * Every path that writes an organisation must call this function anyway, since
+ * without it the session points nowhere. So attaching the invalidation to it
+ * makes forgetting structurally impossible rather than a thing to remember.
+ *
+ * Unconditional, deliberately: the early return below covers a RETURNING
+ * person correcting their own details, whose screens are every bit as stale as
+ * a new arrival's.
+ *
+ * Action-only. `revalidatePath` throws if called during a render, and every
+ * caller of this is a server action.
+ */
 export async function commitOrganisation(claim: OrganisationClaim): Promise<void> {
-  if (!claim.isNew) return;
-  await withAdmin((tx) => setSessionOrganisation(tx, claim.tokenHash, claim.organisationId));
+  if (claim.isNew) {
+    await withAdmin((tx) => setSessionOrganisation(tx, claim.tokenHash, claim.organisationId));
+  }
+  for (const view of SETUP_VIEWS) revalidatePath(view);
 }

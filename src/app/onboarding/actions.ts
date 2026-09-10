@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { getDatabase, withAdmin } from '@/db';
 import { CompaniesHouseClient, describeFailure } from '@/ingestion/companieshouse/client';
 import { looksLikeCompanyNumber } from '@/ingestion/companieshouse/normalise';
@@ -244,9 +243,9 @@ export async function saveManualProfileAction(
     };
   }
 
-  revalidatePath('/');
-  revalidatePath('/organisation');
-  revalidatePath('/onboarding');
+  // Invalidation happens in `commitOrganisation`, which every write path must
+  // call. See the note there: doing it per-action is how the lookup path came
+  // to have none.
   return {
     saved: true,
     message: 'Saved. These are recorded as your own declaration, not as verified against the register.',
@@ -329,8 +328,7 @@ export async function saveProjectAction(
     };
   }
 
-  revalidatePath('/');
-  revalidatePath('/onboarding');
+
   return {
     saved: true,
     message: 'Saved. Every fund is now checked against this.',

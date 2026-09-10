@@ -1610,3 +1610,54 @@ did the response succeed (rather than: did the key authenticate), is a key
 working (rather than: is one stored). None could fail loudly, and each made the
 next one harder to see. All three are now pure functions with the distinctions
 named, which is the only way a condition nothing can exercise stays honest.
+
+
+## The step that never arrived (2026-09-10)
+
+With the lookup finally working, it found a real CIC — and then onboarding sat
+there. "What are you trying to fund" never became the next step.
+
+`confirmCompanyAction` was doing its whole job: creating the organisation,
+writing the profile, writing five facts with `source: 'companies_house'`, and
+returning "Saved … from the Companies House register." It called no
+`revalidatePath`. The manual path called three.
+
+**A server action does not re-render the route it was called from unless
+something is invalidated**, and `dynamic = 'force-dynamic'` does not change
+that — it governs how a page renders when it IS requested, not whether an
+action asks for a new render. So the organisation existed, the facts existed,
+and the screen went on rendering "Let's find your organisation" with a search
+box above a project form that was waiting behind the very condition the save
+had just satisfied.
+
+The invalidation now lives in `commitOrganisation`, and that placement is the
+actual fix. Every path that writes an organisation must call it, because
+without it the session points at nothing — so attaching the invalidation there
+makes forgetting structurally impossible rather than a thing to remember. It is
+unconditional, because the early return inside it covers a RETURNING person
+correcting their details, whose screens are every bit as stale as a new
+arrival's.
+
+### Why all of today's bugs were in the same place
+
+Four faults in one afternoon, all on the Companies House path, and they share a
+cause that is worth naming: **it was the only route through onboarding that had
+never run anywhere.** The manual form was exercised by every test, every axe
+sweep and every browser walk, because the lookup was hidden by the base-URL
+predicate. Fixture tests covered the connector's parsing; nothing covered the
+hand-off, the verification mapping, or what the page did afterwards.
+
+So the last thing done was to walk it: a Companies House stub over a real
+socket, `COMPANIES_HOUSE_BASE_URL` pointed at it, and a browser going sign-up →
+search → confirm → project on a 390px viewport. It now reports:
+
+    1. heading: Let's find your organisation
+       search box present: true
+    2. results: [ 'RIVERMEAD COMMUNITY VENTURES CIC' ]
+    3. heading after confirm: Now — what are you trying to fund?
+       project field visible: true
+    4. home next step: Say what you are trying to fund
+
+That override was written for staging and contract tests. It turns out to be
+the only way to exercise a connector this environment cannot reach, and it
+should be used on every path that talks to somebody else's API.
