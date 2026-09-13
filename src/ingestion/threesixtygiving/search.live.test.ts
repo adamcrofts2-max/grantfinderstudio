@@ -164,9 +164,43 @@ describe('searching the whole corpus', () => {
     await expect(connector().searchGrants('youth')).rejects.toThrow(/This API offers: org/u);
   });
 
-  it('says so when the API will not even list its routes', async () => {
+  it('walks up to the host root when the configured base has no index', async () => {
+    // What the live service does: /api/v1/ answers 404 as well, and a 404
+    // there says nothing about whether the routes beneath it work — DRF only
+    // serves a root view when a DefaultRouter is mounted, so "base is wrong"
+    // and "base is merely quiet" look identical from outside.
+    respond = (url) => {
+      if (url.pathname === '/') {
+        return { status: 200, body: JSON.stringify({ grants: `${baseUrl}grants/` }) };
+      }
+      if (url.pathname === '/api/v1/grants/') {
+        return { status: 200, body: JSON.stringify({ count: 1, results: [grant('root')] }) };
+      }
+      return { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
+    };
+
+    const result = await connector().searchGrants('youth');
+    expect(result.grants[0]?.raw.id).toBe('root');
+    expect(result.routeUsed).toBe('grants/');
+  });
+
+  it('names both settings when nothing anywhere lists a route', async () => {
+    // A wrong base URL makes every route look missing, so the message has to
+    // point at the base first.
     respond = () => ({ status: 404, body: 'nope', type: 'text/plain' });
-    await expect(connector().searchGrants('youth')).rejects.toThrow(/did not list its routes/u);
+    await expect(connector().searchGrants('youth')).rejects.toThrow(
+      /check the base URL first/u,
+    );
+  });
+
+  it('ignores an index whose values are not addresses', async () => {
+    // A landing page rendered as JSON, or an error body with string fields,
+    // must not be mistaken for a route index.
+    respond = (url) =>
+      url.pathname === '/'
+        ? { status: 200, body: JSON.stringify({ message: 'welcome', status: 'ok' }) }
+        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/check the base URL first/u);
   });
 
   it('refuses a discovered route that points at another host', async () => {

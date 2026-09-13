@@ -258,11 +258,48 @@ export class ThreeSixtyGivingConnector {
    * Only ever called after a 404, so a working deployment never pays for it.
    */
   private async routeIndex(): Promise<Record<string, string>> {
-    const payload: unknown = await this.http.getJson(this.baseUrl);
+    // Every place an index might be, nearest first.
+    //
+    // Not just the configured base: `/api/v1/` on the live service answers 404
+    // too, and it turns out a 404 there says nothing about whether
+    // `/api/v1/org/{id}/grants_made/` works. Django REST Framework only serves
+    // a root view when a DefaultRouter is mounted there; a SimpleRouter, or
+    // viewsets wired up with plain `path()` calls, expose no index at all. So
+    // the base being wrong and the base merely being quiet look identical from
+    // outside, and both are worth walking up from.
+    const origin = new URL(this.baseUrl).origin;
+    const candidates = [
+      this.baseUrl,
+      new URL('/api/v1/', origin).toString(),
+      new URL('/api/', origin).toString(),
+      `${origin}/`,
+    ];
+
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+      if (seen.has(candidate)) continue;
+      seen.add(candidate);
+      // eslint-disable-next-line no-await-in-loop
+      const routes = await this.readIndex(candidate);
+      if (Object.keys(routes).length > 0) return routes;
+    }
+    return {};
+  }
+
+  /** One address, read as `{ name: url }`, or nothing if it is not that. */
+  private async readIndex(url: string): Promise<Record<string, string>> {
+    let payload: unknown;
+    try {
+      payload = await this.http.getJson(url);
+    } catch {
+      // A 404 or an HTML landing page here is ordinary, not exceptional: we
+      // are guessing at where an index might be.
+      return {};
+    }
     if (typeof payload !== 'object' || payload === null) return {};
     const routes: Record<string, string> = {};
     for (const [name, value] of Object.entries(payload as Record<string, unknown>)) {
-      if (typeof value === 'string') routes[name] = value;
+      if (typeof value === 'string' && /^https?:\/\//u.test(value)) routes[name] = value;
     }
     return routes;
   }
@@ -307,7 +344,7 @@ export class ThreeSixtyGivingConnector {
         throw new IngestionError(
           `The grant search route "${this.searchPath}" is not there (404)` +
             (names.length === 0
-              ? ', and this API did not list its routes. Check the base URL under Services.'
+              ? `, and nothing under ${new URL(this.baseUrl).origin} listed its routes. Both the API base URL and the grant search route are settable under Services — check the base URL first, since a wrong one makes every route look missing.`
               : `. This API offers: ${names.join(', ')}. Set the right one as the grant search route under Services.`),
         );
       }

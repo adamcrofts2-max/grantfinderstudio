@@ -25,7 +25,7 @@ two is stale and this environment cannot settle it.
 
 | | |
 |---|---|
-| Base URL | `https://api.threesixtygiving.org/api/v1/` |
+| Base URL | `https://api.threesixtygiving.org/api/v1/` — **unconfirmed.** This path answers 404 in a browser, as does `CurrentLatestGrants/` beneath it. A 404 on the base does NOT by itself mean the base is wrong: Django REST Framework serves a root view only when a `DefaultRouter` is mounted there, so a quiet base and a wrong base look identical from outside. Treat every route in this document as unverified until something has been seen to answer. |
 | Authentication | **None.** Read-only over open data; no key, no token |
 | Rate limit | **2 requests per second per IP**; `429` beyond it |
 | Format | HTTP/JSON, Django REST Framework |
@@ -100,6 +100,18 @@ which is non-commercial only — does not come into it.
 Do not use the 360Giving logo without permission. There are API terms and
 conditions and a take-down policy that should be read before going live; they
 could not be retrieved here.
+
+## This document is a reading of their source, not an observation
+
+Worth stating at the top of the build notes, because two things in here have
+now been wrong in production. `CurrentLatestGrants` was transcribed from
+`urls.py` as though it were a path; it is a viewset CLASS name and answers 404.
+The base URL above answers 404 too.
+
+Nothing in this file was ever confirmed against the live service — the build
+environment cannot reach it. So it is a hypothesis, and the code treats it as
+one: the base URL and the search route are both settings, and a 404 makes the
+connector ask the API for its own route index before reporting failure.
 
 ## What this means for the build
 

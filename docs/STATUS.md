@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,287 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,289 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -2138,3 +2138,44 @@ cross-host refusal now has a test that runs.
 
 The doc has been corrected too, so the next person reading that table is told
 the route 404s rather than discovering it in production.
+
+
+## The base URL is wrong too (2026-09-13)
+
+`https://api.threesixtygiving.org/api/v1/` answers 404 in a browser, not just
+the route beneath it. So the problem is not one mis-transcribed path; the whole
+of `docs/360GIVING_API.md` is a reading of their source that was never checked
+against the service, and two separate lines of it have now been wrong in
+production.
+
+That file now says so at the top, which matters more than the fix: the next
+person reading that endpoint table needs to know it is a hypothesis.
+
+### One thing worth knowing about the 404
+
+A 404 on `/api/v1/` does NOT by itself mean the base URL is wrong. Django REST
+Framework serves a root view only when a `DefaultRouter` is mounted there — a
+`SimpleRouter`, or viewsets wired up with plain `path()` calls, expose no index
+at all. So a base that is quiet and a base that is wrong look identical from
+outside, and `/api/v1/org/{id}/grants_made/` may well work underneath a base
+that answers nothing.
+
+Route discovery therefore walks up rather than asking one address: the
+configured base, then `/api/v1/`, then `/api/`, then the host root, stopping at
+the first that answers with something shaped like `{ name: url }`. Values that
+are not addresses are ignored, so a landing page rendered as JSON is not
+mistaken for an index.
+
+And when nothing anywhere lists a route, the message now points at the BASE URL
+first, because a wrong base makes every route look missing:
+
+> The grant search route "CurrentLatestGrants/" is not there (404), and nothing
+> under https://api.threesixtygiving.org listed its routes. Both the API base
+> URL and the grant search route are settable under Services — check the base
+> URL first, since a wrong one makes every route look missing.
+
+### What is still unknown
+
+The real address of the corpus-wide grant search. I cannot reach the service
+from here, and I have now guessed wrong twice, so the next move is an
+observation rather than a third guess.
