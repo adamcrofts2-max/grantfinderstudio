@@ -4,6 +4,7 @@ import { readSetupProgress } from '@/app/setup';
 import { loadFacts } from '@/db/workspace';
 
 import { AddFact } from './AddFact';
+import { ReadWebsite } from './ReadWebsite';
 import { FactList, type FactView } from './FactList';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,15 @@ export default async function OrganisationPage() {
           known={facts.map((fact) => fact.claim)}
           open={nextIsFacts && nothingPending}
         />
+      </div>
+
+      {/* Open when there is nothing here yet: reading a page is by far the
+          fastest way from a blank profile to the five confirmed facts the
+          Writer needs, and typing nine facts by hand is the slowest. Once
+          somebody has facts to check, it folds away — the job then is
+          checking, not gathering more. */}
+      <div style={{ marginTop: 'var(--s-4)' }}>
+        <ReadWebsite open={facts.length === 0} />
       </div>
     </div>
   );

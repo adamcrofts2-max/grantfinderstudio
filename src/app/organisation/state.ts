@@ -24,3 +24,32 @@ export const EMPTY_SELF_DECLARED: SelfDeclaredState = {
   errors: {},
   values: NO_VALUES,
 };
+
+export interface ReadWebsiteState {
+  ok: boolean;
+  message: string;
+  /** The address actually read, after redirects, so somebody can check it. */
+  url: string | null;
+  /** How many unconfirmed facts it proposed. */
+  proposed: number;
+  /**
+   * Text on the page that addressed the model rather than describing the
+   * organisation.
+   *
+   * Surfaced rather than logged: a page trying to talk the extractor into
+   * something is a thing the page's owner should be told about, and the honest
+   * version of "we read your website" includes what we noticed while doing it.
+   */
+  instructionLike: string[];
+  /** Echoed back so a refusal does not cost somebody their typing. */
+  value: string;
+}
+
+export const EMPTY_READ_WEBSITE: ReadWebsiteState = {
+  ok: false,
+  message: '',
+  url: null,
+  proposed: 0,
+  instructionLike: [],
+  value: '',
+};

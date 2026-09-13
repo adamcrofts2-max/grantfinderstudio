@@ -9,6 +9,7 @@
 import type { Fact } from '../domain/provenance/facts.js';
 import type { Confidence } from '../domain/provenance/facts.js';
 import type { SourceType } from '../domain/types.js';
+import type { Reconciliation } from '../domain/provenance/reconcile.js';
 import type { Queryable } from './client.js';
 
 interface FactRow {
@@ -493,4 +494,61 @@ export async function recordSelfDeclaredFact(
     [id, organisationId, fact.claim, fact.value, userId],
   );
   return id;
+}
+
+/**
+ * Store what we read from an organisation's own website, unconfirmed.
+ *
+ * Keyed `web_<organisation>_<page>_<n>` and UPSERTED, which is the lesson the
+ * register route taught the hard way: a deterministic id with a plain INSERT
+ * turns "read my website again" into a primary-key violation and an
+ * application error page. Re-reading a page should refresh what it said.
+ *
+ * The page is part of the key, so reading an About page and then a Team page
+ * adds to what is held rather than overwriting it. The organisation is part of
+ * the key, so two organisations may read the same page — an umbrella body and
+ * one of its members, say — without colliding.
+ *
+ * A refreshed value drops its confirmation, exactly as the register does: what
+ * somebody checked is no longer what we hold, so it has been checked by
+ * nobody.
+ */
+export async function saveWebsiteFacts(
+  tx: Queryable,
+  organisationId: string,
+  pageKey: string,
+  url: string,
+  results: readonly Reconciliation[],
+): Promise<number> {
+  let stored = 0;
+  for (const [index, result] of results.entries()) {
+    if (result.kind === 'duplicate') continue;
+    await tx.query(
+      `INSERT INTO facts
+         (id, organisation_id, claim, value, source, source_ref, source_span,
+          retrieved_at, confidence_level)
+       VALUES ($1, $2, $3, $4, 'ai_extraction', $5, $6, now(), $7)
+       ON CONFLICT (id) DO UPDATE SET
+         claim = EXCLUDED.claim,
+         value = EXCLUDED.value,
+         source_span = EXCLUDED.source_span,
+         retrieved_at = EXCLUDED.retrieved_at,
+         confidence_level = EXCLUDED.confidence_level,
+         confirmed_by = CASE
+           WHEN facts.value = EXCLUDED.value THEN facts.confirmed_by ELSE NULL END,
+         confirmed_at = CASE
+           WHEN facts.value = EXCLUDED.value THEN facts.confirmed_at ELSE NULL END`,
+      [
+        `web_${organisationId}_${pageKey}_${index}`,
+        organisationId,
+        result.candidate.claim,
+        result.candidate.value,
+        url,
+        result.candidate.sourceSpan,
+        result.candidate.confidence,
+      ],
+    );
+    stored += 1;
+  }
+  return stored;
 }

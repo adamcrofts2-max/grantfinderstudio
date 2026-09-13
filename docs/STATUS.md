@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,238 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,282 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1993,3 +1993,98 @@ against the live API from here. So it is configurable under Services, the
 search says "the route may have moved" when the response shape is wrong, and a
 `path` setting kind refuses an absolute URL — a field labelled "route" must not
 be a way to send every search to another origin.
+
+
+## Reading the applicant's own website (2026-09-13)
+
+Nine facts typed by hand is the slowest part of getting to the five confirmed
+ones the Writer needs — and almost every CIC has already written who they are,
+who they serve and where, on their own About page. `/organisation` now offers
+to read one page and propose facts from it, folded away once there are facts to
+check and open when there are none.
+
+It reuses the document pipeline with one step swapped: a fetched page in place
+of a parsed file. Same Extractor, same fenced untrusted block, same
+reconciliation against what is already held, same rule that nothing extracted
+is ever confirmed. A second path with its own idea of provenance is how a
+product ends up with facts nobody checked.
+
+### The new risk, and why it is survivable
+
+"Give us your website and we will read it" means a person hands us an address
+and the SERVER makes the request. That is server-side request forgery, and the
+server's network position is the prize: a cloud metadata endpoint, a database
+on a private subnet, an internal admin panel — none of which the person could
+reach themselves. The reply need not even come back; a timing difference maps a
+network.
+
+So the rule is a WHITELIST of shapes rather than a blacklist of known-bad
+addresses: https, a public hostname with a dot, no credentials, the default
+port. A blacklist has to think of `0177.0.0.1`, `2130706433`,
+`[::ffff:127.0.0.1]`, `localtest.me`, and whatever encoding is found next.
+
+**And the name check is explicitly not the control.** Writing it,
+`localhost.localdomain` — the traditional loopback FQDN on Linux — walked
+straight through: it has a dot and none of the reserved suffixes. That is the
+blacklist problem appearing inside the very function whose comment warns about
+it. The control is `isPrivateAddress` applied to what DNS actually RESOLVED,
+on the original request and again on every redirect, with `redirect: 'manual'`
+so no hop is taken before something can look at it. Every DNS answer is
+checked, not the first, or a name with one public and one private address
+becomes a coin toss that eventually lands inside.
+
+Three separate reasons the page's text is safe to put in front of a model, and
+they are worth keeping in that order:
+
+1. `fetchPage` decides whether to read it at all.
+2. `htmlToText` strips script, style and comment CONTENT **before** tags — do
+   it the other way round and the stripping leaves a page of JavaScript for the
+   model to read as the organisation describing itself, which is both useless
+   and the easiest place to hide instructions.
+3. Every fact proposed is UNCONFIRMED, and the Extractor reports text that
+   addressed the model rather than describing the organisation — which the
+   screen shows to the page's owner rather than logging, because if it is their
+   own site then somebody put it there.
+
+The third is the one that actually matters. A page that talks the extractor
+into "annual turnover: £2m" produces a row saying £2m with the quote beside it,
+and a person saying no.
+
+### Two mistakes of my own, both about invisible characters
+
+The control-character regex in `htmlToText` was written as an escaped
+character class, and the escapes ended up in the file as LITERAL control
+bytes — working code that is invisible in review, inside the function whose job
+is stripping exactly those bytes. It is `/(?![\n\t])\p{Cc}/gu` now: a Unicode
+property, nothing to spell out.
+
+And the test for it had the same problem, which made it worse than useless: the
+literal NUL became a space somewhere in an edit, so the test asserted that a
+SPACE collapses and passed while claiming to cover control characters. It builds
+them with `String.fromCharCode` now.
+
+### Re-reading a page is safe, which the register route taught
+
+`saveWebsiteFacts` keys a fact `web_<organisation>_<page>_<n>` and UPSERTS.
+A deterministic id with a plain INSERT is precisely what made confirming a
+company twice an "Application error" page, and "read my website again" is an
+obviously repeatable action. The page is in the key so a second page adds
+rather than overwrites; the organisation is in the key so two organisations may
+read the same page — an umbrella body and one of its members — without
+colliding. A refreshed value drops its confirmation, as the register does.
+
+### What was walked, and what could not be
+
+In a browser at 390px, every refusal with its own message: http, localhost, a
+port, credentials in the address, the cloud metadata endpoint, and a valid
+address on a deployment with no Anthropic key. The form folds for an
+organisation that already has facts. No 5xx, no overflow, axe clean.
+
+Over a real socket, the guards themselves — including a redirect to the
+metadata endpoint being refused, and a test asserting the stub server really
+answers, without which every refusal above would pass against a dead port.
+
+**Not** walked: a successful read. It needs an Anthropic key and a real public
+website, and the guard correctly refuses a local stub — which is itself
+evidence the guard works, and leaves the happy path as the first thing to try
+on a real deployment.

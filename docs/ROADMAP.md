@@ -336,6 +336,14 @@ this cheque before", where no source answers "what is open".
 - [x] Walk the 360Giving ingest end to end on the production build against a
       stub over a real socket: console → dry run → load → the funder reaching
       a customer's prospect card with its website and both actions
+- [x] **Read the applicant's own website** to propose facts. Most CICs have
+      already written who they are, who they serve and where; typing it again
+      is the slowest part of reaching the five confirmed facts the Writer
+      needs. One page, unconfirmed facts, sourced to the URL
+- [x] SSRF guard for any address a person supplies: https, public hostname, no
+      credentials, no port, and — the control that actually matters — every
+      RESOLVED address and every redirect checked as well. Proven over a real
+      socket rather than by fixture
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never
