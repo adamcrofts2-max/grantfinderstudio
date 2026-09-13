@@ -68,8 +68,17 @@ export default async function GrantsPage({
       ? rankGrants(found.grants, { terms, region, amountSoughtGbp: ask })
       : [];
 
-  const publishers = [
-    ...new Set(ranked.map((g) => g.publisherName).filter((n): n is string => n !== null)),
+  /**
+   * Licences, not publisher names.
+   *
+   * This once listed the publishers, which looked better and was empty every
+   * time: 360Giving's organisation references carry an `org_id` and no name,
+   * so there is nothing to print. What each grant DOES carry is the licence
+   * its publisher chose, and since some of those are share-alike, naming them
+   * is the part that actually matters.
+   */
+  const licences = [
+    ...new Set(ranked.map((g) => g.licenceName).filter((n): n is string => n !== null)),
   ];
 
   return (
@@ -88,18 +97,6 @@ export default async function GrantsPage({
       </header>
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />
-
-      {found.state === 'ok' && found.routeUsed !== null ? (
-        <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
-          <span aria-hidden="true">⚠</span>
-          <span>
-            The configured grant search route was not there, so we asked the API where its
-            search lives and used <code>{found.routeUsed}</code> instead. Searching works, but
-            every search pays for that extra lookup until an operator saves it as the grant
-            search route under Services.
-          </span>
-        </div>
-      ) : null}
 
       {found.state === 'failed' ? (
         <section className="card" style={{ marginTop: 'var(--s-5)' }}>
@@ -184,11 +181,12 @@ export default async function GrantsPage({
       )}
 
       <p className="ingest-licence" style={{ marginTop: 'var(--s-6)' }}>
-        Grant data from the 360Giving Data Store, searched live and not stored here.
-        {publishers.length === 0
+        Grant data from the 360Giving Data Store, searched live and not stored here. Each
+        funder publishes under their own open licence
+        {licences.length === 0
           ? ''
-          : ` Published by ${publishers.slice(0, 6).join(', ')}${publishers.length > 6 ? ' and others' : ''}`}
-        , each under their own open licence.
+          : `: ${licences.slice(0, 4).join(', ')}${licences.length > 4 ? ' and others' : ''}`}
+        . Check the licence before republishing a row — some are share-alike.
       </p>
     </div>
   );

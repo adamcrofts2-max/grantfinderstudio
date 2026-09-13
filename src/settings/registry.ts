@@ -84,9 +84,9 @@ export const SETTINGS: readonly SettingDefinition[] = [
     key: THREESIXTYGIVING_SEARCH_PATH_KEY,
     service: 'threesixtygiving',
     label: 'Grant search route',
-    help: 'The corpus-wide grant search, relative to the base URL. Settable because it could not be verified against the live API from the build environment — if searching reports that the route has moved, correct it here rather than waiting for a redeploy.',
+    help: "360Giving's all-grants search. Read from their own urls.py, so it should be right — note it hangs off /api/ rather than /api/v1/, and has no trailing slash, because Django will not remove one. They label it experimental, so it is settable here: if searching reports a 404, correct it without waiting for a redeploy.",
     kind: 'path',
-    fallback: 'CurrentLatestGrants/',
+    fallback: '/api/experimental/CurrentLatestGrants',
     envVar: 'THREESIXTYGIVING_SEARCH_PATH',
   },
 ] as const;
@@ -135,8 +135,17 @@ export function settingProblem(definition: SettingDefinition, raw: string): stri
     if (/^[a-z][a-z0-9+.-]*:/iu.test(value) || value.startsWith('//')) {
       return 'A route, not a full address — it is resolved against the base URL above.';
     }
-    if (value.startsWith('/')) {
-      return 'Leave off the leading slash, so the route resolves under the base URL rather than replacing its path.';
+    // A leading slash IS allowed, and the route that needed it is the reason.
+    //
+    // This used to be refused, on the assumption that a route lives under the
+    // base URL. 360Giving's all-grants search does not: it is mounted on
+    // `/api/`, while the base is `/api/v1/`, so the only way to express it
+    // base-relative is `../experimental/...`. A leading slash cannot move the
+    // origin — `new URL('/x', base)` keeps the host — so it gives up nothing
+    // the check above is protecting. What is still refused is `//host/path`,
+    // which is a full address wearing a slash.
+    if (value.includes('..')) {
+      return 'No "..", so a route cannot be written to climb out of the API.';
     }
     if (!/^[A-Za-z0-9._~\-/]+$/u.test(value)) {
       return 'Use letters, digits, dots, dashes, underscores and slashes only.';

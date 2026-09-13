@@ -139,15 +139,22 @@ describe('the rule about keyed services', () => {
 describe('the grant search route', () => {
   const route = settingByKey(THREESIXTYGIVING_SEARCH_PATH_KEY)!;
 
-  it('exists, so a route that moves needs no redeploy', () => {
-    // It could not be verified against the live API from the build
-    // environment, which makes "correctable without shipping code" a
-    // requirement rather than a convenience.
-    expect(route.fallback).toBe('CurrentLatestGrants/');
+  it('defaults to the route 360Giving actually declares', () => {
+    // Root-relative on purpose: `experimental/` is mounted on `api/`, not on
+    // `api/v1/`, so a base-relative path lands somewhere that 404s. And no
+    // trailing slash — their path is declared without one and Django's
+    // APPEND_SLASH only ever adds one.
+    expect(route.fallback).toBe('/api/experimental/CurrentLatestGrants');
   });
 
-  it('accepts a relative route', () => {
-    expect(settingProblem(route, 'CurrentLatestGrants/')).toBeNull();
+  it('exists, so a route that moves needs no redeploy', () => {
+    // 360Giving label the all-grants search experimental, which makes
+    // "correctable without shipping code" a requirement, not a convenience.
+    expect(route.envVar).toBe('THREESIXTYGIVING_SEARCH_PATH');
+  });
+
+  it('accepts both a root-relative and a base-relative route', () => {
+    expect(settingProblem(route, '/api/experimental/CurrentLatestGrants')).toBeNull();
     expect(settingProblem(route, 'grants/')).toBeNull();
   });
 
@@ -161,8 +168,18 @@ describe('the grant search route', () => {
     expect(settingProblem(route, '//elsewhere.example/api/')).toContain('not a full address');
   });
 
-  it('refuses a leading slash, which would replace the base path', () => {
-    expect(settingProblem(route, '/api/v2/grants/')).toContain('leading slash');
+  it('refuses a protocol-relative address, a full address wearing a slash', () => {
+    // `//elsewhere.example/api/` resolves to another ORIGIN, which is the
+    // thing this field must never be able to do. A single leading slash
+    // cannot — it keeps the host — so it is allowed, and has to be: the
+    // all-grants search is mounted beside the versioned API, not under it.
+    expect(settingProblem(route, '//elsewhere.example/api/')).toContain('not a full address');
+  });
+
+  it('refuses "..", so a route cannot climb out of the API', () => {
+    // The other way to leave the intended path: `../../` walks up to the host
+    // root. Refused rather than normalised, so what is saved is what is sent.
+    expect(settingProblem(route, '../../admin/')).toContain('climb out');
   });
 
   it('refuses a query string or anything else surprising', () => {

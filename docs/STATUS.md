@@ -1905,6 +1905,8 @@ administrator between a person and public data.
 My own research said so before any of it was built. From
 `docs/360GIVING_API.md`, written from reading their `urls.py`:
 
+> <!-- Superseded: the path is /api/experimental/CurrentLatestGrants, with no
+>      trailing slash. See the end of this file. -->
 > `CurrentLatestGrants` — Every current grant. Supports `?search=` (regex over
 > the whole grant JSON)
 >
@@ -1987,6 +1989,12 @@ is already the row's first line — it is "Add a fund from them" now, with the
 name kept for a screen reader.
 
 ### The route is a setting
+
+> **Superseded — see "The observation, and what it cost" at the end of this
+> file.** `CurrentLatestGrants/` was wrong: the route is
+> `/api/experimental/CurrentLatestGrants`, off `api/` rather than `api/v1/` and
+> with no trailing slash. Read from their source, not guessed. The setting
+> stays, for the reason below.
 
 `CurrentLatestGrants/` comes from their source, but it could not be verified
 against the live API from here. So it is configurable under Services, the
@@ -2179,3 +2187,116 @@ first, because a wrong base makes every route look missing:
 The real address of the corpus-wide grant search. I cannot reach the service
 from here, and I have now guessed wrong twice, so the next move is an
 observation rather than a third guess.
+
+---
+
+## The observation, and what it cost
+
+The unknown above is closed, and not by a third guess. The 360Giving Data Store
+is **open source**, and their repository was clonable from this environment the
+whole time — `github.com/ThreeSixtyGiving/datastore`. Two production 404s in
+front of the user, a route-discovery mechanism, and a document full of hedged
+hypotheses, all to avoid reading a file called `urls.py`.
+
+The lesson is not "read the docs". It is that **I treated "the live service is
+unreachable from here" as "the truth about it is unreachable from here"**, and
+those are different sentences. When a service cannot be probed, the next
+question is whether it can be *read*.
+
+### The route
+
+```
+/api/experimental/CurrentLatestGrants
+```
+
+Three details, each of which caused a 404:
+
+1. It hangs off `api/`, **not** `api/v1/`. Written relative to the configured
+   base it lands in the wrong place. The default is therefore root-relative.
+2. It has **no trailing slash**. Django's `APPEND_SLASH` only ever *adds* one,
+   so `CurrentLatestGrants/` matches no pattern. Both of my guesses had the
+   slash.
+3. `experimental` is 360Giving's own label, so the saved setting stays: if they
+   retire it, an operator corrects the route under Services without a redeploy.
+
+`?search=` is a DRF `SearchFilter` over `search_fields = ("$data",)`. The `$`
+prefix means **regex over the whole grant JSON** — so `searchPattern`'s
+alternation was right by luck as well as by design.
+
+The exact URL production now requests, printed from the real constants:
+
+```
+https://api.threesixtygiving.org/api/experimental/CurrentLatestGrants
+  ?search=people%7Colder%7Cdisabled%7C...&limit=50
+```
+
+### Machinery deleted
+
+The route-discovery walk is **gone**, along with `assertSameOriginAsBase` that
+existed only to serve it, and six socket tests that exercised it. It could
+never have worked: `/api/` serves an HTML landing page (`TemplateView`,
+`api.html`) and `/` serves their web UI, so there is no `{ name: url }` index
+anywhere, however far up it walked. Three round trips to produce a worse error
+message than a sentence naming the setting.
+
+Guessing machinery that cannot succeed is worse than no machinery: it turns one
+honest failure into a slower, more confident one. Its replacement is a message
+that says where to correct the route and that loading a single funder still
+works.
+
+### The shape the search actually returns
+
+This was wrong too, quietly — the kind of fault that renders rather than
+throws. The corpus search serialises their `Grant` **model**:
+
+```
+{ grant_id, data, additional_data, publisher_org_id,
+  recipient_org_ids: [...], funding_org_ids: [...] }
+```
+
+The per-organisation routes serialise something else:
+`{ grant_id, data, data_license, publisher, recipients, funders }`, where each
+reference is `{ org_id, self }`. I had written the reader for the second shape
+and pointed it at the first, so **every funder id and name would have come back
+`null`** — the "Add a fund from them" link would have been missing from every
+row, and nobody would have known why. Both shapes are now read by one reader.
+
+### Names, and where they are not
+
+`OrganisationRef` in their API is a dataclass holding `org_id` and nothing
+else. **No endpoint names an organisation on a grant.** A funder's name exists
+only inside the standard record the publisher wrote
+(`data.fundingOrganization[].name`), and a publisher's name is not available
+from the grant routes at all.
+
+So the page's attribution line — "Published by X, Y and Z" — was going to be
+empty on every load. It now names the **licences** instead, which is real data
+and the part that matters: each grant carries its own at
+`additional_data.metadata.source_license`, publishers choose their own, and
+some are share-alike. Attribution is read from the row rather than asserted by
+us.
+
+### A validation rule that was protecting the wrong thing
+
+`settingProblem` refused a leading slash on a route, on the reasoning that a
+route lives under the base URL. That reasoning was an assumption, and the real
+route breaks it. A leading slash cannot change the origin — `new URL('/x',
+base)` keeps the host — so refusing it gave up a legitimate route for no
+safety. What is refused now is `//host/path`, which is a full address wearing a
+slash, and `..`, which climbs out of the API. The origin guarantee is intact and
+the route is expressible.
+
+### What the API cannot do, which shapes what is next
+
+Worth recording because it is a product constraint, not a detail:
+`OrganisationListView` and `FunderListView` declare **no filter backends at
+all**, and the two grant routes declare `DjangoFilterBackend` with no
+`filterset_fields`. A `?search=` or `?name=` on any of them is silently ignored
+and the full list comes back. There is no way to ask the API to find a funder by
+name. Doing it means holding a local copy of the organisation list (name and
+id only) and matching here — at 100 requests a minute and 1000 rows a page.
+That is now an unchecked roadmap item rather than an assumption.
+
+See `docs/360GIVING_API.md`, rewritten from their source at `4a57c2e` with
+every route, parameter, rate limit and response shape quoted from a line of
+their code.

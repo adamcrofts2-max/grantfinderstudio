@@ -7,14 +7,21 @@
  * points the real `FetchJsonClient` at it, and asserts on what the connector
  * does with real responses, real status codes and a real query string.
  *
- * The live 360Giving API is unreachable from the build environment, so this is
- * the closest thing to the truth available here.
+ * The live 360Giving API is unreachable from the build environment. What IS
+ * reachable is their source: this file's fixtures are the shape produced by
+ * `CurrentLatestGrantSerializer` in `ThreeSixtyGiving/datastore` at 4a57c2e —
+ * a `ModelSerializer` over their `Grant` model excluding `id`, `getter_run`,
+ * `latest` and `source_file`. So a row is `grant_id`, `data`,
+ * `additional_data` and the three denormalised org columns, and NOT the
+ * `{ funders: [...], publisher: {...} }` shape the per-organisation endpoints
+ * return. Getting that wrong is why the first version read nulls for every
+ * funder.
  */
 
 import { createServer, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { IngestionError, ThreeSixtyGivingConnector } from './connector.js';
+import { DEFAULT_SEARCH_PATH, IngestionError, ThreeSixtyGivingConnector } from './connector.js';
 import { FetchJsonClient } from './http.js';
 
 let server: Server;
@@ -22,7 +29,9 @@ let baseUrl: string;
 let requests: string[] = [];
 let respond: (url: URL) => { status: number; body: string; type?: string };
 
+/** One row as `CurrentLatestGrants` serialises it. */
 const grant = (id: string, over: Record<string, unknown> = {}) => ({
+  grant_id: id,
   data: {
     id,
     title: 'Green Skills Programme',
@@ -30,13 +39,21 @@ const grant = (id: string, over: Record<string, unknown> = {}) => ({
     currency: 'GBP',
     amountAwarded: 24_000,
     awardDate: '2025-06-01',
+    fundingOrganization: [{ id: 'GB-CHC-1164883', name: 'The Somerset Trust' }],
     recipientOrganization: [{ id: 'GB-COH-1', name: 'Wells Youth Collective' }],
     beneficiaryLocation: [{ name: 'Somerset' }],
     classifications: [{ title: 'Children and young people' }],
-    ...over,
   },
-  funders: [{ org_id: 'GB-CHC-1164883', name: 'The Somerset Trust' }],
-  publisher: { org_id: 'GB-CHC-1164883', name: 'Somerset Community Foundation' },
+  additional_data: {
+    metadata: {
+      source_license: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      source_license_name: 'Creative Commons Attribution-ShareAlike 4.0',
+    },
+  },
+  publisher_org_id: 'GB-CHC-1054107',
+  recipient_org_ids: ['GB-COH-1'],
+  funding_org_ids: ['GB-CHC-1164883'],
+  ...over,
 });
 
 beforeEach(async () => {
@@ -64,11 +81,30 @@ const connector = (searchPath?: string) =>
     ...(searchPath === undefined ? {} : { searchPath }),
   });
 
+describe('the route the search is actually at', () => {
+  it('sits beside the versioned API rather than under it', async () => {
+    // Two 404s came from writing this relative to the base. `experimental/` is
+    // mounted on `api/`, not on `api/v1/`, so a base-relative path lands in
+    // the wrong place.
+    await connector().searchGrants('youth');
+    expect(new URL(requests[0] ?? '', 'http://x').pathname).toBe(
+      '/api/experimental/CurrentLatestGrants',
+    );
+  });
+
+  it('carries no trailing slash, because Django will not remove one', async () => {
+    // APPEND_SLASH only ever ADDS a slash. Their path is declared without one,
+    // so `CurrentLatestGrants/` matches no pattern and 404s — which is the
+    // 404 the live service actually returned.
+    expect(DEFAULT_SEARCH_PATH.endsWith('/')).toBe(false);
+    expect(DEFAULT_SEARCH_PATH).toBe('/api/experimental/CurrentLatestGrants');
+  });
+});
+
 describe('searching the whole corpus', () => {
   it('sends the pattern and a bounded limit', async () => {
     await connector().searchGrants('youth|skills', 25);
     const sent = new URL(requests[0] ?? '', 'http://x');
-    expect(sent.pathname).toBe('/api/v1/CurrentLatestGrants/');
     expect(sent.searchParams.get('search')).toBe('youth|skills');
     expect(sent.searchParams.get('limit')).toBe('25');
   });
@@ -78,19 +114,66 @@ describe('searching the whole corpus', () => {
     expect(new URL(requests[0] ?? '', 'http://x').searchParams.get('limit')).toBe('100');
   });
 
-  it('unwraps the standard record and names who gave the grant', async () => {
+  it('reads the denormalised columns the corpus search actually returns', async () => {
     const { grants, total } = await connector().searchGrants('youth');
     expect(total).toBe(1);
     expect(grants[0]?.raw.id).toBe('g1');
     expect(grants[0]?.funderId).toBe('GB-CHC-1164883');
+    expect(grants[0]?.publisherId).toBe('GB-CHC-1054107');
+  });
+
+  it('takes the funder NAME from the publisher record, the only place it exists', async () => {
+    // Their `OrganisationRef` dataclass holds an org_id and nothing else, so
+    // no endpoint names a funder. The 360G record the publisher wrote does.
+    const { grants } = await connector().searchGrants('youth');
     expect(grants[0]?.funderName).toBe('The Somerset Trust');
-    expect(grants[0]?.publisherName).toBe('Somerset Community Foundation');
+  });
+
+  it('carries the licence THIS publisher chose, per grant', async () => {
+    // Not one licence for the corpus: publishers pick their own and some are
+    // share-alike, so attribution has to come from the row.
+    const { grants } = await connector().searchGrants('youth');
+    expect(grants[0]?.licence).toBe('https://creativecommons.org/licenses/by-sa/4.0/');
+    expect(grants[0]?.licenceName).toBe('Creative Commons Attribution-ShareAlike 4.0');
+  });
+
+  it('reads the per-organisation shape too, where ids arrive as references', async () => {
+    // `grants_made/` serialises `funders: [{ org_id, self }]` instead. One
+    // reader serves both so a row means the same thing wherever it came from.
+    respond = () => ({
+      status: 200,
+      body: JSON.stringify({
+        count: 1,
+        results: [
+          {
+            grant_id: 'ref',
+            data: { id: 'ref', fundingOrganization: [{ id: 'GB-CHC-9', name: 'Ref Trust' }] },
+            funders: [{ org_id: 'GB-CHC-9' }],
+            publisher: { org_id: 'GB-CHC-10' },
+          },
+        ],
+      }),
+    });
+    const { grants } = await connector().searchGrants('youth');
+    expect(grants[0]?.funderId).toBe('GB-CHC-9');
+    expect(grants[0]?.publisherId).toBe('GB-CHC-10');
+    expect(grants[0]?.funderName).toBe('Ref Trust');
+  });
+
+  it('survives a row with no licence and no funder id', async () => {
+    // Their additional_data is nullable, and a publisher can omit a funder id.
+    // Missing provenance must read as missing, not throw.
+    respond = () => ({
+      status: 200,
+      body: JSON.stringify({ count: 1, results: [{ grant_id: 'bare', data: { id: 'bare' } }] }),
+    });
+    const { grants } = await connector().searchGrants('youth');
+    expect(grants[0]?.funderId).toBeNull();
+    expect(grants[0]?.licence).toBeNull();
+    expect(grants[0]?.licenceName).toBeNull();
   });
 
   it('reads a response with the grant at the top level too', async () => {
-    // Tolerating both shapes because the wrapper could not be confirmed
-    // against the live service, and a search that returns nothing looks
-    // identical to a corpus with no match.
     respond = () => ({
       status: 200,
       body: JSON.stringify({ count: 1, results: [{ id: 'flat', amountAwarded: 1 }] }),
@@ -106,8 +189,6 @@ describe('searching the whole corpus', () => {
   });
 
   it('says the route may have moved when the shape is wrong', async () => {
-    // The most likely failure in production: the path could not be verified
-    // from here. A 200 carrying something else must not read as "no grants".
     respond = () => ({ status: 200, body: JSON.stringify({ detail: 'Not found' }) });
     await expect(connector().searchGrants('youth')).rejects.toThrow(/route may have moved/u);
   });
@@ -121,103 +202,43 @@ describe('searching the whole corpus', () => {
     respond = () => ({ status: 503, body: 'unavailable', type: 'text/plain' });
     await expect(connector().searchGrants('youth')).rejects.toThrow();
   });
+});
 
-  it('finds the real route when the configured one 404s, and says which', async () => {
-    // What actually happened on the first live attempt: CurrentLatestGrants
-    // was a viewset CLASS name in their urls.py, not a path, so it 404ed and
-    // the reply was a bare "returned 404. Nothing has been written." — true
-    // and useless. The API's own root index is the authoritative answer.
-    respond = (url) => {
-      if (url.pathname === '/api/v1/') {
-        return {
-          status: 200,
-          body: JSON.stringify({
-            org: `${baseUrl}org/`,
-            grants: `${baseUrl}grants/`,
-          }),
-        };
-      }
-      if (url.pathname === '/api/v1/grants/') {
-        return { status: 200, body: JSON.stringify({ count: 1, results: [grant('g9')] }) };
-      }
-      return { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
-    };
-
-    const result = await connector().searchGrants('youth');
-    expect(result.grants[0]?.raw.id).toBe('g9');
-    // Relative, so it can be pasted straight into the setting.
-    expect(result.routeUsed).toBe('grants/');
+describe('when the route is gone', () => {
+  beforeEach(() => {
+    respond = () => ({ status: 404, body: JSON.stringify({ detail: 'Not found' }) });
   });
 
-  it('does not pay for discovery when the configured route works', async () => {
-    const result = await connector().searchGrants('youth');
-    expect(result.routeUsed).toBeNull();
+  it('makes exactly one request, and does not go hunting', async () => {
+    // An earlier version asked the API for an index of its routes and
+    // suggested one. That could never have worked: `/api/` serves an HTML
+    // landing page and `/` serves their web UI, so there was no index to
+    // read — three round trips to produce a worse message.
+    await expect(connector().searchGrants('youth')).rejects.toThrow(IngestionError);
     expect(requests).toHaveLength(1);
   });
 
-  it('lists what the API does offer when nothing looks like a grant search', async () => {
-    respond = (url) =>
-      url.pathname === '/api/v1/'
-        ? { status: 200, body: JSON.stringify({ org: `${baseUrl}org/` }) }
-        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
-
-    await expect(connector().searchGrants('youth')).rejects.toThrow(/This API offers: org/u);
+  it('says where to correct it, and that loading one funder still works', async () => {
+    // The two things a person needs: this is fixable without a redeploy, and
+    // the rest of the product has not stopped.
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/settable under Services/u);
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/grants_made/u);
   });
 
-  it('walks up to the host root when the configured base has no index', async () => {
-    // What the live service does: /api/v1/ answers 404 as well, and a 404
-    // there says nothing about whether the routes beneath it work — DRF only
-    // serves a root view when a DefaultRouter is mounted, so "base is wrong"
-    // and "base is merely quiet" look identical from outside.
-    respond = (url) => {
-      if (url.pathname === '/') {
-        return { status: 200, body: JSON.stringify({ grants: `${baseUrl}grants/` }) };
-      }
-      if (url.pathname === '/api/v1/grants/') {
-        return { status: 200, body: JSON.stringify({ count: 1, results: [grant('root')] }) };
-      }
-      return { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
-    };
-
-    const result = await connector().searchGrants('youth');
-    expect(result.grants[0]?.raw.id).toBe('root');
-    expect(result.routeUsed).toBe('grants/');
-  });
-
-  it('names both settings when nothing anywhere lists a route', async () => {
-    // A wrong base URL makes every route look missing, so the message has to
-    // point at the base first.
-    respond = () => ({ status: 404, body: 'nope', type: 'text/plain' });
-    await expect(connector().searchGrants('youth')).rejects.toThrow(
-      /check the base URL first/u,
+  it('names the route it asked for, so the report is checkable', async () => {
+    await expect(connector('/api/nope').searchGrants('youth')).rejects.toThrow(
+      /"\/api\/nope" is not there/u,
     );
   });
+});
 
-  it('ignores an index whose values are not addresses', async () => {
-    // A landing page rendered as JSON, or an error body with string fields,
-    // must not be mistaken for a route index.
-    respond = (url) =>
-      url.pathname === '/'
-        ? { status: 200, body: JSON.stringify({ message: 'welcome', status: 'ok' }) }
-        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
-    await expect(connector().searchGrants('youth')).rejects.toThrow(/check the base URL first/u);
+describe('correcting the route without a redeploy', () => {
+  it('honours a configured path', async () => {
+    await connector('/api/v2/grants').searchGrants('youth');
+    expect(new URL(requests[0] ?? '', 'http://x').pathname).toBe('/api/v2/grants');
   });
 
-  it('refuses a discovered route that points at another host', async () => {
-    // The index is a response body, and this fetches a URL out of it. Same
-    // risk as a pagination link, and checked the same way.
-    respond = (url) =>
-      url.pathname === '/api/v1/'
-        ? {
-            status: 200,
-            body: JSON.stringify({ grants: 'https://elsewhere.example/api/v1/grants/' }),
-          }
-        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
-
-    await expect(connector().searchGrants('youth')).rejects.toThrow(/elsewhere\.example/u);
-  });
-
-  it('honours a corrected search path without a code change', async () => {
+  it('honours a base-relative path, for a route that does live under the base', async () => {
     await connector('grants/').searchGrants('youth');
     expect(new URL(requests[0] ?? '', 'http://x').pathname).toBe('/api/v1/grants/');
   });

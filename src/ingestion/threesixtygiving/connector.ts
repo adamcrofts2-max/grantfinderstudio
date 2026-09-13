@@ -61,46 +61,105 @@ const DEFAULT_MAX_PAGES = 50;
 /**
  * The corpus-wide grant search.
  *
- * From 360Giving's own `datastore/api/urls.py` (see docs/360GIVING_API.md):
- * every current grant, filtered by a regular expression over the whole grant
- * JSON. This is the route that makes a search belong to the APPLICANT rather
- * than to an operator — without it the only grants searchable are the ones
- * somebody loaded funder by funder, which is how the product came to show
- * "no grants have been loaded yet" to a person who just wanted to look.
+ * Read from 360Giving's own `datastore/api/urls.py` at 4a57c2e, not guessed:
+ *
+ *     path("experimental/CurrentLatestGrants",
+ *          api.experimental.api.CurrentLatestGrants.as_view(), ...)
+ *
+ * Three things in that line cost two wrong guesses and two 404s, and each is
+ * the reason this constant looks the way it does:
+ *
+ *   - It hangs off `api/`, NOT `api/v1/`. So it cannot be written relative to
+ *     the configured base (`.../api/v1/`) without a `../`, and a root-relative
+ *     path says the same thing more plainly.
+ *   - It has NO trailing slash, and Django's APPEND_SLASH only ever ADDS one.
+ *     `CurrentLatestGrants/` therefore matches nothing and 404s — which is
+ *     exactly what the live service reported.
+ *   - `experimental` is 360Giving's own label for it. It is the only route
+ *     they publish that searches across all grants rather than one named
+ *     organisation, so the applicant's search depends on it; if they retire
+ *     it, the setting below is how this is corrected without a redeploy.
+ *
+ * This is the route that makes a search belong to the APPLICANT rather than to
+ * an operator. Without it the only grants searchable are the ones somebody
+ * loaded funder by funder, which is how the product came to show "no grants
+ * have been loaded yet" to a person who just wanted to look.
  */
-export const DEFAULT_SEARCH_PATH = 'CurrentLatestGrants/';
+export const DEFAULT_SEARCH_PATH = '/api/experimental/CurrentLatestGrants';
 
-/** One grant as the search returns it: the standard record, plus who gave it. */
+/**
+ * One grant as the corpus search returns it.
+ *
+ * The search serialises 360Giving's own `Grant` row, which is the standard
+ * record under `data` plus four denormalised columns beside it. Those columns
+ * are where the identifiers live — the API's organisation references carry an
+ * `org_id` and nothing else, so a funder's NAME is only ever available from
+ * inside the grant the publisher wrote.
+ */
 export interface CorpusGrant {
   raw: RawGrant;
   funderId: string | null;
   funderName: string | null;
-  publisherName: string | null;
+  publisherId: string | null;
+  /**
+   * The licence THIS grant was published under, carried per row.
+   *
+   * 360Giving publishers each choose their own open licence and some are
+   * share-alike, so there is no single licence for the corpus to state. Their
+   * data store attaches each grant's own licence at
+   * `additional_data.metadata.source_license`, which means attribution can be
+   * shown from the data rather than asserted by us.
+   */
+  licence: string | null;
+  licenceName: string | null;
 }
 
 export interface GrantSearchResult {
   grants: CorpusGrant[];
   /** How many the corpus holds for this pattern, not how many came back. */
   total: number | null;
-  /**
-   * The route the results actually came from.
-   *
-   * Set when it differs from the configured one — that is, when the configured
-   * route 404ed and discovery found the real one. The caller can then tell the
-   * operator what to save, rather than paying for a discovery round trip on
-   * every search for ever.
-   */
-  routeUsed: string | null;
 }
 
-/** An organisation reference on a search result: `{ org_id, name, self }`. */
-function readOrgRef(value: unknown): { id: string | null; name: string | null } {
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+/** The first entry of a denormalised id array, such as `funding_org_ids`. */
+function firstId(value: unknown): string | null {
+  return Array.isArray(value) ? text(value[0]) : text(value);
+}
+
+/**
+ * An organisation reference as the v1 org endpoints serialise it.
+ *
+ * `{ org_id, self }` — and no name, deliberately, on their side: the API's
+ * `OrganisationRef` dataclass holds an `org_id` alone. Read here so a row from
+ * `grants_made/` and a row from the corpus search are understood by the same
+ * code, but it can only ever yield an identifier.
+ */
+function readOrgRef(value: unknown): string | null {
   const first = Array.isArray(value) ? value[0] : value;
-  if (typeof first !== 'object' || first === null) return { id: null, name: null };
-  const ref = first as { org_id?: unknown; name?: unknown };
+  if (typeof first !== 'object' || first === null) return null;
+  return text((first as { org_id?: unknown }).org_id);
+}
+
+/** The funder's name, which only the publisher's own record carries. */
+function funderNameOf(raw: RawGrant): string | null {
+  const funders = (raw as { fundingOrganization?: unknown }).fundingOrganization;
+  const first = Array.isArray(funders) ? funders[0] : undefined;
+  if (typeof first !== 'object' || first === null) return null;
+  return text((first as { name?: unknown }).name);
+}
+
+/** `additional_data.metadata` — where each grant's own licence is attached. */
+function readLicence(value: unknown): { licence: string | null; name: string | null } {
+  if (typeof value !== 'object' || value === null) return { licence: null, name: null };
+  const metadata = (value as { metadata?: unknown }).metadata;
+  if (typeof metadata !== 'object' || metadata === null) return { licence: null, name: null };
+  const fields = metadata as { source_license?: unknown; source_license_name?: unknown };
   return {
-    id: typeof ref.org_id === 'string' ? ref.org_id : null,
-    name: typeof ref.name === 'string' ? ref.name : null,
+    licence: text(fields.source_license),
+    name: text(fields.source_license_name),
   };
 }
 
@@ -110,33 +169,6 @@ function readOrgRef(value: unknown): { id: string | null; name: string | null } 
  * Without this, a compromised or hostile response could walk the ingester onto
  * an internal address.
  */
-/**
- * Same origin as the configured base, and nothing more.
- *
- * Distinct from `assertSameOrigin`, which additionally demands https. That is
- * right for a pagination link, and wrong here for a reason worth writing down:
- * requiring https made this branch impossible to exercise against a local
- * server, and an untestable security check is how every fault this week
- * survived. The https guarantee has not been given up — it lives on the base
- * URL setting, which `settingProblem` refuses unless it is https, and a link
- * matching that origin is therefore https too.
- */
-export function assertSameOriginAsBase(candidate: string, baseUrl: string): URL {
-  let url: URL;
-  try {
-    url = new URL(candidate, baseUrl);
-  } catch {
-    throw new IngestionError(`Not a usable address: ${candidate}`);
-  }
-  const base = new URL(baseUrl);
-  if (url.origin !== base.origin) {
-    throw new IngestionError(
-      `That route points to ${url.host}, expected ${base.host}.`,
-    );
-  }
-  return url;
-}
-
 export function assertSameOrigin(candidate: string, baseUrl: string): URL {
   let url: URL;
   try {
@@ -246,71 +278,6 @@ export class ThreeSixtyGivingConnector {
    * database right: a page fetched for the person who asked, not a copy of
    * somebody's dataset.
    */
-  /**
-   * What routes this API actually offers.
-   *
-   * A Django REST Framework project answers its root with an index of
-   * `{ name: url }`, which is the authoritative answer to "where is the grant
-   * search" — better than anything guessed from reading source, as
-   * `CurrentLatestGrants` proved by 404ing: it was a viewset CLASS name in
-   * their `urls.py`, not a path.
-   *
-   * Only ever called after a 404, so a working deployment never pays for it.
-   */
-  private async routeIndex(): Promise<Record<string, string>> {
-    // Every place an index might be, nearest first.
-    //
-    // Not just the configured base: `/api/v1/` on the live service answers 404
-    // too, and it turns out a 404 there says nothing about whether
-    // `/api/v1/org/{id}/grants_made/` works. Django REST Framework only serves
-    // a root view when a DefaultRouter is mounted there; a SimpleRouter, or
-    // viewsets wired up with plain `path()` calls, expose no index at all. So
-    // the base being wrong and the base merely being quiet look identical from
-    // outside, and both are worth walking up from.
-    const origin = new URL(this.baseUrl).origin;
-    const candidates = [
-      this.baseUrl,
-      new URL('/api/v1/', origin).toString(),
-      new URL('/api/', origin).toString(),
-      `${origin}/`,
-    ];
-
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      if (seen.has(candidate)) continue;
-      seen.add(candidate);
-      // eslint-disable-next-line no-await-in-loop
-      const routes = await this.readIndex(candidate);
-      if (Object.keys(routes).length > 0) return routes;
-    }
-    return {};
-  }
-
-  /** One address, read as `{ name: url }`, or nothing if it is not that. */
-  private async readIndex(url: string): Promise<Record<string, string>> {
-    let payload: unknown;
-    try {
-      payload = await this.http.getJson(url);
-    } catch {
-      // A 404 or an HTML landing page here is ordinary, not exceptional: we
-      // are guessing at where an index might be.
-      return {};
-    }
-    if (typeof payload !== 'object' || payload === null) return {};
-    const routes: Record<string, string> = {};
-    for (const [name, value] of Object.entries(payload as Record<string, unknown>)) {
-      if (typeof value === 'string' && /^https?:\/\//u.test(value)) routes[name] = value;
-    }
-    return routes;
-  }
-
-  /** Routes whose name or address mentions grants, likeliest first. */
-  private static grantRoutes(routes: Record<string, string>): string[] {
-    return Object.entries(routes)
-      .filter(([name, url]) => /grant/iu.test(name) || /grant/iu.test(url))
-      .map(([, url]) => url);
-  }
-
   private searchUrl(path: string, pattern: string, limit: number): string {
     const url = new URL(path, this.baseUrl);
     url.searchParams.set('search', pattern);
@@ -327,37 +294,27 @@ export class ThreeSixtyGivingConnector {
     }
 
     let payload: unknown;
-    let routeUsed: string | null = null;
     try {
       payload = await this.http.getJson(this.searchUrl(this.searchPath, pattern, limit));
     } catch (error) {
       const missing = error instanceof IngestionError && /returned 404/u.test(error.message);
       if (!missing) throw error;
 
-      // The configured route is not there. Ask the API where its grant search
-      // lives and try that once, rather than reporting a bare 404 and leaving
-      // somebody to guess — which is what the first attempt at this did.
-      const routes = await this.routeIndex().catch(() => ({}));
-      const candidates = ThreeSixtyGivingConnector.grantRoutes(routes);
-      const names = Object.keys(routes);
-      if (candidates.length === 0) {
-        throw new IngestionError(
-          `The grant search route "${this.searchPath}" is not there (404)` +
-            (names.length === 0
-              ? `, and nothing under ${new URL(this.baseUrl).origin} listed its routes. Both the API base URL and the grant search route are settable under Services — check the base URL first, since a wrong one makes every route look missing.`
-              : `. This API offers: ${names.join(', ')}. Set the right one as the grant search route under Services.`),
-        );
-      }
-
-      // Same origin, checked the same way a pagination link is: this is a URL
-      // taken from a response body and then fetched, so a hostile or
-      // compromised index could otherwise walk the search onto another host.
-      const found = assertSameOriginAsBase(candidates[0] as string, this.baseUrl);
-      payload = await this.http.getJson(this.searchUrl(found.toString(), pattern, limit));
-      // Relative to the base, so it can be pasted straight into the setting.
-      routeUsed = found.toString().startsWith(this.baseUrl)
-        ? found.toString().slice(this.baseUrl.length)
-        : found.pathname;
+      // A 404 here has ONE cause worth naming, and it is not a wrong guess any
+      // more: the route is read from 360Giving's own urls.py, so if it is
+      // missing they have moved or retired it. An earlier version of this
+      // asked the API for an index of its routes and suggested one; that could
+      // never have worked — `/api/` serves an HTML landing page and `/` serves
+      // their web UI, so there is no index to read. Guessing machinery that
+      // cannot succeed is worse than a message that says what to do.
+      throw new IngestionError(
+        `The grant search route "${this.searchPath}" is not there (404). ` +
+          'It is 360Giving\'s experimental all-grants search, and they may have ' +
+          'moved it — the route is settable under Services, without a redeploy. ' +
+          'Their published routes for one named organisation ' +
+          '(org/{id}/grants_made/, org/{id}/grants_received/) are unaffected, so ' +
+          'loading a single funder still works.',
+      );
     }
 
     if (typeof payload !== 'object' || payload === null) {
@@ -373,26 +330,38 @@ export class ThreeSixtyGivingConnector {
     const grants: CorpusGrant[] = [];
     for (const entry of page.results) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const record = entry as { data?: unknown; funders?: unknown; publisher?: unknown };
+      const record = entry as {
+        data?: unknown;
+        additional_data?: unknown;
+        funding_org_ids?: unknown;
+        publisher_org_id?: unknown;
+        funders?: unknown;
+        publisher?: unknown;
+      };
       // The standard record is wrapped in `data`; a response shaped the older
       // way, with the grant at the top level, is still readable.
       const raw = (typeof record.data === 'object' && record.data !== null
         ? record.data
         : record) as RawGrant;
-      const funder = readOrgRef(record.funders);
-      const publisher = readOrgRef(record.publisher);
+      // Denormalised column first, because that is what the corpus search
+      // serialises; the `funders` / `publisher` references are what the
+      // per-organisation endpoints give, and both shapes are read so one
+      // reader serves both.
+      const funderId = firstId(record.funding_org_ids) ?? readOrgRef(record.funders);
+      const licence = readLicence(record.additional_data);
       grants.push({
         raw,
-        funderId: funder.id,
-        funderName: funder.name,
-        publisherName: publisher.name,
+        funderId,
+        funderName: funderNameOf(raw),
+        publisherId: firstId(record.publisher_org_id) ?? readOrgRef(record.publisher),
+        licence: licence.licence,
+        licenceName: licence.name,
       });
     }
 
     return {
       grants,
       total: typeof page.count === 'number' ? page.count : null,
-      routeUsed,
     };
   }
 }

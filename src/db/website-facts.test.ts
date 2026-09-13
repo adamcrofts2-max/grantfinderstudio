@@ -98,9 +98,9 @@ describe('what a website proposes', () => {
 
     await saveWebsiteFacts(tx(), ORG_A, PAGE, URL, [proposal('staff_count', 'six')]);
 
-    const rows = (await factsFor(ORG_A)).filter((r) => r.source === 'ai_extraction');
-    expect(rows[0]?.value).toBe('six');
-    expect(rows[0]?.confirmed_by).toBeNull();
+    const row = (await factsFor(ORG_A)).find((r) => r.source === 'ai_extraction');
+    expect(row?.value).toBe('six');
+    expect(row?.confirmed_by).toBeNull();
   });
 
   it('keeps a confirmation when the page still says the same thing', async () => {
@@ -113,8 +113,8 @@ describe('what a website proposes', () => {
 
     await saveWebsiteFacts(tx(), ORG_A, PAGE, URL, [proposal('staff_count', 'four')]);
 
-    const rows = (await factsFor(ORG_A)).filter((r) => r.source === 'ai_extraction');
-    expect(rows[0]?.confirmed_by).toBe('user_a');
+    const row = (await factsFor(ORG_A)).find((r) => r.source === 'ai_extraction');
+    expect(row?.confirmed_by).toBe('user_a');
   });
 
   it('adds a second page rather than overwriting the first', async () => {

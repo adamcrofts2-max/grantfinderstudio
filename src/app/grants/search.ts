@@ -17,7 +17,6 @@ export interface FoundGrant {
   id: string;
   funderId: string | null;
   funderName: string | null;
-  publisherName: string | null;
   recipientName: string | null;
   title: string | null;
   description: string | null;
@@ -25,6 +24,9 @@ export interface FoundGrant {
   awardedOn: string;
   region: string | null;
   tags: readonly string[];
+  /** The licence THIS publisher chose, so attribution is data, not a claim. */
+  licenceName: string | null;
+  licence: string | null;
 }
 
 export type CorpusSearch =
@@ -33,12 +35,6 @@ export type CorpusSearch =
       state: 'ok';
       grants: FoundGrant[];
       total: number | null;
-      /**
-       * Set when the configured route 404ed and the API's own index supplied
-       * the real one. Worth saying out loud: the search worked, but every
-       * search until somebody saves this pays for an extra lookup first.
-       */
-      routeUsed: string | null;
     }
   | { state: 'failed'; message: string };
 
@@ -54,7 +50,6 @@ function toFound(entry: CorpusGrant): FoundGrant | null {
     id: award.id,
     funderId: entry.funderId,
     funderName: entry.funderName,
-    publisherName: entry.publisherName,
     recipientName: award.recipientName,
     title: award.title,
     description: award.description,
@@ -62,6 +57,8 @@ function toFound(entry: CorpusGrant): FoundGrant | null {
     awardedOn: award.awardedOn,
     region: award.region,
     tags: award.tags,
+    licenceName: entry.licenceName,
+    licence: entry.licence,
   };
 }
 
@@ -107,12 +104,11 @@ export async function searchCorpus(text: string): Promise<CorpusSearch> {
       searchPath: value(THREESIXTYGIVING_SEARCH_PATH_KEY),
     });
 
-    const { grants, total, routeUsed } = await connector.searchGrants(pattern);
+    const { grants, total } = await connector.searchGrants(pattern);
     return {
       state: 'ok',
       grants: grants.map(toFound).filter((g): g is FoundGrant => g !== null),
       total,
-      routeUsed,
     };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);

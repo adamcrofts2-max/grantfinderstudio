@@ -1,134 +1,164 @@
-# 360Giving API — reference
+# The 360Giving Data Store API
 
-Written 8 September 2026. **The published documentation is unreachable from
-this build environment** — every `360giving.org` and `threesixtygiving.org`
-host is refused by the egress proxy (`CONNECT tunnel failed, 403`). So this
-note was assembled from the project's own source, which is authoritative for
-routes and shapes, plus search summaries of the doc pages for the policy
-questions source cannot answer.
+**Read from source, not from a browser.** This document is a reading of
+[`ThreeSixtyGiving/datastore`](https://github.com/ThreeSixtyGiving/datastore) at
+commit `4a57c2e` — `datastore/api/urls.py`, `api/org/api.py`,
+`api/experimental/api.py`, `api/org/serializers.py`, `db/models.py` and
+`settings/settings.py`. The live service is unreachable from this build
+environment, so source is the best evidence available; where source and the
+live service disagree, the service wins and this document is wrong.
 
-Sources:
+Two earlier versions of this file guessed at routes from half-remembered
+documentation, and both guesses 404ed in production in front of the user. The
+guessing is over: every route, parameter and limit below is quoted from a line
+of their code.
 
-- Routes, pagination and serialisers: `ThreeSixtyGiving/datastore` on GitHub
-  (`datastore/api/urls.py`, `datastore/api/org/{api,serializers}.py`,
-  `datastore/api/experimental/api.py`), branch `master`.
-- Grant record shape: `ThreeSixtyGiving/standard`,
-  `schema/360-giving-schema.json`.
-- Auth, rate limit, licensing: 360Giving's own docs pages, via search.
+## Base URL
 
-**Confirm the live base path on the first real call.** The docs give
-`https://api.threesixtygiving.org/api/v1/org/{org_id}/grants_received/`, while
-the source mounts the same views under an `experimental/` prefix. One of the
-two is stale and this environment cannot settle it.
+```
+https://api.threesixtygiving.org/api/v1/
+```
 
-## Access
+Confirmed from their published documentation and consistent with
+`datastore/urls.py` (`path("api/", include("api.urls"))`) plus the `v1/`
+prefixes in `api/urls.py`.
 
-| | |
-|---|---|
-| Base URL | `https://api.threesixtygiving.org/api/v1/` — **unconfirmed.** This path answers 404 in a browser, as does `CurrentLatestGrants/` beneath it. A 404 on the base does NOT by itself mean the base is wrong: Django REST Framework serves a root view only when a `DefaultRouter` is mounted there, so a quiet base and a wrong base look identical from outside. Treat every route in this document as unverified until something has been seen to answer. |
-| Authentication | **None.** Read-only over open data; no key, no token |
-| Rate limit | **2 requests per second per IP**; `429` beyond it |
-| Format | HTTP/JSON, Django REST Framework |
-| Interactive schema | `schema/`, `swagger-ui/`, `redoc/` |
+**A 404 on the base itself proves nothing.** Django REST Framework serves a
+root index only where a `DefaultRouter` is mounted, and 360Giving mount their
+views with plain `path()` calls. There is no route index anywhere: `/api/`
+serves an HTML landing page (`TemplateView`, `api.html`) and `/` serves their
+web UI. Anything that tries to discover routes by reading an index will find
+nothing, however far up it walks — which is how one version of our connector
+came to spend three round trips producing a worse error message.
+
+Authentication: none. Registration is requested but not enforced.
+
+## Routes
+
+### The public v1 API
+
+| Route | What it gives |
+| --- | --- |
+| `org/` | Every organisation in the corpus — publishers, funders and recipients, unioned. `org_id` and `name` only. |
+| `org/funder/` | The same, funders only. |
+| `org/{org_id}/` | One organisation, split into `funder`, `recipient` and `publisher` sub-objects, each `null` where the organisation does not take that role. Carries aggregates: grant counts, earliest and latest award dates, and per-currency min/max/total. |
+| `org/{org_id}/grants_made/` | Every current grant made by that funder. |
+| `org/{org_id}/grants_received/` | Every current grant received by that recipient. |
+
+`org_id` is a `<path:>` converter, so it may contain slashes; ours are of the
+form `GB-CHC-1164883`. Both grant routes resolve linked organisations
+(`org.linked_orgs`) before filtering, so an organisation that publishes under
+several identifiers is handled by them, not by us.
+
+### The all-grants search
+
+```
+/api/experimental/CurrentLatestGrants
+```
+
+**Note the shape of that path** — three details, each of which cost a 404:
+
+- It hangs off `api/`, **not** `api/v1/`. It cannot be written relative to the
+  base URL without a `../`.
+- It has **no trailing slash**. Django's `APPEND_SLASH` only ever *adds* one,
+  so `CurrentLatestGrants/` matches no pattern and returns 404.
+- `experimental` is 360Giving's own label. It is not part of the versioned API
+  and carries no compatibility promise.
+
+It is nonetheless the only route they publish that searches across *all*
+grants rather than the grants of one named organisation, so the applicant's
+search depends on it. That is why the route is a saved setting: if they move or
+retire it, an operator corrects it under Services without a redeploy.
+
+Parameters: `?search=` is a DRF `SearchFilter` over `search_fields =
+("$data",)`. The `$` prefix means **regex**, applied to the whole grant JSON —
+so an alternation (`youth|skills|somerset`) is a valid and useful query, which
+is what `searchPattern` in `src/domain/grants/query.ts` builds. `?limit=` and
+`?offset=` page it; the default limit is 60.
+
+### No text search on anything else
+
+Worth stating plainly, because it shapes the product. `OrganisationListView`
+and `FunderListView` declare no `filter_backends` and no search or filter
+fields; the two grant routes declare `DjangoFilterBackend` but no
+`filterset_fields`. A `?search=` or `?name=` on any of them is silently
+ignored and the full list comes back. Finding a funder by name therefore means
+fetching the organisation list and matching locally, not asking the API to
+match.
+
+## Response shapes
+
+Both differ, and confusing them is why one version of our connector read `null`
+for every funder.
+
+**The v1 grant routes** (`GrantSerializer`) give
+`{ grant_id, data, data_license: { url, name }, publisher, recipients, funders }`,
+where `publisher`, each `recipient` and each `funder` is an `OrganisationRef`:
+`{ org_id, self }`.
+
+**The search** (`CurrentLatestGrantSerializer`) is a `ModelSerializer` over
+their `Grant` model excluding `id`, `getter_run`, `latest` and `source_file`,
+so a row is:
+
+```
+{ grant_id, data, additional_data, publisher_org_id,
+  recipient_org_ids: [...], funding_org_ids: [...] }
+```
+
+`data` is the 360Giving standard record as the publisher wrote it.
+
+### Names come only from `data`
+
+`OrganisationRef` is a dataclass holding `org_id` and nothing else. **No
+endpoint names an organisation** on a grant. A funder's or recipient's name is
+available only from inside the standard record — `data.fundingOrganization[].name`,
+`data.recipientOrganization[].name`. A *publisher's* name is not available from
+the grant routes at all, only its `org_id`.
+
+### `additional_data`
+
+360Giving's own enrichment, on search rows:
+
+| Key | Contents |
+| --- | --- |
+| `metadata` | `source_license`, `source_license_name`, and `sources_metadata` (licences of the enrichment sources) |
+| `recipientOrganizationLocation` | NSPL geography for the recipient's postcode — county, region and their names |
+| `locationLookup` | Named areas with latitude and longitude |
+| `TSGRecipientType` | `Organisation` or `Individual` |
+| `TSGOrgType`, `FTC` | Organisation type, and Find That Charity data |
+
+`metadata.source_license` is the one this product relies on: publishers each
+choose their own open licence and **some are share-alike**, so there is no
+single licence for the corpus. Attribution is read per grant from the row
+rather than asserted by us.
+
+## Limits
+
+From `settings.py`:
+
+| Scope | Rate |
+| --- | --- |
+| Anonymous default (covers the all-grants search) | **2 requests/second** |
+| `org/` and `org/funder/` | 100/minute |
+| `org/{id}/` | 1000/minute |
+| `grants_made/`, `grants_received/` | 1000/minute |
+
+Over the limit returns 429. Default page sizes: **60** for the search, **100**
+for the grant routes, **1000** for the organisation lists.
+
+Two requests a second is the reason the applicant's search fetches **one**
+page. Walking pagination while somebody waits would turn a search into a
+minute of held breath and a burst of load on an open API run by a charity.
 
 ## Pagination
 
-`LimitOffsetPagination` on every list endpoint. Envelope:
-
-```json
-{ "count": 1234, "next": "…?limit=10&offset=20", "previous": null, "results": [] }
-```
-
-Default page sizes, from the source rather than the prose: **60** for grants
-and for `CurrentLatestGrants`, **1000** for the organisation list. Follow
-`next` until it is null rather than computing offsets.
-
-## Endpoints
-
-| Route | Returns |
-|---|---|
-| `org/` | Every organisation known to the data — funders, recipients and publishers alike. `org_id`, `name`, `self` |
-| `org/{org_id}/` | Detail. `self`, `grants_made`, `grants_received`, `funder`, `recipient`, `publisher`, `org_id`, `name` |
-| `org/{org_id}/grants_made/` | Grants this organisation awarded |
-| `org/{org_id}/grants_received/` | Grants it received |
-| `CurrentLatestGrants` | Every current grant. Supports `?search=` (regex over the whole grant JSON) and `?grant_id=`. **This is a viewset CLASS name read out of `urls.py`, NOT a path — `/api/v1/CurrentLatestGrants/` returns 404 against the live API.** The real route comes from the API's own root index, which the connector reads on a 404 |
-| `dashboard/publishers`, `dashboard/overview`, `dashboard/publisher/{prefix}` | Publisher statistics |
-
-`funder` and `recipient` on the detail response are null unless the
-organisation plays that role. Each carries an `aggregate`:
-
-```
-aggregate.grants                      total count
-aggregate.currencies[CODE].{avg,max,min,total,grants}
-```
-
-**The aggregate has no median and no quartiles** — only mean, min, max and
-total. Our funder distribution chart is built on the median and the
-interquartile range, so those have to be computed from the grants themselves.
-
-A grant record wraps the raw standard JSON in `data`, and adds `publisher`,
-`recipients` and `funders` as organisation references with `self` links.
-
-## The grant record
-
-Required, from the schema's `oneOf`: `id`, `title`, `description`, `currency`,
-`amountAwarded`, `awardDate`, `fundingOrganization`, and one of
-`recipientOrganization` or `recipientIndividual`.
-
-Also carried, and useful to us: `amountAppliedFor`, `amountDisbursed`,
-`grantProgramme[]` (`code`, `title`, `url`), `classifications[]`
-(`vocabulary`, `code`, `title`), `beneficiaryLocation[]`, `fundingType[]`,
-`fromOpenCall`, `plannedDates`/`actualDates`, `dataSource`, `dateModified`.
-
-`Organization` requires `id` and `name`, and may carry `charityNumber`,
-`companyNumber`, `postalCode`, `addressRegion`, `addressCountry`,
-`organisationType` and `url`. `Location` carries `countryCode`, `geoCode`,
-`geoCodeType` and coordinates — that is where region matching comes from.
+`LimitOffsetPagination` throughout: `{ count, next, previous, results }`. The
+`next` URL is server-controlled — a redirect in all but name — so it is checked
+against the configured origin before being followed (`assertSameOrigin`).
 
 ## Licensing
 
-Publishers each choose an open licence; **CC BY 4.0 is the recommended one and
-permits commercial use**. The licence and source travel with the data through
-the API, so attribution is per-publisher rather than one blanket credit — which
-is what `source_datasets(name, publisher, licence, attribution, retrieved_at)`
-already models.
-
-This settles a question left open by the earlier research: with openly licensed
-data used under its own terms, the s29A CDPA text-and-data-mining exception —
-which is non-commercial only — does not come into it.
-
-Do not use the 360Giving logo without permission. There are API terms and
-conditions and a take-down policy that should be read before going live; they
-could not be retrieved here.
-
-## This document is a reading of their source, not an observation
-
-Worth stating at the top of the build notes, because two things in here have
-now been wrong in production. `CurrentLatestGrants` was transcribed from
-`urls.py` as though it were a path; it is a viewset CLASS name and answers 404.
-The base URL above answers 404 too.
-
-Nothing in this file was ever confirmed against the live service — the build
-environment cannot reach it. So it is a hypothesis, and the code treats it as
-one: the base URL and the search route are both settings, and a 404 makes the
-connector ask the API for its own route index before reporting failure.
-
-## What this means for the build
-
-1. **It is a record of grants awarded, never of funds open.** Nothing in the
-   schema carries a deadline or an application window; `fromOpenCall` describes
-   a grant already made. So it powers "who funds work like yours" and must
-   never feed the opportunities page.
-2. **Ingestion is a batch job, not a page render.** Computing a median and
-   quartiles means paging every grant a funder has made: 60 per request at 2
-   requests a second is 25 seconds for a funder with 3,000 grants. That belongs
-   in `funder_awards`, which already exists for it.
-3. **A full corpus wants the bulk route, not this API.** Over a million grants
-   at 60 a page and 2 a second is more than two hours of continuous requests.
-   The Datastore (bulk transfer, Postgres over a Colab notebook) or the bulk
-   downloads are the right tool for the whole corpus; this API is right for
-   enriching one named funder on demand.
-4. `amountAwarded`, `awardDate` and `currency` map straight onto
-   `funder_awards`; `grantProgramme.title` and `classifications.title` are
-   candidates for its `tags` column; recipient `addressRegion` and
-   `beneficiaryLocation.countryCode` feed region matching.
+Each publisher's licence travels with their grants, as above. This product does
+not store searched grants: results are fetched for the person who asked, shown
+with their licence, and discarded. Only the per-funder ingest writes grants to
+`funder_awards`, and it refuses to run without a licence and an attribution.

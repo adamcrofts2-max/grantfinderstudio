@@ -344,10 +344,29 @@ this cheque before", where no source answers "what is open".
       credentials, no port, and — the control that actually matters — every
       RESOLVED address and every redirect checked as well. Proven over a real
       socket rather than by fixture
-- [x] Find the grant search route from the API's own index when the configured
-      one 404s. `CurrentLatestGrants` was a viewset class name in their source,
-      not a path, and a bare "returned 404. Nothing has been written." left
-      nowhere to go
+- [x] **Read the 360Giving API from its source and correct the search route.**
+      Two live 404s came from guessing:
+      `/api/experimental/CurrentLatestGrants` hangs off `api/` not `api/v1/`,
+      and has no trailing slash. Their repo was clonable all along — the
+      observation that ended the guessing
+- [x] Remove the route-discovery machinery. It asked the API for an index of
+      its routes on a 404, and could never have worked: `/api/` serves an HTML
+      landing page and `/` their web UI, so there is no index anywhere. Three
+      round trips to produce a worse message
+- [x] Read the shape the corpus search actually returns — `funding_org_ids`,
+      `publisher_org_id`, `additional_data` — not the `{ funders, publisher }`
+      shape the per-organisation routes use. The first version read `null` for
+      every funder
+- [x] Show each grant's OWN licence, from `additional_data.metadata`.
+      Publishers choose their own and some are share-alike, so there is no one
+      licence for the corpus. The page listed publisher names instead, which
+      was empty every time: their organisation refs carry an `org_id` and no
+      name
+- [ ] Find a funder by NAME. The API has no text search outside the all-grants
+      route: the organisation lists declare no filter backends at all, so
+      `?search=` is silently ignored and the whole list comes back. Matching
+      has to be local, against a cached list — 100 requests/minute and 1000 a
+      page
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never
