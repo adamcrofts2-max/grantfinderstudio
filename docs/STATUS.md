@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,282 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,287 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -2088,3 +2088,53 @@ answers, without which every refusal above would pass against a dead port.
 website, and the guard correctly refuses a local stub — which is itself
 evidence the guard works, and leaves the happy path as the first thing to try
 on a real deployment.
+
+
+## The route was wrong, and the error said nothing useful (2026-09-13)
+
+The first live search returned:
+
+    .../api/v1/CurrentLatestGrants/?search=... returned 404 Not Found.
+    Nothing has been written.
+
+`CurrentLatestGrants` came from `docs/360GIVING_API.md`, where it was read out
+of their `urls.py` — and it is a viewset CLASS name, not a path. I flagged that
+the route could not be verified from here and made it a setting, which was
+right, and then wrote the failure message as if a 404 were self-explanatory. It
+is the single most likely failure of the whole feature, and it produced the
+least actionable message in the product.
+
+### The failure path now diagnoses itself
+
+A Django REST Framework project answers its root with an index of
+`{ name: url }`. That is the authoritative answer to "where is the grant
+search" — better than anything read out of source, as this proved. So on a 404
+the connector asks the API where its search lives, retries once against what it
+finds, and tells the operator what to save:
+
+> The configured grant search route was not there, so we asked the API where
+> its search lives and used `grants/` instead. Searching works, but every
+> search pays for that extra lookup until an operator saves it under Services.
+
+When nothing in the index looks like a grant search it names what the API does
+offer, rather than repeating the 404. A working deployment never pays for any
+of this: discovery only runs after a 404, and there is a test asserting the
+happy path makes exactly one request.
+
+### A security gap the fix opened, and closed
+
+Route discovery reads a URL out of a response body and then fetches it, which
+is the same risk as following a pagination link — and there was already
+`assertSameOrigin` for that. Using it directly failed, for an instructive
+reason: it demands https, so the branch could not be exercised against a local
+test server at all.
+
+That is the blind spot that produced every fault this week, so the answer was
+not to leave it untested. `assertSameOriginAsBase` checks the property actually
+wanted — same origin as the configured base — and the https guarantee stays
+where it belongs, on the base URL setting, which `settingProblem` refuses
+unless it is https. A link matching that origin is therefore https too. The
+cross-host refusal now has a test that runs.
+
+The doc has been corrected too, so the next person reading that table is told
+the route 404s rather than discovering it in production.

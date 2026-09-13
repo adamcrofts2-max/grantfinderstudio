@@ -29,7 +29,17 @@ export interface FoundGrant {
 
 export type CorpusSearch =
   | { state: 'idle' }
-  | { state: 'ok'; grants: FoundGrant[]; total: number | null }
+  | {
+      state: 'ok';
+      grants: FoundGrant[];
+      total: number | null;
+      /**
+       * Set when the configured route 404ed and the API's own index supplied
+       * the real one. Worth saying out loud: the search worked, but every
+       * search until somebody saves this pays for an extra lookup first.
+       */
+      routeUsed: string | null;
+    }
   | { state: 'failed'; message: string };
 
 function toFound(entry: CorpusGrant): FoundGrant | null {
@@ -97,11 +107,12 @@ export async function searchCorpus(text: string): Promise<CorpusSearch> {
       searchPath: value(THREESIXTYGIVING_SEARCH_PATH_KEY),
     });
 
-    const { grants, total } = await connector.searchGrants(pattern);
+    const { grants, total, routeUsed } = await connector.searchGrants(pattern);
     return {
       state: 'ok',
       grants: grants.map(toFound).filter((g): g is FoundGrant => g !== null),
       total,
+      routeUsed,
     };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);

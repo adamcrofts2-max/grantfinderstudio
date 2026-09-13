@@ -122,6 +122,67 @@ describe('searching the whole corpus', () => {
     await expect(connector().searchGrants('youth')).rejects.toThrow();
   });
 
+  it('finds the real route when the configured one 404s, and says which', async () => {
+    // What actually happened on the first live attempt: CurrentLatestGrants
+    // was a viewset CLASS name in their urls.py, not a path, so it 404ed and
+    // the reply was a bare "returned 404. Nothing has been written." — true
+    // and useless. The API's own root index is the authoritative answer.
+    respond = (url) => {
+      if (url.pathname === '/api/v1/') {
+        return {
+          status: 200,
+          body: JSON.stringify({
+            org: `${baseUrl}org/`,
+            grants: `${baseUrl}grants/`,
+          }),
+        };
+      }
+      if (url.pathname === '/api/v1/grants/') {
+        return { status: 200, body: JSON.stringify({ count: 1, results: [grant('g9')] }) };
+      }
+      return { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
+    };
+
+    const result = await connector().searchGrants('youth');
+    expect(result.grants[0]?.raw.id).toBe('g9');
+    // Relative, so it can be pasted straight into the setting.
+    expect(result.routeUsed).toBe('grants/');
+  });
+
+  it('does not pay for discovery when the configured route works', async () => {
+    const result = await connector().searchGrants('youth');
+    expect(result.routeUsed).toBeNull();
+    expect(requests).toHaveLength(1);
+  });
+
+  it('lists what the API does offer when nothing looks like a grant search', async () => {
+    respond = (url) =>
+      url.pathname === '/api/v1/'
+        ? { status: 200, body: JSON.stringify({ org: `${baseUrl}org/` }) }
+        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
+
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/This API offers: org/u);
+  });
+
+  it('says so when the API will not even list its routes', async () => {
+    respond = () => ({ status: 404, body: 'nope', type: 'text/plain' });
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/did not list its routes/u);
+  });
+
+  it('refuses a discovered route that points at another host', async () => {
+    // The index is a response body, and this fetches a URL out of it. Same
+    // risk as a pagination link, and checked the same way.
+    respond = (url) =>
+      url.pathname === '/api/v1/'
+        ? {
+            status: 200,
+            body: JSON.stringify({ grants: 'https://elsewhere.example/api/v1/grants/' }),
+          }
+        : { status: 404, body: JSON.stringify({ detail: 'Not found' }) };
+
+    await expect(connector().searchGrants('youth')).rejects.toThrow(/elsewhere\.example/u);
+  });
+
   it('honours a corrected search path without a code change', async () => {
     await connector('grants/').searchGrants('youth');
     expect(new URL(requests[0] ?? '', 'http://x').pathname).toBe('/api/v1/grants/');

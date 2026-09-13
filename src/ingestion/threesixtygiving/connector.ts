@@ -82,6 +82,15 @@ export interface GrantSearchResult {
   grants: CorpusGrant[];
   /** How many the corpus holds for this pattern, not how many came back. */
   total: number | null;
+  /**
+   * The route the results actually came from.
+   *
+   * Set when it differs from the configured one — that is, when the configured
+   * route 404ed and discovery found the real one. The caller can then tell the
+   * operator what to save, rather than paying for a discovery round trip on
+   * every search for ever.
+   */
+  routeUsed: string | null;
 }
 
 /** An organisation reference on a search result: `{ org_id, name, self }`. */
@@ -101,6 +110,33 @@ function readOrgRef(value: unknown): { id: string | null; name: string | null } 
  * Without this, a compromised or hostile response could walk the ingester onto
  * an internal address.
  */
+/**
+ * Same origin as the configured base, and nothing more.
+ *
+ * Distinct from `assertSameOrigin`, which additionally demands https. That is
+ * right for a pagination link, and wrong here for a reason worth writing down:
+ * requiring https made this branch impossible to exercise against a local
+ * server, and an untestable security check is how every fault this week
+ * survived. The https guarantee has not been given up — it lives on the base
+ * URL setting, which `settingProblem` refuses unless it is https, and a link
+ * matching that origin is therefore https too.
+ */
+export function assertSameOriginAsBase(candidate: string, baseUrl: string): URL {
+  let url: URL;
+  try {
+    url = new URL(candidate, baseUrl);
+  } catch {
+    throw new IngestionError(`Not a usable address: ${candidate}`);
+  }
+  const base = new URL(baseUrl);
+  if (url.origin !== base.origin) {
+    throw new IngestionError(
+      `That route points to ${url.host}, expected ${base.host}.`,
+    );
+  }
+  return url;
+}
+
 export function assertSameOrigin(candidate: string, baseUrl: string): URL {
   let url: URL;
   try {
@@ -210,6 +246,41 @@ export class ThreeSixtyGivingConnector {
    * database right: a page fetched for the person who asked, not a copy of
    * somebody's dataset.
    */
+  /**
+   * What routes this API actually offers.
+   *
+   * A Django REST Framework project answers its root with an index of
+   * `{ name: url }`, which is the authoritative answer to "where is the grant
+   * search" — better than anything guessed from reading source, as
+   * `CurrentLatestGrants` proved by 404ing: it was a viewset CLASS name in
+   * their `urls.py`, not a path.
+   *
+   * Only ever called after a 404, so a working deployment never pays for it.
+   */
+  private async routeIndex(): Promise<Record<string, string>> {
+    const payload: unknown = await this.http.getJson(this.baseUrl);
+    if (typeof payload !== 'object' || payload === null) return {};
+    const routes: Record<string, string> = {};
+    for (const [name, value] of Object.entries(payload as Record<string, unknown>)) {
+      if (typeof value === 'string') routes[name] = value;
+    }
+    return routes;
+  }
+
+  /** Routes whose name or address mentions grants, likeliest first. */
+  private static grantRoutes(routes: Record<string, string>): string[] {
+    return Object.entries(routes)
+      .filter(([name, url]) => /grant/iu.test(name) || /grant/iu.test(url))
+      .map(([, url]) => url);
+  }
+
+  private searchUrl(path: string, pattern: string, limit: number): string {
+    const url = new URL(path, this.baseUrl);
+    url.searchParams.set('search', pattern);
+    url.searchParams.set('limit', String(Math.min(limit, 100)));
+    return url.toString();
+  }
+
   async searchGrants(pattern: string, limit = 50): Promise<GrantSearchResult> {
     if (pattern.trim() === '') {
       // An empty regex matches the whole corpus. Refused here as well as in
@@ -218,11 +289,40 @@ export class ThreeSixtyGivingConnector {
       throw new IngestionError('A search pattern is required.');
     }
 
-    const url = new URL(this.searchPath, this.baseUrl);
-    url.searchParams.set('search', pattern);
-    url.searchParams.set('limit', String(Math.min(limit, 100)));
+    let payload: unknown;
+    let routeUsed: string | null = null;
+    try {
+      payload = await this.http.getJson(this.searchUrl(this.searchPath, pattern, limit));
+    } catch (error) {
+      const missing = error instanceof IngestionError && /returned 404/u.test(error.message);
+      if (!missing) throw error;
 
-    const payload: unknown = await this.http.getJson(url.toString());
+      // The configured route is not there. Ask the API where its grant search
+      // lives and try that once, rather than reporting a bare 404 and leaving
+      // somebody to guess — which is what the first attempt at this did.
+      const routes = await this.routeIndex().catch(() => ({}));
+      const candidates = ThreeSixtyGivingConnector.grantRoutes(routes);
+      const names = Object.keys(routes);
+      if (candidates.length === 0) {
+        throw new IngestionError(
+          `The grant search route "${this.searchPath}" is not there (404)` +
+            (names.length === 0
+              ? ', and this API did not list its routes. Check the base URL under Services.'
+              : `. This API offers: ${names.join(', ')}. Set the right one as the grant search route under Services.`),
+        );
+      }
+
+      // Same origin, checked the same way a pagination link is: this is a URL
+      // taken from a response body and then fetched, so a hostile or
+      // compromised index could otherwise walk the search onto another host.
+      const found = assertSameOriginAsBase(candidates[0] as string, this.baseUrl);
+      payload = await this.http.getJson(this.searchUrl(found.toString(), pattern, limit));
+      // Relative to the base, so it can be pasted straight into the setting.
+      routeUsed = found.toString().startsWith(this.baseUrl)
+        ? found.toString().slice(this.baseUrl.length)
+        : found.pathname;
+    }
+
     if (typeof payload !== 'object' || payload === null) {
       throw new IngestionError('The search response was not an object.');
     }
@@ -255,6 +355,7 @@ export class ThreeSixtyGivingConnector {
     return {
       grants,
       total: typeof page.count === 'number' ? page.count : null,
+      routeUsed,
     };
   }
 }

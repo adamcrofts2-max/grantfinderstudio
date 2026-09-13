@@ -51,7 +51,7 @@ and for `CurrentLatestGrants`, **1000** for the organisation list. Follow
 | `org/{org_id}/` | Detail. `self`, `grants_made`, `grants_received`, `funder`, `recipient`, `publisher`, `org_id`, `name` |
 | `org/{org_id}/grants_made/` | Grants this organisation awarded |
 | `org/{org_id}/grants_received/` | Grants it received |
-| `CurrentLatestGrants` | Every current grant. Supports `?search=` (regex over the whole grant JSON) and `?grant_id=` |
+| `CurrentLatestGrants` | Every current grant. Supports `?search=` (regex over the whole grant JSON) and `?grant_id=`. **This is a viewset CLASS name read out of `urls.py`, NOT a path — `/api/v1/CurrentLatestGrants/` returns 404 against the live API.** The real route comes from the API's own root index, which the connector reads on a 404 |
 | `dashboard/publishers`, `dashboard/overview`, `dashboard/publisher/{prefix}` | Publisher statistics |
 
 `funder` and `recipient` on the detail response are null unless the

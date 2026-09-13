@@ -344,6 +344,10 @@ this cheque before", where no source answers "what is open".
       credentials, no port, and — the control that actually matters — every
       RESOLVED address and every redirect checked as well. Proven over a real
       socket rather than by fixture
+- [x] Find the grant search route from the API's own index when the configured
+      one 404s. `CurrentLatestGrants` was a viewset class name in their source,
+      not a path, and a bare "returned 404. Nothing has been written." left
+      nowhere to go
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never

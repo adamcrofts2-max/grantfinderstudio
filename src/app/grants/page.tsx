@@ -89,6 +89,18 @@ export default async function GrantsPage({
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />
 
+      {found.state === 'ok' && found.routeUsed !== null ? (
+        <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
+          <span aria-hidden="true">⚠</span>
+          <span>
+            The configured grant search route was not there, so we asked the API where its
+            search lives and used <code>{found.routeUsed}</code> instead. Searching works, but
+            every search pays for that extra lookup until an operator saves it as the grant
+            search route under Services.
+          </span>
+        </div>
+      ) : null}
+
       {found.state === 'failed' ? (
         <section className="card" style={{ marginTop: 'var(--s-5)' }}>
           <h2 className="card-title">The search could not run</h2>
