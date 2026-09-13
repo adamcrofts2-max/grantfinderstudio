@@ -1,13 +1,17 @@
 import { isWriterAvailable } from '@/app/drafting';
 import { ManualFundForm } from '@/app/ManualFundForm';
 import { EMPTY_MANUAL_FUND } from '@/app/manualFundState';
-import { withOperator } from '@/db';
-import { findFunderById } from '@/db/catalogue';
+import { withAdmin, withOperator } from '@/db';
+import { ensureFunderWithId, findFunderById } from '@/db/catalogue';
+import { funderIdFor360Giving } from '@/db/awards';
 
 import { AddOpportunity } from './AddOpportunity';
 import { addOwnFundAction } from './manual-actions';
 
 export const dynamic = 'force-dynamic';
+
+const str = (v: string | string[] | undefined): string =>
+  typeof v === 'string' ? v.trim() : '';
 
 export default async function AddOpportunityPage({
   searchParams,
@@ -28,12 +32,35 @@ export default async function AddOpportunityPage({
    * and none writes, so there is nothing tenant-specific to leak and no id
    * here that could name anything but a funder.
    */
-  const raw = (await searchParams)['funder'];
-  const wanted = typeof raw === 'string' ? raw : null;
-  const funder =
-    wanted === null || wanted === ''
-      ? undefined
-      : ((await withOperator((tx) => findFunderById(tx, wanted))) ?? undefined);
+  const params = await searchParams;
+  const wanted = str(params['funder']);
+  /**
+   * A funder found by searching the corpus, which may not be held locally yet.
+   *
+   * The grant search reaches every publisher 360Giving has, so most funders a
+   * person meets there have no row here — the local table holds only the ones
+   * somebody enriched for their distribution charts. Arriving with a 360Giving
+   * org id creates the row on the spot, under the deterministic id the ingest
+   * would use, so a later enrichment of the same funder lands on the same row
+   * rather than beside it.
+   *
+   * Operator path for the lookup, admin for the create: funders are shared
+   * reference data that every tenant reads and none writes.
+   */
+  const wanted360 = str(params['funder360']);
+  const suppliedName = str(params['funderName']);
+
+  let funder: { id: string; name: string; website: string | null } | undefined;
+  if (wanted !== '') {
+    funder = (await withOperator((tx) => findFunderById(tx, wanted))) ?? undefined;
+  } else if (wanted360 !== '' && suppliedName !== '') {
+    const id = funderIdFor360Giving(wanted360);
+    const existing = await withOperator((tx) => findFunderById(tx, id));
+    if (existing === null) {
+      await withAdmin((tx) => ensureFunderWithId(tx, id, suppliedName));
+    }
+    funder = existing ?? { id, name: suppliedName, website: null };
+  }
 
   return (
     <div className="page page-narrow">

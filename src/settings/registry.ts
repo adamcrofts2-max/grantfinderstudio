@@ -13,7 +13,7 @@
  * Pure and zero I/O, like the rest of the domain layer.
  */
 
-export type SettingKind = 'url' | 'integer';
+export type SettingKind = 'url' | 'integer' | 'path';
 
 export interface SettingDefinition {
   key: string;
@@ -37,6 +37,7 @@ export interface SettingDefinition {
 
 export const THREESIXTYGIVING_BASE_URL_KEY = 'threesixtygiving.baseUrl';
 export const THREESIXTYGIVING_MAX_PAGES_KEY = 'threesixtygiving.maxPages';
+export const THREESIXTYGIVING_SEARCH_PATH_KEY = 'threesixtygiving.searchPath';
 
 /**
  * THE RULE: a base URL for a service whose requests carry a secret does not
@@ -79,6 +80,15 @@ export const SETTINGS: readonly SettingDefinition[] = [
     min: 1,
     max: 500,
   },
+  {
+    key: THREESIXTYGIVING_SEARCH_PATH_KEY,
+    service: 'threesixtygiving',
+    label: 'Grant search route',
+    help: 'The corpus-wide grant search, relative to the base URL. Settable because it could not be verified against the live API from the build environment — if searching reports that the route has moved, correct it here rather than waiting for a redeploy.',
+    kind: 'path',
+    fallback: 'CurrentLatestGrants/',
+    envVar: 'THREESIXTYGIVING_SEARCH_PATH',
+  },
 ] as const;
 
 /**
@@ -114,6 +124,22 @@ export function settingProblem(definition: SettingDefinition, raw: string): stri
     }
     if (url.protocol !== 'https:') {
       return 'Must be https. Every request to this service either carries a key or is followed by a paginator.';
+    }
+    return null;
+  }
+
+  if (definition.kind === 'path') {
+    // A path, never a URL: it is resolved against the configured base, and
+    // accepting an absolute URL here would be a way to move requests to
+    // another origin through a field labelled "route".
+    if (/^[a-z][a-z0-9+.-]*:/iu.test(value) || value.startsWith('//')) {
+      return 'A route, not a full address — it is resolved against the base URL above.';
+    }
+    if (value.startsWith('/')) {
+      return 'Leave off the leading slash, so the route resolves under the base URL rather than replacing its path.';
+    }
+    if (!/^[A-Za-z0-9._~\-/]+$/u.test(value)) {
+      return 'Use letters, digits, dots, dashes, underscores and slashes only.';
     }
     return null;
   }

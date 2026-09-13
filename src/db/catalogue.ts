@@ -42,6 +42,32 @@ export async function findFunderById(
   return rows[0] ?? null;
 }
 
+/**
+ * Create a funder under an id we choose, or leave the existing row alone.
+ *
+ * Distinct from `ensureFunderNamed`, which invents an id with a random suffix.
+ * That is right when a person typed a name and we have nothing else to key on,
+ * and wrong when we DO: a funder met through the corpus search carries a
+ * 360Giving organisation id, and `funderIdFor360Giving` turns it into the same
+ * id the ingest would use. Passing that as a prefix to `ensureFunderNamed`
+ * would append a random suffix and guarantee a second row the day somebody
+ * enriched the same funder — the award history and the application built from
+ * it would sit side by side, joined to nothing.
+ *
+ * `ON CONFLICT DO NOTHING` rather than a prior lookup: two people adding a
+ * fund from the same funder at the same moment would both pass a check.
+ */
+export async function ensureFunderWithId(
+  tx: Queryable,
+  id: string,
+  name: string,
+): Promise<void> {
+  await tx.query(
+    'INSERT INTO funders (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
+    [id, name],
+  );
+}
+
 export async function ensureFunderNamed(
   tx: Queryable,
   name: string,

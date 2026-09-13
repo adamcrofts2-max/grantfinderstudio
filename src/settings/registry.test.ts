@@ -10,6 +10,7 @@ import {
   effectiveSetting,
   settingByKey,
   settingProblem,
+  THREESIXTYGIVING_SEARCH_PATH_KEY,
 } from './registry.js';
 
 const url = settingByKey(THREESIXTYGIVING_BASE_URL_KEY)!;
@@ -132,5 +133,39 @@ describe('the rule about keyed services', () => {
     expect(offending({ kind: 'integer', service: 'anthropic' })).toBe(false);
     expect(offending({ kind: 'url', service: 'anthropic' })).toBe(true);
     expect(offending({ kind: 'url', service: 'threesixtygiving' })).toBe(false);
+  });
+});
+
+describe('the grant search route', () => {
+  const route = settingByKey(THREESIXTYGIVING_SEARCH_PATH_KEY)!;
+
+  it('exists, so a route that moves needs no redeploy', () => {
+    // It could not be verified against the live API from the build
+    // environment, which makes "correctable without shipping code" a
+    // requirement rather than a convenience.
+    expect(route.fallback).toBe('CurrentLatestGrants/');
+  });
+
+  it('accepts a relative route', () => {
+    expect(settingProblem(route, 'CurrentLatestGrants/')).toBeNull();
+    expect(settingProblem(route, 'grants/')).toBeNull();
+  });
+
+  it('refuses a full address, which would move requests to another origin', () => {
+    // The field is labelled "route" and resolved against the base URL. An
+    // absolute URL here would be a way to redirect every search elsewhere
+    // through a box that does not look like it could.
+    expect(settingProblem(route, 'https://elsewhere.example/api/')).toContain(
+      'not a full address',
+    );
+    expect(settingProblem(route, '//elsewhere.example/api/')).toContain('not a full address');
+  });
+
+  it('refuses a leading slash, which would replace the base path', () => {
+    expect(settingProblem(route, '/api/v2/grants/')).toContain('leading slash');
+  });
+
+  it('refuses a query string or anything else surprising', () => {
+    expect(settingProblem(route, 'grants/?search=x')).toContain('letters, digits');
   });
 });

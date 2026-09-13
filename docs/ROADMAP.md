@@ -340,7 +340,19 @@ this cheque before", where no source answers "what is open".
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never
       a crawl
-- [x] **Search the awarded grants themselves** — `/grants`. The product was
+- [x] **Search 360Giving's whole corpus, live** — `/grants` asks the Data
+      Store's own grant search rather than a local table an operator filled in
+      one funder at a time. A person who came to look was being shown "no
+      grants have been loaded yet": the honest report of a design that put an
+      administrator between somebody and public data
+- [x] Drop the organisation gate on `/grants`. `requireOrganisationId` sent a
+      brand-new account to onboarding, so the one screen needing nothing but
+      public data was the one screen you had to finish setting up to reach
+- [x] One funder, one row, however it is met: a funder found in the corpus is
+      created under the id the ingest would use, so enriching it later lands on
+      the same row rather than beside it
+- [x] Searched the awarded grants (superseded by the live corpus search above,
+      which covers every publisher rather than the ones held locally) — The product was
       showing funder-level medians and burying the individual grants behind a
       disclosure, when "who like us has been given money, how much, and by
       whom" is the question people arrive with. Text, area, kind of work and

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,221 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,238 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -1889,3 +1889,107 @@ ask. "Awarded in Somerset, where you are" is the region fix; the title and
 description lines are the ingest fix; and `text=skills` now returns rows where
 before it returned none. No horizontal scroll at 390px, no 5xx, axe clean
 across twenty screens.
+
+
+## The search belongs to the applicant (2026-09-13)
+
+"No grants have been loaded yet. An operator loads a funder's grants from the
+console." That message was accurate, and it was the product telling on itself.
+
+`/grants` searched a local table that an operator filled in through an
+eight-field form, one funder at a time. There are more than two hundred
+publishers in 360Giving and over a million grants. Curating that by hand is not
+a smaller version of the feature; it is a different product, and it had put an
+administrator between a person and public data.
+
+My own research said so before any of it was built. From
+`docs/360GIVING_API.md`, written from reading their `urls.py`:
+
+> `CurrentLatestGrants` — Every current grant. Supports `?search=` (regex over
+> the whole grant JSON)
+>
+> A full corpus wants the bulk route, not this API… this API is right for
+> **enriching one named funder on demand**.
+
+Both halves were right and I had built only the second, then wired the
+applicant's search to it.
+
+### What it does now
+
+The applicant's search goes straight to the Data Store, across every
+publisher. Nothing is stored: results carry their attribution and a link, which
+is both the honest posture and the one that stays clear of the database right —
+a page fetched for the person who asked rather than a copy of somebody's
+dataset. `funder_awards` keeps its real job, which is the distribution charts:
+a median and an interquartile range need every grant a funder ever made, and
+that is a batch pull rather than something to do while somebody waits. The
+console ingest is an enrichment step now, not the only door.
+
+### Three things the design turns on
+
+**The tokeniser is the safety guarantee, not an escape step.** The search takes
+a REGULAR EXPRESSION and runs it on 360Giving's servers — an open,
+unauthenticated API run by a small charity. So the query is split on everything
+that is not a letter or a digit, which means only `[\p{L}\p{N}]+` terms can
+reach the pattern. There is nothing to escape because nothing dangerous
+survives being read. My first attempt wrote an `escapeRegex` and a test
+asserting it; the test failed, and the reason was that the tokeniser had
+already made it dead code. A whitelist cannot be wrong about one character in
+the way a sanitiser can.
+
+**A phrase never matches, so terms are joined with alternation and ranked
+locally.** "youth skills Somerset" as a literal pattern needs those words
+adjacent in the JSON, which they never are. Broad fetch, precise ordering —
+and the ranking is a small integer built from countable things, so every point
+corresponds to something the screen can state in a sentence.
+
+**One page, and that is the design.** The service allows two requests a second
+and this runs while somebody waits. Walking pagination would turn a search into
+a minute of held breath and a burst of load on a charity's API.
+
+### Two gates removed
+
+`/grants` required an ORGANISATION. A brand-new account was redirected to
+onboarding, so the one screen that needs nothing but public data was the one
+screen you had to finish setting up to reach. It needs a session now, and the
+organisation only sharpens the ranking — somebody can see whether the tool is
+worth their evening before telling it who they are.
+
+And a funder found in the corpus has no local row, so "Add a fund from them"
+creates one — under `funderIdFor360Giving`, the same id the ingest uses.
+`ensureFunderNamed` would not do: it appends a random suffix to whatever prefix
+it is handed, so the deterministic id would have become something else and the
+next ingest of that funder would have written its awards to a row this one does
+not have. `ensureFunderWithId` exists for the case where we already know the
+identity, and `funder-id.test.ts` asserts the old path would have produced the
+second row.
+
+### Walked as a brand-new user, production build, nothing ingested
+
+    --- /grants, brand new account, nothing ingested ---
+    GRANTS ALREADY AWARDED
+    Who like you has been funded
+    What sort of work?  Type what you do and where you are…
+
+    --- search "skills young people" ---
+    6 of 6 matching grants, the closest to your work first.
+    £8,000 to Recipient Org 1 · Practical skills work with young people.
+    Grant data from the 360Giving Data Store, searched live and not stored here.
+
+    follow: /opportunities/add?funder360=GB-CHC-1164883&funderName=…
+    lands on: A fund from The Stub Community Foundation
+    funderId: funder_360g_GB-CHC-1164883
+
+A search matching nothing says why. No horizontal scroll at 390px, no 5xx.
+One defect the screenshot caught and the numbers did not: the row's action
+carried the funder's name and ran past the right edge on a phone, when the name
+is already the row's first line — it is "Add a fund from them" now, with the
+name kept for a screen reader.
+
+### The route is a setting
+
+`CurrentLatestGrants/` comes from their source, but it could not be verified
+against the live API from here. So it is configurable under Services, the
+search says "the route may have moved" when the response shape is wrong, and a
+`path` setting kind refuses an absolute URL — a field labelled "route" must not
+be a way to send every search to another origin.
