@@ -19,11 +19,19 @@ const count = (n: number): string => n.toLocaleString('en-GB');
  * The screen this replaced said "no grants have been loaded yet. An operator
  * loads a funder's grants from the console." That was accurate and it was the
  * product telling on itself — it named somebody else's job as the reason your
- * search was empty. An empty corpus is now either arriving or not started, and
- * both of those are facts about the system rather than instructions to the
- * reader.
+ * search was empty.
+ *
+ * The first version of THIS was not much better. It explained, correctly, that
+ * 360Giving publish no search across all grants and that the record therefore
+ * has to be assembled, and then stopped — so it read as "there is no way to
+ * search grants", which is the opposite of what is true. An empty state has to
+ * say what happens next, not only why it is empty.
+ *
+ * An operator in their sandbox gets one more line, and only them: the console
+ * is where the walk is started, and a link to it in front of an applicant
+ * would be a door they cannot open.
  */
-function CorpusNotice({ corpus }: { corpus: CorpusState }) {
+function CorpusNotice({ corpus, operator }: { corpus: CorpusState; operator: boolean }) {
   if (corpus.awards > 0 && !corpus.loading) return null;
 
   if (corpus.loading) {
@@ -36,10 +44,10 @@ function CorpusNotice({ corpus }: { corpus: CorpusState }) {
         <span aria-hidden="true">⏳</span>
         <span>
           <strong>The grant record is still arriving.</strong> We are reading every funder
-          that publishes to the 360Giving standard and keeping their awarded grants here so
-          this search is instant — {through}, {count(corpus.awards)} grants from{' '}
-          {count(corpus.funders)} funders held so far. Search works now; it will find more
-          each time you come back.
+          that publishes to the 360Giving standard and keeping their awarded grants here, so
+          that searching them is instant — {through}, {count(corpus.awards)} grants from{' '}
+          {count(corpus.funders)} funders held so far.{' '}
+          <strong>Searching works now</strong>, and will find more each time you come back.
         </span>
       </div>
     );
@@ -47,11 +55,23 @@ function CorpusNotice({ corpus }: { corpus: CorpusState }) {
 
   return (
     <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
-      <span aria-hidden="true">⚠</span>
+      <span aria-hidden="true">⏳</span>
       <span>
-        <strong>This deployment holds no grant record yet.</strong> 360Giving publish no
-        search across all grants — their API answers for one named funder at a time — so the
-        record has to be assembled before it can be searched. That has not been started here.
+        <strong>The grant record has not been assembled on this deployment yet.</strong>{' '}
+        Searching will work as soon as it has. 360Giving publish no search across all grants —
+        their API answers for one named funder at a time — so the record is built by reading
+        every publishing funder in turn, which is a job that runs in the background rather
+        than while you wait.
+        {operator ? (
+          <>
+            {' '}
+            You are signed in to the console:{' '}
+            <a href="/admin/funders">start it under Funders</a> — “Start the walk”, then “Run
+            one step now” to prove it before leaving the scheduled job to it.
+          </>
+        ) : (
+          ' Nothing here needs setting up by you.'
+        )}
       </span>
     </div>
   );
@@ -124,6 +144,18 @@ export default async function GrantsPage({
   const session = await requireSession();
   const params = await searchParams;
 
+  /**
+   * An operator looking at the product through their sandbox.
+   *
+   * NOT `readAdminSession()`, which was the first attempt and was dead code:
+   * the admin cookie is deliberately scoped to `/admin`, so a customer page
+   * never receives it — "a page that never receives it cannot leak it", and
+   * that property is worth more than a convenience link. `session.sandbox` is
+   * already on every session for free, and it identifies exactly the case
+   * that matters: somebody who can act on what the banner says.
+   */
+  const operator = session.sandbox;
+
   const context =
     session.organisationId === null
       ? { organisation: null, project: null }
@@ -171,7 +203,9 @@ export default async function GrantsPage({
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />
 
-      {result.state === 'failed' ? null : <CorpusNotice corpus={result.corpus} />}
+      {result.state === 'failed' ? null : (
+        <CorpusNotice corpus={result.corpus} operator={operator} />
+      )}
 
       {result.state === 'failed' ? (
         <section className="card" style={{ marginTop: 'var(--s-5)' }}>

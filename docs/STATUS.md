@@ -2499,3 +2499,67 @@ Three environment faults it surfaced, all real:
   tier decision.
 - **"Organisations like mine"** still wants a held copy of `org/`, which is the
   same walk against a bigger list.
+
+---
+
+## The empty state read as a dead end
+
+> "This deployment holds no grant record yet. 360Giving publish no search
+> across all grants — their API answers for one named funder at a time — so the
+> record has to be assembled before it can be searched. That has not been
+> started here."
+>
+> — *"So there is no way to search grants?"*
+
+Every sentence of that was true and the whole thing was wrong. It explained why
+the screen was empty and then stopped, so it read as a statement about the
+product's limits rather than about this deployment's state.
+
+**An empty state has to say what happens next, not only why it is empty.** It
+now leads with "Searching will work as soon as it has", and says the record is
+built by a background job rather than by anything the reader must do.
+
+An operator gets one more line — a link to the console, where the walk is
+started. Only an operator: a door an applicant cannot open should not be shown
+to one.
+
+### Which meant finding out who an operator is
+
+The first version used `readAdminSession()` on `/grants`. Dead code: the admin
+cookie is deliberately scoped to `path=/admin`, so a customer page never
+receives it — *"a page that never receives it cannot leak it"* — and that
+property is worth more than a convenience link. `session.sandbox` is already on
+every session, costs nothing, and identifies exactly the people who can act on
+what the banner says.
+
+The e2e caught it. A line that can never render is invisible to every kind of
+test that does not actually look at the page.
+
+## Two hours on two faults that were in my diagnostics
+
+Worth writing down, because both are traps that will be walked into again.
+
+**`psql` as the table owner sees no tenant rows.** Chasing why "Open my
+sandbox" seemed to write nothing, I queried `SELECT id FROM organisations` as
+`gfs_owner` and got zero rows — and concluded the write was being lost. The
+table has `FORCE ROW LEVEL SECURITY`, which binds the owner too, so a query
+with no `app.organisation_id` set sees nothing whatever is there. The row was
+present the whole time. Set the tenant before believing an empty result:
+
+```sql
+SELECT set_config('app.organisation_id', 'sbxo_…', false);
+SELECT id, name FROM organisations;
+```
+
+**`waitForLoadState('networkidle')` is not "the action finished".** A server
+action answers 303 with its `Set-Cookie` and the client then navigates.
+Networkidle can resolve before any of that, so reading the URL and cookies at
+that moment shows the old page with no session — which looks exactly like a
+broken sandbox. Wait for the navigation instead:
+
+```js
+await Promise.all([page.waitForURL(predicate), button.click()]);
+```
+
+Neither was a product bug. The sandbox works, and the organisation, membership
+and profile are all written as they always were.

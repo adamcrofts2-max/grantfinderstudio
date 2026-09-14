@@ -121,8 +121,17 @@ try {
   // search was empty, and it must never come back.
   if (/no grants have been loaded yet/i.test(firstVisit)) fail('still blames an operator');
 
-  if (/holds no grant record yet|still arriving/i.test(firstVisit)) {
+  if (/not been assembled|still arriving/i.test(firstVisit)) {
     ok('the corpus is empty, and the page explains why');
+    // The fault the first version of this copy had: it explained why and
+    // stopped, so it read as "there is no way to search grants".
+    if (!/Searching will work|Searching works now/i.test(firstVisit)) {
+      fail('the empty state does not say that searching will work');
+    } else ok('the empty state says searching will work');
+    // A door an applicant cannot open must not be shown to one.
+    if (/\/admin\/funders/.test(firstVisit)) {
+      fail('the applicant is being pointed at the console');
+    } else ok('the applicant is not pointed at the console');
   } else if (/grants held/i.test(firstVisit)) {
     ok('the corpus has grants, and the page says how many');
   } else {
@@ -157,6 +166,43 @@ try {
   if (adminLanded.startsWith('/admin/sign-in')) {
     fail(`admin sign-in did not go through: ${(await admin.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 300)}`);
   } else ok(`admin landed on ${adminLanded}`);
+
+  // The other half of the empty state: an operator DOES get pointed at the
+  // console, on the same page where an applicant is not.
+  //
+  // Through the SANDBOX, which is the only way this can happen. Two earlier
+  // versions of this check were wrong in instructive ways: one visited
+  // /grants with the admin cookie alone and was bounced to /sign-in by
+  // `requireSession`; the next signed up a second customer account in the
+  // admin's browser, which gave a customer session with no operator standing.
+  // The admin cookie is deliberately scoped to `/admin` so customer pages
+  // never receive it, so `session.sandbox` is what identifies an operator
+  // here — and the sandbox is how one gets that session.
+  await admin.goto(`${B}/admin/sandbox`, { waitUntil: 'networkidle' });
+  const open = admin.getByRole('button', { name: /sandbox/i }).first();
+  if (!(await open.count())) fail('no way to open the sandbox');
+  else {
+    // WAIT FOR THE NAVIGATION, not for the network to fall quiet. A server
+    // action answers 303 with its Set-Cookie and the client then navigates;
+    // `waitForLoadState('networkidle')` can resolve before any of that, and
+    // reading the URL and cookies at that moment shows the OLD page with no
+    // session. That cost an hour of hunting a product bug that was not there.
+    await Promise.all([
+      admin.waitForURL((url) => !url.pathname.startsWith('/admin'), { timeout: 15_000 }),
+      open.click(),
+    ]);
+    await admin.goto(`${B}/grants`, { waitUntil: 'networkidle' });
+    const operatorView = await admin.locator('body').innerText();
+    if (/not been assembled/i.test(operatorView)) {
+      if (/start it under Funders/i.test(operatorView)) {
+        ok('an operator in the sandbox is pointed at the console');
+      } else fail('an operator in the sandbox is NOT pointed at the console');
+    } else {
+      fail(
+        `the operator view is neither the empty state nor loaded: ${operatorView.replace(/\s+/gu, ' ').slice(0, 200)}`,
+      );
+    }
+  }
 
   await admin.goto(`${B}/admin/funders`, { waitUntil: 'networkidle' });
   const panel = await admin.locator('body').innerText();
