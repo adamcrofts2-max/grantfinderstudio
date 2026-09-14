@@ -10,7 +10,6 @@ import {
   effectiveSetting,
   settingByKey,
   settingProblem,
-  THREESIXTYGIVING_SEARCH_PATH_KEY,
 } from './registry.js';
 
 const url = settingByKey(THREESIXTYGIVING_BASE_URL_KEY)!;
@@ -136,53 +135,41 @@ describe('the rule about keyed services', () => {
   });
 });
 
-describe('the grant search route', () => {
-  const route = settingByKey(THREESIXTYGIVING_SEARCH_PATH_KEY)!;
+/**
+ * The `path` kind outlived the setting that used it.
+ *
+ * Kept covered because the rule it encodes is the interesting part: a field
+ * resolved against a base URL must never be able to change the origin. A
+ * leading slash cannot (new URL('/x', base) keeps the host) and is allowed; a
+ * full address and a protocol-relative one are refused, and so is "..", which
+ * would climb out of the API.
+ */
+describe('a route setting', () => {
+  const route: SettingDefinition = {
+    key: 'test.route',
+    service: 'threesixtygiving',
+    label: 'Route',
+    help: 'A route.',
+    kind: 'path',
+    fallback: 'org/funder/',
+  };
 
-  it('defaults to the route 360Giving actually declares', () => {
-    // Root-relative on purpose: `experimental/` is mounted on `api/`, not on
-    // `api/v1/`, so a base-relative path lands somewhere that 404s. And no
-    // trailing slash — their path is declared without one and Django's
-    // APPEND_SLASH only ever adds one.
-    expect(route.fallback).toBe('/api/experimental/CurrentLatestGrants');
+  it('accepts a base-relative and a root-relative route', () => {
+    expect(settingProblem(route, 'org/funder/')).toBeNull();
+    expect(settingProblem(route, '/api/v1/org/funder/')).toBeNull();
   });
 
-  it('exists, so a route that moves needs no redeploy', () => {
-    // 360Giving label the all-grants search experimental, which makes
-    // "correctable without shipping code" a requirement, not a convenience.
-    expect(route.envVar).toBe('THREESIXTYGIVING_SEARCH_PATH');
-  });
-
-  it('accepts both a root-relative and a base-relative route', () => {
-    expect(settingProblem(route, '/api/experimental/CurrentLatestGrants')).toBeNull();
-    expect(settingProblem(route, 'grants/')).toBeNull();
-  });
-
-  it('refuses a full address, which would move requests to another origin', () => {
-    // The field is labelled "route" and resolved against the base URL. An
-    // absolute URL here would be a way to redirect every search elsewhere
-    // through a box that does not look like it could.
+  it('refuses a full address', () => {
     expect(settingProblem(route, 'https://elsewhere.example/api/')).toContain(
       'not a full address',
     );
-    expect(settingProblem(route, '//elsewhere.example/api/')).toContain('not a full address');
   });
 
   it('refuses a protocol-relative address, a full address wearing a slash', () => {
-    // `//elsewhere.example/api/` resolves to another ORIGIN, which is the
-    // thing this field must never be able to do. A single leading slash
-    // cannot — it keeps the host — so it is allowed, and has to be: the
-    // all-grants search is mounted beside the versioned API, not under it.
     expect(settingProblem(route, '//elsewhere.example/api/')).toContain('not a full address');
   });
 
   it('refuses "..", so a route cannot climb out of the API', () => {
-    // The other way to leave the intended path: `../../` walks up to the host
-    // root. Refused rather than normalised, so what is saved is what is sent.
     expect(settingProblem(route, '../../admin/')).toContain('climb out');
-  });
-
-  it('refuses a query string or anything else surprising', () => {
-    expect(settingProblem(route, 'grants/?search=x')).toContain('letters, digits');
   });
 });

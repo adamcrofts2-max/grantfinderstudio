@@ -37,7 +37,17 @@ export interface SettingDefinition {
 
 export const THREESIXTYGIVING_BASE_URL_KEY = 'threesixtygiving.baseUrl';
 export const THREESIXTYGIVING_MAX_PAGES_KEY = 'threesixtygiving.maxPages';
-export const THREESIXTYGIVING_SEARCH_PATH_KEY = 'threesixtygiving.searchPath';
+
+/**
+ * There is no grant-search route setting, and there should not be one.
+ *
+ * One existed, for an all-grants search read out of 360Giving's source. That
+ * route is not public — it 404s, and it sits in the same module as
+ * `control/trigger-datagetter`, so the whole non-`v1` tree appears internal. A
+ * setting for it was three deployments of hoping the route was merely mistyped.
+ * Their published API has no text search at all, so the corpus is assembled
+ * from `org/funder/` and held locally instead.
+ */
 
 /**
  * THE RULE: a base URL for a service whose requests carry a secret does not
@@ -79,15 +89,6 @@ export const SETTINGS: readonly SettingDefinition[] = [
     envVar: 'THREESIXTYGIVING_MAX_PAGES',
     min: 1,
     max: 500,
-  },
-  {
-    key: THREESIXTYGIVING_SEARCH_PATH_KEY,
-    service: 'threesixtygiving',
-    label: 'Grant search route',
-    help: "360Giving's all-grants search. Read from their own urls.py, so it should be right — note it hangs off /api/ rather than /api/v1/, and has no trailing slash, because Django will not remove one. They label it experimental, so it is settable here: if searching reports a 404, correct it without waiting for a redeploy.",
-    kind: 'path',
-    fallback: '/api/experimental/CurrentLatestGrants',
-    envVar: 'THREESIXTYGIVING_SEARCH_PATH',
   },
 ] as const;
 

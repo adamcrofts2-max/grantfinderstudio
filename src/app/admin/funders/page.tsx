@@ -1,10 +1,12 @@
 import { withOperator } from '@/db';
 import { readFunderHoldings } from '@/db/awards';
+import { readCorpusProgress, type CorpusProgress } from '@/db/corpus';
 import { MIN_AWARDS_TO_CHARACTERISE } from '@/domain/funder/behaviour';
 
 import { requireAdmin } from '../session';
 import { AdminShell } from '../AdminShell';
 import { IngestForm } from './IngestForm';
+import { CorpusPanel } from './CorpusPanel';
 import { removeFunderAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -22,9 +24,11 @@ export default async function AdminFundersPage() {
   const session = await requireAdmin();
 
   let holdings: Awaited<ReturnType<typeof readFunderHoldings>> = [];
+  let progress: CorpusProgress | null = null;
   let error: string | null = null;
   try {
     holdings = await withOperator((tx) => readFunderHoldings(tx));
+    progress = await withOperator((tx) => readCorpusProgress(tx));
   } catch (thrown) {
     error = thrown instanceof Error ? thrown.message : String(thrown);
   }
@@ -34,8 +38,10 @@ export default async function AdminFundersPage() {
 
   return (
     <AdminShell email={session.email} active="funders">
-      <section className="card">
-        <h2 className="card-title">Load a funder from 360Giving</h2>
+      {progress === null ? null : <CorpusPanel progress={progress} />}
+
+      <section className="card" style={{ marginTop: 'var(--s-5)' }}>
+        <h2 className="card-title">Load one funder by hand</h2>
         <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
           Awarded grants, not open calls. This is what lets the product answer “who has
           actually funded work like ours” — a funder needs at least{' '}

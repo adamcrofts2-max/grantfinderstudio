@@ -36,15 +36,6 @@ export interface ConnectorOptions {
   baseUrl?: string;
   /** Guard against a paginating loop or an unexpectedly enormous publisher. */
   maxPages?: number;
-  /**
-   * Path of the corpus-wide grant search, relative to the base URL.
-   *
-   * Configurable because it could not be verified against the live API from
-   * the build environment, and a route that moves would otherwise need a code
-   * change and a redeploy to correct. The console can set it; `searchPath` on
-   * the settings registry carries the same default.
-   */
-  searchPath?: string;
 }
 
 export interface IngestResult {
@@ -59,33 +50,21 @@ export interface IngestResult {
 const DEFAULT_MAX_PAGES = 50;
 
 /**
- * The corpus-wide grant search.
+ * There is no public all-grants search, and this is where that is recorded.
  *
- * Read from 360Giving's own `datastore/api/urls.py` at 4a57c2e, not guessed:
+ * `/api/experimental/CurrentLatestGrants` is in 360Giving's own `urls.py` and
+ * returns 404 on the live host. It sits in the same module as
+ * `control/trigger-datagetter`, which plainly must not be reachable from
+ * outside, so the whole non-`v1` tree looks to be internal. Their published
+ * documentation agrees: it lists three data endpoints — Grants Made, Grants
+ * Received, Organisation List — and no search.
  *
- *     path("experimental/CurrentLatestGrants",
- *          api.experimental.api.CurrentLatestGrants.as_view(), ...)
- *
- * Three things in that line cost two wrong guesses and two 404s, and each is
- * the reason this constant looks the way it does:
- *
- *   - It hangs off `api/`, NOT `api/v1/`. So it cannot be written relative to
- *     the configured base (`.../api/v1/`) without a `../`, and a root-relative
- *     path says the same thing more plainly.
- *   - It has NO trailing slash, and Django's APPEND_SLASH only ever ADDS one.
- *     `CurrentLatestGrants/` therefore matches nothing and 404s — which is
- *     exactly what the live service reported.
- *   - `experimental` is 360Giving's own label for it. It is the only route
- *     they publish that searches across all grants rather than one named
- *     organisation, so the applicant's search depends on it; if they retire
- *     it, the setting below is how this is corrected without a redeploy.
- *
- * This is the route that makes a search belong to the APPLICANT rather than to
- * an operator. Without it the only grants searchable are the ones somebody
- * loaded funder by funder, which is how the product came to show "no grants
- * have been loaded yet" to a person who just wanted to look.
+ * Three guesses at that route cost three deployments. The conclusion is not a
+ * fourth guess but a different design: their API gives every grant a NAMED
+ * funder made, so the corpus is assembled from the funder list and held
+ * locally, which is what 360Giving themselves tell developers to do. Searching
+ * grant TEXT is then a local query, and no route can 404 it.
  */
-export const DEFAULT_SEARCH_PATH = '/api/experimental/CurrentLatestGrants';
 
 /**
  * One grant as the corpus search returns it.
@@ -112,12 +91,6 @@ export interface CorpusGrant {
    */
   licence: string | null;
   licenceName: string | null;
-}
-
-export interface GrantSearchResult {
-  grants: CorpusGrant[];
-  /** How many the corpus holds for this pattern, not how many came back. */
-  total: number | null;
 }
 
 function text(value: unknown): string | null {
@@ -160,6 +133,61 @@ function readLicence(value: unknown): { licence: string | null; name: string | n
   return {
     licence: text(fields.source_license),
     name: text(fields.source_license_name),
+  };
+}
+
+/** `data_license: { url, name }` — how the v1 grant routes state the licence. */
+function readDataLicense(value: unknown): { licence: string | null; name: string | null } {
+  if (typeof value !== 'object' || value === null) return { licence: null, name: null };
+  const fields = value as { url?: unknown; name?: unknown };
+  return { licence: text(fields.url), name: text(fields.name) };
+}
+
+/**
+ * ONE reader for a grant row, whichever endpoint it came from.
+ *
+ * This exists because there is no such thing as "the grant" in a response: the
+ * 360Giving standard record is nested under `data`, and the fields around it
+ * differ per route. Every place that read a row its own way got it wrong —
+ * including the per-funder ingest, which handed the WRAPPER to the normaliser
+ * and would therefore have rejected every real grant as having no id, no
+ * currency and no date. Its fixtures were written from the Data Standard
+ * rather than captured from the API, so they carried the grant at the top
+ * level and the tests passed against a shape the service never sends.
+ *
+ * A top-level grant is still accepted, because that is what a fixture written
+ * that way looks like and because being tolerant here costs nothing.
+ */
+export function readGrantRow(entry: unknown): CorpusGrant | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const record = entry as {
+    data?: unknown;
+    additional_data?: unknown;
+    data_license?: unknown;
+    funding_org_ids?: unknown;
+    publisher_org_id?: unknown;
+    funders?: unknown;
+    publisher?: unknown;
+  };
+  const raw = (typeof record.data === 'object' && record.data !== null
+    ? record.data
+    : record) as RawGrant;
+
+  // Denormalised column first, because that is what the corpus search
+  // serialises; the `funders` / `publisher` references are what the
+  // per-organisation endpoints give, and both shapes are read so one reader
+  // serves both.
+  const funderId = firstId(record.funding_org_ids) ?? readOrgRef(record.funders);
+  // Two places state a licence, one per route. Neither is present on both.
+  const fromAdditional = readLicence(record.additional_data);
+  const fromDataLicense = readDataLicense(record.data_license);
+  return {
+    raw,
+    funderId,
+    funderName: funderNameOf(raw),
+    publisherId: firstId(record.publisher_org_id) ?? readOrgRef(record.publisher),
+    licence: fromAdditional.licence ?? fromDataLicense.licence,
+    licenceName: fromAdditional.name ?? fromDataLicense.name,
   };
 }
 
@@ -212,7 +240,6 @@ function readPage(payload: unknown): { grants: RawGrant[]; next: string | null }
 export class ThreeSixtyGivingConnector {
   private readonly baseUrl: string;
   private readonly maxPages: number;
-  private readonly searchPath: string;
 
   constructor(
     private readonly http: HttpClient,
@@ -220,7 +247,6 @@ export class ThreeSixtyGivingConnector {
   ) {
     this.baseUrl = options.baseUrl ?? THREESIXTYGIVING_BASE_URL;
     this.maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
-    this.searchPath = options.searchPath ?? DEFAULT_SEARCH_PATH;
   }
 
   /**
@@ -242,7 +268,57 @@ export class ThreeSixtyGivingConnector {
       this.baseUrl,
     ).toString();
 
-    const collected: RawGrant[] = [];
+    const { rows, pagesFetched, truncated } = await this.walkGrants(start);
+    const { awards, rejected } = normaliseGrants(rows.map((row) => row.raw));
+    return { awards, rejected, pagesFetched, truncated, dataset };
+  }
+
+  /**
+   * Every award a funder made, plus the licence the rows state themselves.
+   *
+   * `fetchAwardsByFunder` needs a licence BEFORE it will fetch anything, which
+   * is right when a person is ingesting one named funder: they have read the
+   * publisher's terms and are asserting them. It cannot work when the funder
+   * came off a list of thousands, so this reads the licence off the grants —
+   * `data_license` on the v1 routes — and leaves the caller to refuse the ones
+   * that state none. The refusal stays; only who supplies the licence changes.
+   */
+  async fetchAwardsDiscoveringLicence(funderId: string): Promise<{
+    awards: IngestedAward[];
+    rejected: Array<{ id: string | null; reason: string }>;
+    licence: string | null;
+    licenceName: string | null;
+    funderName: string | null;
+    pagesFetched: number;
+    truncated: boolean;
+  }> {
+    if (funderId.trim() === '') throw new IngestionError('A funder id is required.');
+    const start = new URL(
+      `org/${encodeURIComponent(funderId)}/grants_made/`,
+      this.baseUrl,
+    ).toString();
+    const { rows, pagesFetched, truncated } = await this.walkGrants(start);
+    const { awards, rejected } = normaliseGrants(rows.map((row) => row.raw));
+    // The first row that states one. A publisher's licence is per source file,
+    // so every grant of theirs carries the same; taking the first that has one
+    // tolerates a row where the field is absent.
+    const licensed = rows.find((row) => row.licence !== null);
+    return {
+      awards,
+      rejected,
+      licence: licensed?.licence ?? null,
+      licenceName: licensed?.licenceName ?? null,
+      funderName: rows.find((row) => row.funderName !== null)?.funderName ?? null,
+      pagesFetched,
+      truncated,
+    };
+  }
+
+  /** Follow pagination from one address, reading every row the same way. */
+  private async walkGrants(
+    start: string,
+  ): Promise<{ rows: CorpusGrant[]; pagesFetched: number; truncated: boolean }> {
+    const rows: CorpusGrant[] = [];
     let url: string | null = start;
     let pagesFetched = 0;
     let truncated = false;
@@ -252,116 +328,58 @@ export class ThreeSixtyGivingConnector {
         truncated = true;
         break;
       }
+      // eslint-disable-next-line no-await-in-loop
       const payload: unknown = await this.http.getJson(url);
       const { grants, next } = readPage(payload);
-      collected.push(...grants);
+      for (const entry of grants) {
+        const row = readGrantRow(entry);
+        if (row !== null) rows.push(row);
+      }
       pagesFetched += 1;
       url = next === null ? null : assertSameOrigin(next, this.baseUrl).toString();
     }
 
-    const { awards, rejected } = normaliseGrants(collected);
-    return { awards, rejected, pagesFetched, truncated, dataset };
+    return { rows, pagesFetched, truncated };
   }
 
   /**
-   * Search every grant in the corpus.
+   * One page of every funder 360Giving holds.
    *
-   * ONE page, and that is the design rather than a limitation. This runs while
-   * somebody waits, against a service that allows two requests a second, so
-   * walking pagination would turn a search into a minute of held breath and a
-   * burst of load on an open API run by a charity. A broad alternation plus
-   * local ranking puts the useful rows on the first page; somebody who needs
-   * more narrows the search, which is cheaper for everybody.
-   *
-   * Nothing is stored. The grants are shown with their attribution and a link
-   * to the funder, which is also what keeps this on the right side of the
-   * database right: a page fetched for the person who asked, not a copy of
-   * somebody's dataset.
+   * `org/funder/` — `org_id` and `name`, nothing else, up to 1000 a page and
+   * 100 requests a minute. It is the list that makes a corpus-wide search
+   * possible at all, now that the all-grants search has turned out not to be
+   * public: their published API can give you every grant a NAMED funder made,
+   * so the names have to come from somewhere first.
    */
-  private searchUrl(path: string, pattern: string, limit: number): string {
-    const url = new URL(path, this.baseUrl);
-    url.searchParams.set('search', pattern);
-    url.searchParams.set('limit', String(Math.min(limit, 100)));
-    return url.toString();
-  }
+  async fetchFunderPage(
+    offset = 0,
+    limit = 1000,
+  ): Promise<{ funders: Array<{ orgId: string; name: string }>; total: number | null }> {
+    const url = new URL('org/funder/', this.baseUrl);
+    url.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 1000)));
+    url.searchParams.set('offset', String(Math.max(offset, 0)));
 
-  async searchGrants(pattern: string, limit = 50): Promise<GrantSearchResult> {
-    if (pattern.trim() === '') {
-      // An empty regex matches the whole corpus. Refused here as well as in
-      // the domain, because this is the boundary that would actually make the
-      // request.
-      throw new IngestionError('A search pattern is required.');
-    }
-
-    let payload: unknown;
-    try {
-      payload = await this.http.getJson(this.searchUrl(this.searchPath, pattern, limit));
-    } catch (error) {
-      const missing = error instanceof IngestionError && /returned 404/u.test(error.message);
-      if (!missing) throw error;
-
-      // A 404 here has ONE cause worth naming, and it is not a wrong guess any
-      // more: the route is read from 360Giving's own urls.py, so if it is
-      // missing they have moved or retired it. An earlier version of this
-      // asked the API for an index of its routes and suggested one; that could
-      // never have worked — `/api/` serves an HTML landing page and `/` serves
-      // their web UI, so there is no index to read. Guessing machinery that
-      // cannot succeed is worse than a message that says what to do.
-      throw new IngestionError(
-        `The grant search route "${this.searchPath}" is not there (404). ` +
-          'It is 360Giving\'s experimental all-grants search, and they may have ' +
-          'moved it — the route is settable under Services, without a redeploy. ' +
-          'Their published routes for one named organisation ' +
-          '(org/{id}/grants_made/, org/{id}/grants_received/) are unaffected, so ' +
-          'loading a single funder still works.',
-      );
-    }
-
+    const payload: unknown = await this.http.getJson(url.toString());
     if (typeof payload !== 'object' || payload === null) {
-      throw new IngestionError('The search response was not an object.');
+      throw new IngestionError('The funder list response was not an object.');
     }
     const page = payload as { results?: unknown; count?: unknown };
     if (!Array.isArray(page.results)) {
-      throw new IngestionError(
-        'The search response has no results array. The search route may have moved — it is settable under Services.',
-      );
+      throw new IngestionError('The funder list response has no results array.');
     }
 
-    const grants: CorpusGrant[] = [];
+    const funders: Array<{ orgId: string; name: string }> = [];
     for (const entry of page.results) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const record = entry as {
-        data?: unknown;
-        additional_data?: unknown;
-        funding_org_ids?: unknown;
-        publisher_org_id?: unknown;
-        funders?: unknown;
-        publisher?: unknown;
-      };
-      // The standard record is wrapped in `data`; a response shaped the older
-      // way, with the grant at the top level, is still readable.
-      const raw = (typeof record.data === 'object' && record.data !== null
-        ? record.data
-        : record) as RawGrant;
-      // Denormalised column first, because that is what the corpus search
-      // serialises; the `funders` / `publisher` references are what the
-      // per-organisation endpoints give, and both shapes are read so one
-      // reader serves both.
-      const funderId = firstId(record.funding_org_ids) ?? readOrgRef(record.funders);
-      const licence = readLicence(record.additional_data);
-      grants.push({
-        raw,
-        funderId,
-        funderName: funderNameOf(raw),
-        publisherId: firstId(record.publisher_org_id) ?? readOrgRef(record.publisher),
-        licence: licence.licence,
-        licenceName: licence.name,
-      });
+      const row = entry as { org_id?: unknown; name?: unknown };
+      const orgId = text(row.org_id);
+      if (orgId === null) continue;
+      // A blank name is allowed by their serialiser, and an unnamed funder is
+      // still worth holding: the id is what fetches its grants.
+      funders.push({ orgId, name: text(row.name) ?? orgId });
     }
 
-    return {
-      grants,
-      total: typeof page.count === 'number' ? page.count : null,
-    };
+    return { funders, total: typeof page.count === 'number' ? page.count : null };
   }
+
 }

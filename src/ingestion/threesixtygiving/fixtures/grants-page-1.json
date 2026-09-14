@@ -3,36 +3,148 @@
   "next": "https://api.threesixtygiving.org/api/v1/org/GB-FICTIONAL-001/grants_made/?page=2",
   "results": [
     {
-      "id": "360G-fictional-0001",
-      "title": "Youth environmental skills programme",
-      "description": "Fictional fixture record. Practical skills training for young people.",
-      "currency": "GBP",
-      "amountAwarded": 22000,
-      "awardDate": "2025-04-15",
-      "recipientOrganization": [{ "id": "GB-COH-00000001", "name": "Fictional Youth CIC" }],
-      "fundingOrganization": [{ "id": "GB-FICTIONAL-001", "name": "The Fictional Trust" }],
-      "classifications": [{ "title": "Young people" }, { "title": "Environment" }],
-      "beneficiaryLocation": [{ "name": "Somerset", "countryCode": "GB" }, { "name": "England" }]
+      "grant_id": "360G-fictional-0001",
+      "data": {
+        "id": "360G-fictional-0001",
+        "title": "Youth environmental skills programme",
+        "description": "Fictional fixture record. Practical skills training for young people.",
+        "currency": "GBP",
+        "amountAwarded": 22000,
+        "awardDate": "2025-04-15",
+        "recipientOrganization": [
+          {
+            "id": "GB-COH-00000001",
+            "name": "Fictional Youth CIC"
+          }
+        ],
+        "fundingOrganization": [
+          {
+            "id": "GB-FICTIONAL-001",
+            "name": "The Fictional Trust"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Young people"
+          },
+          {
+            "title": "Environment"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Somerset",
+            "countryCode": "GB"
+          },
+          {
+            "name": "England"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": [
+        {
+          "org_id": "GB-COH-00000001"
+        }
+      ]
     },
     {
-      "id": "360G-fictional-0002",
-      "title": "Community garden",
-      "currency": "GBP",
-      "amountAwarded": 15000,
-      "awardDate": "2025-02-01",
-      "recipientOrganization": [{ "id": "GB-COH-00000002", "name": "Fictional Garden CIC" }],
-      "classifications": [{ "title": "Environment" }],
-      "beneficiaryLocation": [{ "name": "Devon" }, { "name": "England" }]
+      "grant_id": "360G-fictional-0002",
+      "data": {
+        "id": "360G-fictional-0002",
+        "title": "Community garden",
+        "currency": "GBP",
+        "amountAwarded": 15000,
+        "awardDate": "2025-02-01",
+        "recipientOrganization": [
+          {
+            "id": "GB-COH-00000002",
+            "name": "Fictional Garden CIC"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Environment"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Devon"
+          },
+          {
+            "name": "England"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": [
+        {
+          "org_id": "GB-COH-00000002"
+        }
+      ]
     },
     {
-      "id": "360G-fictional-0003",
-      "title": "Holiday activity club",
-      "currency": "GBP",
-      "amountAwarded": 40000,
-      "awardDate": "2024-11-20",
-      "recipientOrganization": [{ "name": "Fictional Play Association" }],
-      "classifications": [{ "title": "Young people" }],
-      "beneficiaryLocation": [{ "name": "Somerset" }, { "name": "England" }]
+      "grant_id": "360G-fictional-0003",
+      "data": {
+        "id": "360G-fictional-0003",
+        "title": "Holiday activity club",
+        "currency": "GBP",
+        "amountAwarded": 40000,
+        "awardDate": "2024-11-20",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Play Association"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Young people"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Somerset"
+          },
+          {
+            "name": "England"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     }
   ]
 }

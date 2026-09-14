@@ -362,11 +362,43 @@ this cheque before", where no source answers "what is open".
       licence for the corpus. The page listed publisher names instead, which
       was empty every time: their organisation refs carry an `org_id` and no
       name
-- [ ] Find a funder by NAME. The API has no text search outside the all-grants
-      route: the organisation lists declare no filter backends at all, so
-      `?search=` is silently ignored and the whole list comes back. Matching
-      has to be local, against a cached list — 100 requests/minute and 1000 a
-      page
+- [x] **Accept that there is no public all-grants search, and hold the corpus
+      instead.** The experimental route 404s on the live host and sits beside
+      `control/trigger-datagetter`, so the non-`v1` tree is internal; their
+      published docs list three endpoints and no search. Their own advice is to
+      store the data locally, so that is what happens now
+- [x] Walk `org/funder/` and load each funder's `grants_made/` into
+      `funder_awards`, in bounded steps — the load cannot be one request, so it
+      is a cursor, a deadline and a scheduler
+- [x] Bound a step by TIME, not a funder count. A count has to be guessed
+      against the slowest publisher in the list; a deadline does as much as the
+      request has room for
+- [x] Keep the licence rule while loading thousands of funders: read each
+      publisher's licence from `data_license` on their own grants, and SKIP and
+      COUNT a funder who states none
+- [x] Bring the local grant search back, matching ANY term across description,
+      title, recipient, region and tags, with trigram indexes where `pg_trgm`
+      is available
+- [x] Fix the per-funder ingest, which had the same shape bug as the search: it
+      handed the API's wrapper to the normaliser and would have rejected every
+      real grant. The fixtures were written from the Data Standard rather than
+      captured, so the tests agreed with it
+- [x] An honest empty state on `/grants`: how much of the record has arrived,
+      never "an operator loads a funder's grants from the console"
+- [x] `npm run e2e` — a browser signs up, an operator loads the corpus from a
+      stub 360Giving, and the applicant's search finds the grant with its
+      amount, recipient and funder. Against the production build and real
+      Postgres
+- [ ] Find a funder by NAME, from a held copy of `org/` — the organisation
+      lists declare no filter backends, so `?search=` is silently ignored and
+      the whole list comes back. 100 requests/minute, 1000 a page
+- [ ] "Organisations like mine": match recipients by name from the same held
+      list, then `grants_received/` to show who funded them
+- [ ] Decide how the corpus stays fresh. A daily cron and a 300s step walk a
+      few hundred funders a day, which is days for the whole list. Vercel's
+      Hobby plan restricts cron frequency, so the schedule is daily to keep the
+      deploy valid — hourly on a paid plan, and the console button drives it
+      faster by hand
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never

@@ -51,8 +51,37 @@ const ROUTES = [
   '/opportunities/add', '/tracker', '/applications', '/documents',
   '/admin', '/admin/sign-in', '/admin/funders', '/admin/catalogue',
   '/admin/accounts', '/admin/admins', '/admin/sandbox', '/admin/settings',
-  '/api/health',
+  '/api/health', '/api/corpus',
 ];
+
+/**
+ * Routes that must REFUSE without a secret.
+ *
+ * `/api/corpus/step` fetches from somebody else's API and writes to the
+ * database. An unauthenticated endpoint that does that is a way to get this
+ * deployment blocked, so "it refuses" is a property worth asserting in a real
+ * build rather than trusting a unit test of the comparison.
+ */
+const MUST_REFUSE = ['/api/corpus/step'];
+
+/**
+ * One route's status, or null if it never answered.
+ *
+ * A route that HANGS is a fault as real as a 500 — and without a bound here
+ * the harness died on an undici headers timeout with a stack trace that named
+ * no route at all, which is a worse report than the fault it was finding.
+ */
+async function statusOf(route) {
+  try {
+    const response = await fetch(`${B}${route}`, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
+    });
+    return response.status;
+  } catch {
+    return null;
+  }
+}
 
 let server;
 if (OWN_SERVER) {
@@ -105,10 +134,28 @@ for (const problem of health.problems ?? []) {
 
 let broken = 0;
 for (const route of ROUTES) {
-  const response = await fetch(`${B}${route}`, { redirect: 'manual' });
-  const bad = response.status >= 500;
+  const status = await statusOf(route);
+  // `/api/health` returns 503 when it has something to report, which is the
+  // endpoint working rather than failing — a local connection string without
+  // sslmode=require trips it every time. Its verdict is asserted on its own
+  // below, from the parsed body; counting its status here as well made the
+  // whole run un-cleanable locally for a reason that was never about the code.
+  const bad = status === null || (status >= 500 && route !== '/api/health');
   if (bad) broken += 1;
-  console.log(`${route.padEnd(22)} ${response.status}${bad ? '  ← SERVER ERROR' : ''}`);
+  console.log(
+    `${route.padEnd(22)} ${status ?? 'TIMEOUT'}${bad ? '  ← SERVER ERROR' : ''}`,
+  );
+}
+for (const route of MUST_REFUSE) {
+  const status = await statusOf(route);
+  // 401 is right and so is 503 with no database; anything that WORKED is not.
+  const open = status !== null && status < 400;
+  if (open || status === null) broken += 1;
+  console.log(
+    `${route.padEnd(22)} ${status ?? 'TIMEOUT'}${
+      open ? '  ← OPEN, MUST REQUIRE A SECRET' : status === null ? '' : '  (refused, correctly)'
+    }`,
+  );
 }
 /* eslint-enable no-await-in-loop */
 

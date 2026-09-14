@@ -17,7 +17,8 @@
     "migrations:generate": "node scripts/generate-migrations.mjs",
     "prebuild": "node scripts/generate-migrations.mjs",
     "accessibility": "node scripts/accessibility.mjs",
-    "smoke": "node scripts/production-smoke.mjs"
+    "smoke": "node scripts/production-smoke.mjs",
+    "e2e": "node scripts/grants-e2e.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

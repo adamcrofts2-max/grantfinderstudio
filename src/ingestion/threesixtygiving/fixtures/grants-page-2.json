@@ -3,57 +3,207 @@
   "next": null,
   "results": [
     {
-      "id": "360G-fictional-0004",
-      "title": "Coastal volunteering",
-      "currency": "GBP",
-      "amountAwarded": 8000,
-      "awardDate": "2024-09-05",
-      "recipientOrganization": [{ "name": "Fictional Coast CIC" }],
-      "classifications": [{ "title": "Environment" }],
-      "beneficiaryLocation": [{ "name": "Gwynedd" }, { "name": "Wales" }]
+      "grant_id": "360G-fictional-0004",
+      "data": {
+        "id": "360G-fictional-0004",
+        "title": "Coastal volunteering",
+        "currency": "GBP",
+        "amountAwarded": 8000,
+        "awardDate": "2024-09-05",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Coast CIC"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Environment"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Gwynedd"
+          },
+          {
+            "name": "Wales"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     },
     {
-      "id": "360G-fictional-0005",
-      "title": "Mentoring scheme",
-      "currency": "GBP",
-      "amountAwarded": 31000,
-      "awardDate": "2025-06-30",
-      "recipientOrganization": [{ "name": "Fictional Mentors CIC" }],
-      "classifications": [{ "title": "Young people" }],
-      "beneficiaryLocation": [{ "name": "Somerset" }, { "name": "England" }]
+      "grant_id": "360G-fictional-0005",
+      "data": {
+        "id": "360G-fictional-0005",
+        "title": "Mentoring scheme",
+        "currency": "GBP",
+        "amountAwarded": 31000,
+        "awardDate": "2025-06-30",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Mentors CIC"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Young people"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Somerset"
+          },
+          {
+            "name": "England"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     },
     {
-      "id": "360G-fictional-0001",
-      "title": "Duplicate of the first record, as overlapping pages produce",
-      "currency": "GBP",
-      "amountAwarded": 22000,
-      "awardDate": "2025-04-15",
-      "recipientOrganization": [{ "name": "Fictional Youth CIC" }],
-      "classifications": [{ "title": "Young people" }],
-      "beneficiaryLocation": [{ "name": "Somerset" }]
+      "grant_id": "360G-fictional-0001",
+      "data": {
+        "id": "360G-fictional-0001",
+        "title": "Duplicate of the first record, as overlapping pages produce",
+        "currency": "GBP",
+        "amountAwarded": 22000,
+        "awardDate": "2025-04-15",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Youth CIC"
+          }
+        ],
+        "classifications": [
+          {
+            "title": "Young people"
+          }
+        ],
+        "beneficiaryLocation": [
+          {
+            "name": "Somerset"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     },
     {
-      "id": "360G-fictional-0006",
-      "title": "Award in another currency",
-      "currency": "EUR",
-      "amountAwarded": 12000,
-      "awardDate": "2025-01-10",
-      "recipientOrganization": [{ "name": "Fictional European Body" }],
-      "classifications": [],
-      "beneficiaryLocation": []
+      "grant_id": "360G-fictional-0006",
+      "data": {
+        "id": "360G-fictional-0006",
+        "title": "Award in another currency",
+        "currency": "EUR",
+        "amountAwarded": 12000,
+        "awardDate": "2025-01-10",
+        "recipientOrganization": [
+          {
+            "name": "Fictional European Body"
+          }
+        ],
+        "classifications": [],
+        "beneficiaryLocation": []
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     },
     {
-      "id": "360G-fictional-0007",
-      "amountAwarded": null,
-      "awardDate": "2025-01-10",
-      "recipientOrganization": [{ "name": "Fictional Missing Amount" }]
+      "grant_id": "360G-fictional-0007",
+      "data": {
+        "id": "360G-fictional-0007",
+        "amountAwarded": null,
+        "awardDate": "2025-01-10",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Missing Amount"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     },
     {
-      "id": "360G-fictional-0008",
-      "currency": "GBP",
-      "amountAwarded": 5000,
-      "awardDate": "not-a-date",
-      "recipientOrganization": [{ "name": "Fictional Bad Date" }]
+      "grant_id": "360G-fictional-0008",
+      "data": {
+        "id": "360G-fictional-0008",
+        "currency": "GBP",
+        "amountAwarded": 5000,
+        "awardDate": "not-a-date",
+        "recipientOrganization": [
+          {
+            "name": "Fictional Bad Date"
+          }
+        ]
+      },
+      "data_license": {
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "name": "Creative Commons Attribution 4.0"
+      },
+      "publisher": {
+        "org_id": "GB-FICTIONAL-001"
+      },
+      "funders": [
+        {
+          "org_id": "GB-FICTIONAL-001"
+        }
+      ],
+      "recipients": []
     }
   ]
 }

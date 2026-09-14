@@ -2300,3 +2300,202 @@ That is now an unchecked roadmap item rather than an assumption.
 See `docs/360GIVING_API.md`, rewritten from their source at `4a57c2e` with
 every route, parameter, rate limit and response shape quoted from a line of
 their code.
+
+---
+
+## The route was not mistyped. It is not public.
+
+`/api/experimental/CurrentLatestGrants` — read from their own `urls.py`, with
+the `api/` prefix and the missing trailing slash both correct — **404s on the
+live host.** That is the third deployment spent on this route.
+
+It is not a typo. It is almost certainly internal:
+
+- It sits in the same module as `control/trigger-datagetter` and
+  `control/abort-datagetter`, which start and stop 360Giving's data pipeline.
+  Nobody exposes those, and the whole non-`v1` tree looks to be behind the same
+  door. `/api/` serves an HTML index that lists the experimental route, which
+  is what somebody sees on the inside.
+- Their **published documentation** describes exactly three data endpoints —
+  Grants Made, Grants Received, Organisation List — and no search. I read their
+  source and believed it over their docs. The source was right about the route
+  existing and the docs were right about what is reachable.
+
+### The mistake worth naming
+
+Reading the source fixed the *path* and left the *premise* untouched. I had
+decided a live all-grants search was the design, and each new fact got fitted
+to it: first a guessed route, then a route-discovery walk, then a corrected
+route. Three rounds of increasingly careful work on a premise that one look at
+their published endpoint list would have refuted.
+
+A 404 that survives a correct fix is not a fix that needs refining. It is a
+premise that needs abandoning.
+
+### What is actually possible
+
+Two facts about their published API, both read from source and both decisive:
+
+1. **No text search anywhere.** `OrganisationListView` and `FunderListView`
+   declare no `filter_backends` at all; the two grant routes declare
+   `DjangoFilterBackend` with no `filterset_fields`. A `?search=` or `?name=`
+   on any of them is silently ignored and the full list comes back.
+2. **Every grant a NAMED funder made**, generously rate-limited — 1000
+   requests a minute, 100 a page.
+
+Together: *the only way to search grants is to hold them.* Which is also
+360Giving's own advice to developers about their bulk data — store it locally
+for your own application — so this is the sanctioned path, not a workaround.
+
+## So the corpus loads itself
+
+`src/ingestion/threesixtygiving/corpus.ts` walks `org/funder/` for the names
+and `org/{id}/grants_made/` for each one's awards, and writes them to
+`funder_awards`. The search is a Postgres query again, instantly, and no route
+can 404 it.
+
+The complaint that moved the search out of the database in the first place was
+right and still stands: an applicant was shown *"no grants have been loaded
+yet. An operator loads a funder's grants from the console"* — the product
+naming somebody else's job as the reason your search was empty. The answer was
+never to stop holding grants. It was to stop making a person load them one at a
+time through an eight-field form.
+
+### Bounded by time, not by a funder count
+
+A step takes a deadline (210s inside a 300s function), not a number of funders.
+A count has to be guessed against the slowest publisher in the list: pick eight
+and most steps finish in two seconds while the one with fifty pages of history
+times out. A deadline does as much as the request has room for and stops
+cleanly. `corpus_load` carries the cursor between steps; a step that dies
+leaves it where it was and the next one redoes that funder, which is safe
+because re-ingesting a funder replaces its awards.
+
+Each funder is written in its own transaction, so a step that runs out of time
+keeps every funder it already finished.
+
+### The licence rule is kept, not relaxed
+
+The per-funder ingest refuses to run without a licence and an attribution,
+supplied by the person doing it. Nobody can supply that for thousands of
+funders — so the loader reads each publisher's licence from `data_license` on
+their own grants, and a funder whose grants state none is **skipped and
+counted**. Refusing unlicensed data is still the rule; only who states the
+licence changed. `funders_unlicensed` is on the console, because a rule that
+silently drops part of the corpus is one nobody can audit.
+
+### A restart does not empty the corpus
+
+`startCorpusLoad` resets the cursor and the counters and deletes nothing. Each
+funder is replaced as the walk reaches them, so the search keeps working
+throughout rather than going blank for a day while it refills.
+
+## The same shape bug was in the per-funder ingest
+
+Worth stating plainly because I told you the opposite: *"loading a single
+funder still works"* was wrong.
+
+`GrantSerializer` wraps the 360Giving record in `data`. The ingest was handing
+the **wrapper** to the normaliser, so every real grant would have been rejected
+as having no id, no currency and no date. It passed its tests because the
+fixtures in `src/ingestion/threesixtygiving/fixtures/` were written from the
+Data **Standard** rather than captured from the API, and carried the grant at
+the top level.
+
+There is now ONE reader — `readGrantRow` — used by the ingest, the loader and
+anything later, handling both shapes and both places a licence can be stated.
+The fixtures carry the real envelope and their README says why.
+
+## Machinery deleted
+
+The route-discovery walk, `assertSameOriginAsBase` which existed only to serve
+it, the `searchGrants` method, the `threesixtygiving.searchPath` setting, and
+the socket tests for all of it. A setting for a route that is not public is
+three deployments of hoping the route was merely mistyped.
+
+## A validation rule that was protecting the wrong thing
+
+`settingProblem` refused a leading slash on a route, on the reasoning that a
+route lives under the base URL. A leading slash cannot change the origin —
+`new URL('/x', base)` keeps the host — so refusing it gave up a legitimate
+route for no safety. What is refused now is `//host/path`, a full address
+wearing a slash, and `..`, which climbs out of the API.
+
+## The search query, and one thing it got wrong
+
+`searchAwards` matches **ANY** term, not all of them. Somebody types "youth
+skills Somerset" and means "anything like this"; a grant described as "young
+people, employment training" in Wells is exactly what they wanted and shares
+not one whole word with the query. Ranking puts the closest first, in
+`domain/grants/query.ts`, where it is testable without a database.
+
+A test I wrote for it failed, correctly: a term of `%` became the pattern `%%%`
+and matched every grant in the corpus. Nothing dangerous can reach it in the
+app — `queryTerms` splits on everything that is not a letter or a digit, a
+whitelist rather than an escape step — but a function is not safe because of
+who calls it today. `escapeLike` now escapes `%`, `_` and `\` at the boundary.
+
+## `npm run e2e` — the check that finally proved it
+
+Fixture tests prove code shape. This drives a **browser** against the
+**production build** and **real Postgres**, with a stub 360Giving on a socket:
+
+```
+  ok — signed up, landed on /onboarding
+  ok — /grants renders on a first visit
+  ok — the corpus is empty, and the page explains why
+  ok — admin landed on /admin
+  ok — the corpus panel is there
+  step result: 2 funders read, 2 grants written, the list is finished.
+  ok — a step ran and reported
+  ok — the grant appears in the search
+  ok — the amount is shown
+  ok — the recipient is shown
+  ok — the funder is named
+  ok — the link through to a fund is there
+  ok — a no-match search says so
+```
+
+A browser rather than `fetch`, because a Next server action's id is
+build-specific and cannot be posted to over raw HTTP — the first attempt at
+this spent its time discovering that. It asserts that the old message ("no
+grants have been loaded yet") never comes back, and it holds whether or not the
+corpus is already loaded, because asserting the empty state unconditionally
+made the check fail on its own success.
+
+Three environment faults it surfaced, all real:
+
+- **Sign-up is refused while any configuration problem stands.** A local
+  `DATABASE_URL` without `sslmode=require` blocks account creation entirely.
+  Correct behaviour; the local Postgres now has SSL on.
+- **A short `ADMIN_CLAIM_SECRET` blocks it too**, for the same reason.
+- **An existing admin removes the claim flow**, so the check cannot sign in and
+  now says exactly that instead of reporting seven mystery failures.
+
+## Two harness defects fixed on the way
+
+- `production-smoke.mjs` left its server running when it failed. One started
+  while the database was down sat at 99% CPU retrying for ever, the next run
+  could not bind, and every route read as a product fault. It clears the port
+  before and after now — with `pkill -f 'next[ ]start'`, because
+  `pkill -f 'next start'` matches the shell running that very pkill and killed
+  the harness instead of the server.
+- It also counted `/api/health` returning 503 as a broken route. A health
+  endpoint reporting a problem is the endpoint working. It asserts the
+  foundation now — database, isolation, migrations — and prints the warnings
+  without failing on them.
+
+## What is still open
+
+- **Freshness.** A daily cron and a 300s step walk a few hundred funders a day,
+  so the whole list takes days. Vercel's Hobby plan restricts cron frequency
+  and a schedule the platform refuses fails the DEPLOY, so `vercel.json` says
+  daily; hourly is safe on a paid plan, and the console button drives it faster
+  by hand. `CRON_SECRET` or `CORPUS_LOAD_SECRET` must be set or the step route
+  refuses everything — deliberately, since an open endpoint that fetches from a
+  charity's API on demand is a way to get this deployment blocked.
+- **Corpus size.** Nobody knows yet how many funders the list holds or how much
+  disk their grants take. The first real run will say, and it may be a database
+  tier decision.
+- **"Organisations like mine"** still wants a held copy of `org/`, which is the
+  same walk against a bigger list.

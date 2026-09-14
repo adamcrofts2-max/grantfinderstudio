@@ -50,31 +50,24 @@ form `GB-CHC-1164883`. Both grant routes resolve linked organisations
 (`org.linked_orgs`) before filtering, so an organisation that publishes under
 several identifiers is handled by them, not by us.
 
-### The all-grants search
+### There is no public all-grants search
 
-```
-/api/experimental/CurrentLatestGrants
-```
+`/api/experimental/CurrentLatestGrants` is in their `urls.py` — with no `v1/`
+and no trailing slash — and it **returns 404 on the live host**. Three
+deployments confirmed it.
 
-**Note the shape of that path** — three details, each of which cost a 404:
+It is almost certainly not meant to be public. It sits in the same module as
+`control/trigger-datagetter` and `control/abort-datagetter`, which start and
+stop their data pipeline and plainly must not be reachable from outside; the
+whole non-`v1` tree looks to be internal. `/api/` serves an HTML index page
+that lists it, which is what a browser sees on the inside.
 
-- It hangs off `api/`, **not** `api/v1/`. It cannot be written relative to the
-  base URL without a `../`.
-- It has **no trailing slash**. Django's `APPEND_SLASH` only ever *adds* one,
-  so `CurrentLatestGrants/` matches no pattern and returns 404.
-- `experimental` is 360Giving's own label. It is not part of the versioned API
-  and carries no compatibility promise.
+Their published documentation agrees, and this is the part to trust: it
+describes exactly three data endpoints — **Grants Made, Grants Received,
+Organisation List** — and no search.
 
-It is nonetheless the only route they publish that searches across *all*
-grants rather than the grants of one named organisation, so the applicant's
-search depends on it. That is why the route is a saved setting: if they move or
-retire it, an operator corrects it under Services without a redeploy.
-
-Parameters: `?search=` is a DRF `SearchFilter` over `search_fields =
-("$data",)`. The `$` prefix means **regex**, applied to the whole grant JSON —
-so an alternation (`youth|skills|somerset`) is a valid and useful query, which
-is what `searchPattern` in `src/domain/grants/query.ts` builds. `?limit=` and
-`?offset=` page it; the default limit is 60.
+So a search across grants is not something to ask this API for. Anything
+built on that route is built on a 404.
 
 ### No text search on anything else
 
@@ -85,6 +78,19 @@ fields; the two grant routes declare `DjangoFilterBackend` but no
 ignored and the full list comes back. Finding a funder by name therefore means
 fetching the organisation list and matching locally, not asking the API to
 match.
+
+## What this means for a product
+
+Put together, the two sections above say: **the only way to search grants is to
+hold them.** There is no route that searches grant text, and no route that
+filters an organisation list by name. What there IS, generously rate-limited,
+is every grant a named funder made.
+
+That is also 360Giving's own advice to developers about their bulk data — store
+it locally for your own application — so it is not a workaround. This product
+therefore walks `org/funder/` for the names and `org/{id}/grants_made/` for the
+grants, writes them to `funder_awards`, and searches that. See
+`src/ingestion/threesixtygiving/corpus.ts`.
 
 ## Response shapes
 
