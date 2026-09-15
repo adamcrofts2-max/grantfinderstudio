@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
  *
  * Open, because none of it is secret and all of it explains an empty search:
  * how many funders have been read, how many grants written, how many skipped
- * for stating no licence, and when it last moved. The step that DOES the work
- * lives at `/api/corpus/step` and needs a secret.
+ * for stating no licence, how many grants fell outside the three-year window,
+ * and when it last moved. The step that DOES the work lives at
+ * `/api/corpus/step`, which needs no secret — the database lease is what stops
+ * it being poked.
  */
 export async function GET(): Promise<Response> {
   const env = readEnvironment();

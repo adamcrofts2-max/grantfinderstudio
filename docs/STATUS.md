@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-15
 
 ## What exists
 
-**1,289 tests (4 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four.
+**1,458 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (59 browser assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3190,3 +3190,193 @@ While checking all this the local Postgres died again — and the running server
 **recovered on its own**, which it could not have done this morning. That is
 the rejected-promise cache fix from earlier in the day, observed working rather
 than merely tested.
+
+## Making the corpus fit a free tier — and being exact about what that buys
+
+The extrapolation above ("will not fit a 0.5 GB tier") was the question to
+answer, so I answered it with a measurement rather than a guess: 20,000
+synthetic-but-realistic grants, real Postgres, `pg_total_relation_size` over
+`funder_awards` and everything it carries.
+
+| configuration | total | bytes a grant |
+|---|---|---|
+| three GIN trigram indexes (as built) | 57 MB | 2,978 |
+| one GIN tsvector index | 33 MB | 1,737 |
+| no text index at all | 31 MB | 1,615 |
+
+**The trigram indexes were 26 MB of the 57 — larger than the grants.**
+Extrapolated to the ~240,000 grants 360Giving publish: ~680 MB as built, ~420
+MB with one index. Both over a 0.5 GB free tier, so two changes, not one.
+
+### 1. One full-text index instead of three trigram indexes (migration 0015)
+
+A `search_vector tsvector` column over title, description, recipient, region
+**and the classification tags**, with a single GIN index, and `buildWhere` now
+emits `search_vector @@ to_tsquery('english', …)`. Because all three callers —
+`searchAwards`, `facetsFor`, `funderSummaries` — share that one builder, the
+list and every facet count changed together and provably still agree.
+
+**Why a trigger and a stored column rather than an expression index.** The
+vector wants the tags in it: a tag ("Young people", "Heritage") is often the
+only place a grant says what it was FOR. Tags are `text[]`, and
+`array_to_string` is marked STABLE, not IMMUTABLE — Postgres refuses it in an
+index expression outright (verified, not assumed). A trigger takes stable
+functions happily, and has the better argument anyway: it cannot be forgotten.
+Computing the vector in `replaceFunderAwards` would have left every other
+writer — the per-funder admin ingest, every fixture in every test — with a
+NULL vector and no matches, and *the tests would have agreed with the code
+because both skipped the same step.* That is this codebase's signature fault
+and I would rather design it out than test for it.
+
+**What changes for somebody searching.** A tsvector matches WORDS, so `somer`
+would no longer find `Somerset` — which people really type, because they are
+halfway through typing. So every term is queried as a prefix, `somer:*`, which
+finds it again *through* the index rather than around it. Stemming then makes
+plurals better than trigrams ever were: `youths` now matches a grant that says
+"youth", which no substring pattern could ever do. The honest loss is the
+middle of a word — `merset` matched before and does not now — and there is a
+test asserting that, so it is a recorded trade rather than a surprise.
+
+### 2. Hold the last three years (`RECENT_YEARS`, migration 0016)
+
+~420 MB still does not fit. Three years is about a quarter of the rows —
+~110 MB — and still leaves almost every active funder above
+`MIN_AWARDS_TO_CHARACTERISE`, which is what the median, the quartiles and the
+range depend on. One year would not.
+
+**This saves storage and NOT fetch time, and the difference is worth stating
+plainly.** I checked their source before assuming either way: neither grant
+route declares any filter fields, so there is no `?since=`. Every grant a
+funder ever published crosses the wire whatever window we keep; the old ones
+are read and dropped here. A test asserts the request carries no date
+parameter, precisely so nobody later reads `discarded: 1` as a saved request.
+
+`awards_discarded` is counted, recorded and shown on the admin panel, for the
+reason 0014 exists: the page cap spent a session computing wrong medians
+because it was silent. A cap still has to exist. What must never happen again
+is that it is invisible.
+
+### Two faults this turned up
+
+**The empty-term guard and the whitelist disagreed.** An existing test — "does
+not treat a percent sign as a wildcard" — failed the moment the predicate
+changed, and it was right to. The three entry points guarded on "any term
+non-blank" while the new predicate dropped anything outside `[\p{L}\p{N}]`. So
+`searchAwards(['%'])` passed the guard, produced no text clause, and
+`buildWhere` fell through to `TRUE`: the entire corpus, returned as a search
+result. Both now go through one `searchable()`, and the test covers all three
+doors rather than one. *A whitelist and a guard that disagree about the empty
+case are a whitelist with a hole in it.*
+
+**The ranking could not see rows the database had matched.** `relevance` scores
+by substring. Once Postgres stemmed, a search for "youths" MATCHED a grant
+saying "youth" and then scored it zero — below rows that matched nothing at
+all. A returned row the ranking cannot see is worse than one never returned,
+because the ordering just looks random. Fixed with one rule about English
+plurals, not a stemmer.
+
+### What proves the index is actually used
+
+`EXPLAIN` with `enable_seqscan = off`, asserting the plan names
+`funder_awards_search_idx`. On a four-row fixture Postgres would never choose
+an index on cost, so the question asked is "can it" — which is the one that
+matters, because the expression in `buildWhere` and the column the trigger
+fills live in different files and could drift apart with every other test still
+green, leaving a quarter of a million grants on a sequential scan per facet
+count.
+
+### And the rows already stored
+
+0016 bounds the INGEST; it says nothing about what is already in the table. The
+sixteen funders walked before this shipped had their whole published history
+stored, back to 2015 — so `/grants` would have printed "From the last 3 years
+of published grants" over a list containing a grant from 2015. That is the same
+fault as a facet count computed from a different WHERE than its list: a screen
+contradicting the data beneath it.
+
+Migration 0017 deletes them. Worth one sentence of justification, because a
+migration that deletes rows deserves it: `funder_awards` is a cache of open
+data, every row came from `org/{id}/grants_made/` and comes back on the next
+walk, and nothing anybody typed is touched. A grant with **no** award date is
+kept — a missing field is not evidence of age, and dropping rows for a reason
+nobody can reconstruct later is how a corpus loses data silently.
+
+It is a one-off tidy, not a maintenance mechanism: rows drift out of the window
+as months pass and are only removed when their funder is next walked. The
+rolling re-read on the roadmap is what keeps it true, and the roadmap now says
+so rather than leaving it implied.
+
+`src/db/corpus-window.test.ts` asserts the interval in the SQL equals
+`RECENT_YEARS`, because a migration cannot import a constant and three places
+holding one number is how they drift.
+
+### One red check that was not this change
+
+`npm run e2e` failed on a 30-second Playwright timeout filling `legalName` —
+an input present in the DOM and invisible, inside a collapsed `<details>`.
+Nothing to do with the corpus; the onboarding block did
+`if (await summary.count()) await summary.click()` and then filled regardless.
+One attempt, matched on the summary's wording, with no check that it worked.
+
+`npm run walk` already had `reachField`, written for exactly this and finding
+the holder from the FIELD rather than from its label — copy changes, structure
+does not. Ported into the e2e and used for the project step too, which had its
+own weaker poll. **The third time this class of race has cost time here**, and
+the second time the fix already existed twenty lines away in another script.
+
+### A third harness fault, and this one was mine to find
+
+The e2e then reported two failures that were not failures: "a page visit did
+not cause the record to fill" and "the self-loaded grant is not searchable".
+Both from one cause — the block polls for 24 seconds, and a visit-triggered
+step is refused while the previous step's lease is still held, which is
+`VISIT_MIN_SECONDS`, **90 seconds**. Running `npm run smoke` against the same
+database first takes that lease. So the lease working correctly read as the
+feature being broken.
+
+Fixed by making the window outlast the lease (two minutes) and by writing down
+what the script needs at the top of it, which it never said: a build on :3000,
+the stub base URL, a claim secret, and a corpus nobody has touched for two
+minutes. *A check whose passing depends on timing it does not state is a check
+that will lie to somebody.*
+
+## And the other half of the question: does anybody wait?
+
+Storage was measured, so speed should be too rather than asserted. 65,008
+synthetic-but-realistic grants, real Postgres, calling **the product's own
+query builders** in the order `searchCorpus` runs them — not hand-written SQL,
+because timing SQL written for the occasion measures that SQL.
+
+| what the search page runs | median |
+|---|---|
+| `searchAwards` — the page of results | 78 ms |
+| `facetsFor` — every chip count | 251 ms |
+| `funderSummaries` — the by-funder view | 139 ms |
+
+About **half a second of database work** for a full search page, on one
+connection, serially — which is deliberate: the list and its counts have to
+come from the same view of the table, and you cannot share a snapshot across
+connections.
+
+Storage, freshly loaded and compacted: **69 MB for 65,008 grants**, of which
+the full-text index is 5.5 MB. The earlier 20,000-row sample had longer
+descriptions and extrapolates to ~110 MB; real 360Giving text is longer than
+either, so treat ~110 MB as the number to plan with. Both fit a 0.5 GB tier
+with room, which was the whole object.
+
+And the end user waits for none of the LOAD: the walk runs in `after()` under
+a lease, so the response has already gone out before a step starts.
+
+### Where the next win is, if one is needed
+
+`facetsFor` is 251 of the 470 ms because it re-evaluates the text predicate
+about ten times — once per facet option — in one round trip. Materialising the
+text-matched set once and applying each dimension's filters over that would cut
+most of it. Not done now: half a second is not a page anybody complains about,
+and the change touches the counts, which this product treats as sacred. It is
+on the roadmap with the measurement attached, so the decision can be re-checked
+rather than re-argued.
+
+`src/db/search-latency.probe.test.ts` is the rig, skipped unless
+`PROBE_DATABASE_URL` is set. It exists so the next person to change the index
+or the window measures instead of guessing.

@@ -80,12 +80,19 @@ export interface RecencyOption {
  * How recently the money was given.
  *
  * Two years is the "still giving" line because a grant programme that has not
- * paid out in two years has usually either closed or changed. Five is there
- * for a CIC in a thin field who would rather see a stale funder than nothing.
+ * paid out in two years has usually either closed or changed. One year is for
+ * somebody who wants only what is live right now.
+ *
+ * Both are INSIDE the corpus window (`RECENT_YEARS`, three years), and that is
+ * the constraint that shapes the list. There used to be a five-year option for
+ * a CIC in a thin field who would rather see a stale funder than nothing; the
+ * corpus no longer holds five years, so the chip would have selected every
+ * grant there is and read as a filter that does nothing. A control whose count
+ * always equals the total teaches people the counts are decoration.
  */
 export const RECENCY: readonly RecencyOption[] = [
+  { id: '1y', label: 'Gave in the last year', years: 1 },
   { id: '2y', label: 'Gave in the last 2 years', years: 2 },
-  { id: '5y', label: 'Gave in the last 5 years', years: 5 },
 ] as const;
 
 export function recencyById(id: string): RecencyOption | null {
@@ -180,7 +187,7 @@ export type Dimension = 'amount' | 'since' | 'place' | 'topic';
  * The same filters with one value toggled.
  *
  * `since` replaces rather than accumulates: "gave in the last 2 years" and
- * "in the last 5" are not two filters, they are one answer, and holding both
+ * "in the last year" are not two filters, they are one answer, and holding both
  * would mean the wider one silently winning.
  */
 export function toggle(

@@ -8,6 +8,7 @@ import { filtersFromParams, filtersToParams, hasFilters } from '@/domain/grants/
 import { rankFunders } from '@/domain/grants/funders';
 import { gbp } from '@/app/components';
 import { nudgeCorpusOnVisit } from '@/app/corpus-autostart';
+import { RECENT_WINDOW_LABEL } from '@/domain/grants/recency';
 
 import { searchCorpus, type CorpusState, type FoundGrant } from './search';
 import { GrantSearchForm } from './GrantSearchForm';
@@ -60,8 +61,8 @@ function CorpusNotice({ corpus }: { corpus: CorpusState }) {
       <span>
         <strong>We are building the grant record now.</strong> 360Giving publish no search
         across all grants — their API answers for one named funder at a time — so we read
-        every funder that publishes and keep their awarded grants here. That started the
-        moment you arrived and continues in the background.
+        every funder that publishes and keep their grants from {RECENT_WINDOW_LABEL} here.
+        That started the moment you arrived and continues in the background.
         {held}
         {through} Come back in a few minutes and there will be more.
       </span>
@@ -279,7 +280,12 @@ export default async function GrantsPage({
               Type what you do and where you are — <em>youth skills Somerset</em>,{' '}
               <em>food bank Leeds</em>, <em>chapel roof</em>. Short, ordinary words work best:
               these are grants as their funders described them, not a catalogue with
-              categories.
+              categories. Half a word is enough — <em>somer</em> finds Somerset.
+            </p>
+            <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+              What is held is every UK funder who publishes to 360Giving, for{' '}
+              {RECENT_WINDOW_LABEL}. Older grants are not here — a funder who last gave in
+              2019 has usually either closed the programme or changed it.
             </p>
           </section>
 
@@ -305,7 +311,7 @@ export default async function GrantsPage({
               ? 'There are no grants here to search yet — the record is still being built, as above.'
               : hasFilters(filters)
                 ? 'Your words match grants, but not once the filters above are applied. Remove one and the counts will show you what is there.'
-                : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement".`}
+                : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`}
           </p>
         </section>
       ) : (
@@ -317,6 +323,11 @@ export default async function GrantsPage({
                 ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
                 : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}
             {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}
+            {/* Said on the results themselves, not only on the empty state. A
+                funder who last gave in 2019 is simply absent here, and there
+                is nothing on a list of results to tell you that a silence
+                means "outside the window" rather than "never funded this". */}
+            {` From ${RECENT_WINDOW_LABEL} of published grants.`}
           </p>
 
           <div className="views" role="tablist" aria-label="How to group these results">

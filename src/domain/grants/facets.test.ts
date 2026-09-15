@@ -108,7 +108,7 @@ describe('reading filters off the URL', () => {
   it('round-trips through the query string', () => {
     const filters = filtersFromParams({
       amount: '5k-25k',
-      since: '5y',
+      since: '2y',
       place: 'Devon',
       topic: 'Heritage',
     });
@@ -133,12 +133,13 @@ describe('toggling', () => {
   });
 
   it('replaces rather than accumulates for recency', () => {
-    // "Gave in the last 2 years" and "in the last 5" are not two filters, they
-    // are one answer. Holding both would mean the wider one silently winning.
+    // "Gave in the last 2 years" and "in the last year" are not two filters,
+    // they are one answer. Holding both would mean the wider one silently
+    // winning.
     const first = toggle(NO_FILTERS, 'since', '2y');
-    const second = toggle(first, 'since', '5y');
-    expect(second.since).toBe('5y');
-    expect(toggle(second, 'since', '5y').since).toBeNull();
+    const second = toggle(first, 'since', '1y');
+    expect(second.since).toBe('1y');
+    expect(toggle(second, 'since', '1y').since).toBeNull();
   });
 
   it('counts the choices in force', () => {

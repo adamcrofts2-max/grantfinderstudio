@@ -84,6 +84,27 @@ export interface RankContext {
 }
 
 /**
+ * Whether a term appears, allowing for the plural.
+ *
+ * `includes` alone is asymmetric, and the asymmetry began to matter when the
+ * database search became full-text (migration 0015). Postgres stems, so a
+ * search for "youths" now MATCHES a grant that says "youth" — and then this
+ * function scored that grant zero and sorted it below rows that matched
+ * nothing at all, because "youth" does not contain "youths". A row the query
+ * returned and the ranking cannot see is worse than a row that was never
+ * returned: it looks like the ordering is random.
+ *
+ * Trailing "s" both ways covers it. The other direction is already free —
+ * a haystack of "youths" contains "youth". This is not a stemmer and is not
+ * trying to be one; it closes the one gap that English plurals actually open,
+ * and it can be read in a line.
+ */
+function matches(haystack: string, term: string): boolean {
+  if (haystack.includes(term)) return true;
+  return term.endsWith('s') && term.length > 3 && haystack.includes(term.slice(0, -1));
+}
+
+/**
  * How well one grant answers the search, 0 upwards.
  *
  * Deliberately a small integer built from countable things rather than a
@@ -99,7 +120,7 @@ export function relevance(grant: Rankable, context: RankContext): number {
 
   let score = 0;
   for (const term of context.terms) {
-    if (haystack.includes(term)) score += 2;
+    if (matches(haystack, term)) score += 2;
   }
 
   const region = context.region?.trim().toLowerCase();

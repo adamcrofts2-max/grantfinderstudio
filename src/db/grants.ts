@@ -104,13 +104,70 @@ function toAward(row: Row): AwardResult {
  *
  * `%` and `_` are wildcards and `\\` escapes them, so a term carrying one
  * changes what the query means: a single `%` becomes `%%%`, which matches
- * every grant in the corpus. In the app nothing dangerous can get here —
- * `queryTerms` splits on everything that is not a letter or a digit, which is
- * a whitelist rather than an escape step — but a function is not safe because
- * of who calls it today. Escaped here so this one is safe for any caller.
+ * every grant in the corpus. What reaches this now is the `place` filter,
+ * which is a place NAME and so cannot be whitelisted to letters and digits the
+ * way a search term is — "Stoke-on-Trent" and "King's Lynn" are real answers.
+ * Hyphens and apostrophes are harmless in a LIKE pattern; the three
+ * characters that are not are escaped here.
  */
 function escapeLike(term: string): string {
   return term.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+}
+
+/**
+ * The terms as one `to_tsquery` argument, or null when none survive.
+ *
+ * ## Why full text rather than ILIKE
+ *
+ * The search used to be `ILIKE '%term%'` over four columns, held up by three
+ * GIN trigram indexes. Those indexes measured 26 MB per 20,000 grants — more
+ * than the grants themselves — and at the corpus's full size they were the
+ * difference between fitting a free database tier and not. Migration 0015
+ * replaced them with one tsvector index, maintained by a trigger, covering
+ * title, description, recipient, region AND the classification tags.
+ *
+ * ## Why every term gets `:*`
+ *
+ * A tsvector matches words, so `somer` would no longer find `Somerset` —
+ * which is a thing people really type, because they are halfway through
+ * typing. `somer:*` is a prefix match and finds it again, using the index
+ * rather than defeating it. What is lost against trigrams is matching the
+ * MIDDLE of a word (`merset`), which nobody searches for. What is gained is
+ * stemming: `youth` and `youths` are now one word instead of two patterns.
+ *
+ * ## Why this is safe
+ *
+ * `&`, `|`, `!`, `(` and `<->` are tsquery OPERATORS, so a term carrying one
+ * would change what the query means — or, more likely, make `to_tsquery`
+ * raise a syntax error and turn a typo into a 500. `queryTerms` already
+ * whitelists to `[\p{L}\p{N}]+`, but a function is not safe because of who
+ * calls it today: anything outside the whitelist is dropped here too.
+ *
+ * Joined with `|` — ANY of the terms — for the reason set out in
+ * `domain/grants/query.ts`: somebody typing "youth skills Somerset" means
+ * "anything like this", and requiring every word returns nothing and looks
+ * like an empty corpus. Ranking is what puts the closest first.
+ */
+/**
+ * The terms that can actually be searched for.
+ *
+ * Separate from `tsqueryFor` because EVERY entry point has to agree on when
+ * there is nothing to search for, and the definition has to be this one. It
+ * was not, for a moment: the guards asked whether any term was non-blank while
+ * the predicate asked whether any term survived the whitelist, so a search for
+ * `%` passed the guard, produced no text clause, and `buildWhere` fell through
+ * to TRUE — the entire corpus, returned as a search result. A whitelist and a
+ * guard that disagree about the empty case are a whitelist with a hole in it.
+ */
+function searchable(terms: readonly string[]): string[] {
+  return terms
+    .map((term) => term.replaceAll(/[^\p{L}\p{N}]/gu, ''))
+    .filter((term) => term !== '');
+}
+
+function tsqueryFor(terms: readonly string[]): string | null {
+  const lexemes = searchable(terms).map((term) => `${term}:*`);
+  return lexemes.length === 0 ? null : lexemes.join(' | ');
 }
 
 /**
@@ -125,8 +182,8 @@ function escapeLike(term: string): string {
  *
  * The terms arrive already tokenised by `queryTerms`, which splits on anything
  * that is not a letter or a digit — so nothing that reaches `$1` can carry a
- * wildcard, a quote or a backslash. That is a whitelist, not an escape step,
- * and it is why the array can go straight into an ILIKE ANY.
+ * tsquery operator, a wildcard or a quote. `tsqueryFor` applies the same
+ * whitelist again rather than trusting that.
  *
  * `LIMIT` is not paging politeness: the corpus can carry hundreds of thousands
  * of awards, and a screen that tried to render them all would take the request
@@ -155,16 +212,12 @@ function buildWhere(
     return `$${startAt + values.length}`;
   };
 
-  const patterns = terms.filter((t) => t.trim() !== '').map((t) => `%${escapeLike(t)}%`);
-  if (patterns.length > 0) {
-    const p = bind(patterns);
-    clauses.push(
-      `(a.recipient_name ILIKE ANY (${p})
-        OR a.title ILIKE ANY (${p})
-        OR a.description ILIKE ANY (${p})
-        OR a.region ILIKE ANY (${p})
-        OR EXISTS (SELECT 1 FROM unnest(a.tags) AS t WHERE t ILIKE ANY (${p})))`,
-    );
+  // One indexed column covers what four ILIKEs and an unnest used to: the
+  // trigger in 0015 keeps `search_vector` over title, description, recipient,
+  // region and tags together.
+  const tsquery = tsqueryFor(terms);
+  if (tsquery !== null) {
+    clauses.push(`a.search_vector @@ to_tsquery('english', ${bind(tsquery)})`);
   }
 
   const bands = filters.bands
@@ -213,7 +266,7 @@ export async function searchAwards(
   filters: GrantFilters = NO_FILTERS,
   limit = 120,
 ): Promise<{ awards: AwardResult[]; capped: boolean }> {
-  if (terms.filter((t) => t.trim() !== '').length === 0) {
+  if (searchable(terms).length === 0) {
     return { awards: [], capped: false };
   }
 
@@ -275,7 +328,7 @@ export async function facetsFor(
   terms: readonly string[],
   filters: GrantFilters,
 ): Promise<Facets> {
-  if (terms.filter((t) => t.trim() !== '').length === 0) {
+  if (searchable(terms).length === 0) {
     return { amount: [], since: [], place: [], topic: [], total: 0 };
   }
 
@@ -445,7 +498,7 @@ export async function funderSummaries(
   filters: GrantFilters,
   options: { region?: string | null; limit?: number } = {},
 ): Promise<FunderSummary[]> {
-  if (terms.filter((t) => t.trim() !== '').length === 0) return [];
+  if (searchable(terms).length === 0) return [];
 
   const limit = options.limit ?? FUNDER_LIMIT;
   const region = options.region?.trim() ?? '';

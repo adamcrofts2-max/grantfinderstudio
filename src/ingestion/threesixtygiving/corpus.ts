@@ -25,6 +25,19 @@
  * leaves the cursor where it was and the next step redoes that funder — which
  * is safe, because re-ingesting a funder replaces its awards.
  *
+ * ## Only the last three years are kept
+ *
+ * `RECENT_YEARS`. 360Giving publish about a quarter of a million grants, which
+ * measured at roughly 420 MB held locally — larger than any free managed
+ * Postgres tier. Three years is about a quarter of the rows and still leaves
+ * almost every active funder with enough awards to characterise.
+ *
+ * This saves STORAGE and NOT fetch time, and the difference matters. Their API
+ * declares no filter fields on either grant route, so there is no `?since=`:
+ * every grant a funder ever published is downloaded either way, read, and the
+ * old ones dropped here. Anybody reading this looking for a speed-up should
+ * look at step chaining instead.
+ *
  * ## The licence rule is not relaxed
  *
  * The per-funder ingest refuses to run without a licence and an attribution,
@@ -50,6 +63,7 @@ import {
   type CorpusProgress,
 } from '../../db/corpus.js';
 import type { Queryable } from '../../db/client.js';
+import { RECENT_YEARS, keepRecent } from '../../domain/grants/recency.js';
 
 export interface CorpusStepOptions {
   /**
@@ -89,6 +103,13 @@ export interface CorpusStepOptions {
   now?: () => Date;
   /** Injectable clock for the deadline, so a test need not wait for one. */
   elapsed?: () => number;
+  /**
+   * Years of grant history to keep. Defaults to `RECENT_YEARS`.
+   *
+   * Settable only so a test can state the window it is testing rather than
+   * computing dates three years back from whenever it runs.
+   */
+  recentYears?: number;
 }
 
 export interface CorpusStepResult {
@@ -99,6 +120,8 @@ export interface CorpusStepResult {
   unlicensed: number;
   /** Funders whose record we know is incomplete. Never silent. */
   truncated: number;
+  /** Grants fetched and dropped for falling outside the window. Never silent. */
+  discarded: number;
   finished: boolean;
   error: string | null;
 }
@@ -129,6 +152,7 @@ export async function advanceCorpus(
   const maxFunders = Math.max(options.maxFunders ?? DEFAULT_MAX_FUNDERS, 1);
   const pageSize = Math.max(options.pageSize ?? DEFAULT_PAGE_SIZE, 1);
   const now = options.now ?? (() => new Date());
+  const recentYears = Math.max(options.recentYears ?? RECENT_YEARS, 1);
   const startedAt = Date.now();
   const elapsed = options.elapsed ?? (() => Date.now() - startedAt);
 
@@ -146,6 +170,7 @@ export async function advanceCorpus(
   let awardsWritten = 0;
   let unlicensed = 0;
   let truncated = 0;
+  let discarded = 0;
   let walked = 0;
   let lastOrgId: string | null = null;
   let error: string | null = null;
@@ -160,6 +185,7 @@ export async function advanceCorpus(
         awardsWritten,
         fundersUnlicensed: unlicensed,
         fundersTruncated: truncated,
+        awardsDiscarded: discarded,
         lastOrgId,
         finished,
         error,
@@ -171,6 +197,7 @@ export async function advanceCorpus(
       awardsWritten,
       unlicensed,
       truncated,
+      discarded,
       finished,
       error,
     };
@@ -232,6 +259,13 @@ export async function advanceCorpus(
           retrievedAt: now().toISOString(),
         };
 
+        // The window is applied HERE rather than in the connector, because the
+        // connector's job is to report faithfully what a publisher published —
+        // including `truncated`, which is about their record and not our
+        // policy. What we choose to keep is this module's decision.
+        const recent = keepRecent(fetched.awards, now(), recentYears);
+        discarded += recent.discarded;
+
         const funderId = funderIdFor360Giving(funder.orgId);
         // eslint-disable-next-line no-await-in-loop
         awardsWritten += await runInTransaction(async (tx) => {
@@ -245,7 +279,7 @@ export async function advanceCorpus(
             jurisdiction: null,
             sourceDatasetId: dataset.id,
           });
-          return replaceFunderAwards(tx, funderId, fetched.awards, dataset.id);
+          return replaceFunderAwards(tx, funderId, recent.kept, dataset.id);
         });
       } catch (caught) {
         // One publisher's bad data must not stop the corpus. Recorded, and the

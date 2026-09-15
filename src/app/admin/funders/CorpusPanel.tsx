@@ -5,6 +5,7 @@ import { useActionState } from 'react';
 import { startCorpusAction, stepCorpusAction } from './corpus-actions';
 import { EMPTY_CORPUS } from './corpus-state';
 import type { CorpusProgress } from '@/db/corpus';
+import { RECENT_WINDOW_LABEL } from '@/domain/grants/recency';
 
 const count = (n: number): string => n.toLocaleString('en-GB');
 
@@ -46,6 +47,13 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
         stored.
       </p>
       <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+        <strong>We keep {RECENT_WINDOW_LABEL}.</strong> All of it would be around 420 MB,
+        which is more than a free database tier holds; three years is about a quarter of the
+        rows and still leaves almost every active funder with enough grants to characterise.
+        Their API has no date filter, so the older grants are still fetched and read — they
+        are just not kept, and the count below says how many.
+      </p>
+      <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
         <strong>This runs itself.</strong> Somebody opening the grant search starts it and
         advances it, and a scheduled job carries on when nobody is about. Nothing below needs
         pressing for the product to work.
@@ -76,6 +84,16 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
           <dd>
             {count(progress.fundersTruncated)}
             {progress.fundersTruncated === 0 ? '' : ' — more grants than we fetch per funder'}
+          </dd>
+        </div>
+        <div>
+          {/* The window is a deliberate cut, so it is measured like one. The
+              page cap taught this: a corpus quietly missing part of itself is
+              a corpus whose medians nobody can check. */}
+          <dt>Older than {RECENT_WINDOW_LABEL}</dt>
+          <dd>
+            {count(progress.awardsDiscarded)}
+            {progress.awardsDiscarded === 0 ? '' : ' fetched, read, not kept'}
           </dd>
         </div>
         <div>

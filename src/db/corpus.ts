@@ -17,6 +17,13 @@ export interface CorpusProgress {
   fundersUnlicensed: number;
   /** Funders whose record we KNOW is incomplete, because the page cap stopped us. */
   fundersTruncated: number;
+  /**
+   * Grants fetched and not kept, because they fall outside the corpus window
+   * (`RECENT_YEARS`). Counted for the same reason as `fundersTruncated`: the
+   * corpus is deliberately partial, and a partial corpus nobody can measure is
+   * one whose figures nobody can check.
+   */
+  awardsDiscarded: number;
   startedAt: string | null;
   updatedAt: string | null;
   finishedAt: string | null;
@@ -33,6 +40,7 @@ const EMPTY: CorpusProgress = {
   awardsWritten: 0,
   fundersUnlicensed: 0,
   fundersTruncated: 0,
+  awardsDiscarded: 0,
   startedAt: null,
   updatedAt: null,
   finishedAt: null,
@@ -47,6 +55,7 @@ interface Row {
   awards_written: number;
   funders_unlicensed: number;
   funders_truncated: number;
+  awards_discarded: number;
   started_at: string | null;
   updated_at: string | null;
   finished_at: string | null;
@@ -57,8 +66,8 @@ interface Row {
 export async function readCorpusProgress(tx: Queryable): Promise<CorpusProgress> {
   const { rows } = await tx.query<Row>(
     `SELECT cursor, funders_total, funders_done, awards_written, funders_unlicensed,
-            funders_truncated, started_at::text, updated_at::text, finished_at::text,
-            last_error, last_org_id
+            funders_truncated, awards_discarded, started_at::text,
+            updated_at::text, finished_at::text, last_error, last_org_id
        FROM corpus_load WHERE id = $1`,
     [ID],
   );
@@ -71,6 +80,7 @@ export async function readCorpusProgress(tx: Queryable): Promise<CorpusProgress>
     awardsWritten: row.awards_written,
     fundersUnlicensed: row.funders_unlicensed,
     fundersTruncated: row.funders_truncated,
+    awardsDiscarded: row.awards_discarded,
     startedAt: row.started_at,
     updatedAt: row.updated_at,
     finishedAt: row.finished_at,
@@ -96,12 +106,14 @@ export async function startCorpusLoad(tx: Queryable): Promise<void> {
   await tx.query(
     `INSERT INTO corpus_load
        (id, cursor, funders_total, funders_done, awards_written, funders_unlicensed,
-        funders_truncated, started_at, updated_at, finished_at, last_error, last_org_id)
-     VALUES ($1, 0, NULL, 0, 0, 0, 0, now(), NULL, NULL, NULL, NULL)
+        funders_truncated, awards_discarded, started_at, updated_at, finished_at,
+        last_error, last_org_id)
+     VALUES ($1, 0, NULL, 0, 0, 0, 0, 0, now(), NULL, NULL, NULL, NULL)
      ON CONFLICT (id) DO UPDATE SET
        cursor = 0, funders_total = NULL, funders_done = 0, awards_written = 0,
-       funders_unlicensed = 0, funders_truncated = 0, started_at = now(),
-       updated_at = NULL, finished_at = NULL, last_error = NULL, last_org_id = NULL`,
+       funders_unlicensed = 0, funders_truncated = 0, awards_discarded = 0,
+       started_at = now(), updated_at = NULL, finished_at = NULL,
+       last_error = NULL, last_org_id = NULL`,
     [ID],
   );
 }
@@ -113,6 +125,7 @@ export interface CorpusStep {
   awardsWritten: number;
   fundersUnlicensed: number;
   fundersTruncated: number;
+  awardsDiscarded: number;
   lastOrgId: string | null;
   finished: boolean;
   /** Null clears a previous failure; a string records this one. */
@@ -129,9 +142,10 @@ export async function recordCorpusStep(tx: Queryable, step: CorpusStep): Promise
        awards_written = awards_written + $5,
        funders_unlicensed = funders_unlicensed + $6,
        funders_truncated = funders_truncated + $7,
-       last_org_id = COALESCE($8, last_org_id),
-       finished_at = CASE WHEN $9 THEN now() ELSE NULL END,
-       last_error = $10,
+       awards_discarded = awards_discarded + $8,
+       last_org_id = COALESCE($9, last_org_id),
+       finished_at = CASE WHEN $10 THEN now() ELSE NULL END,
+       last_error = $11,
        updated_at = now()
      WHERE id = $1`,
     [
@@ -142,6 +156,7 @@ export async function recordCorpusStep(tx: Queryable, step: CorpusStep): Promise
       step.awardsWritten,
       step.fundersUnlicensed,
       step.fundersTruncated,
+      step.awardsDiscarded,
       step.lastOrgId,
       step.finished,
       step.error,
@@ -195,7 +210,9 @@ export async function claimCorpusStep(
  * Because the number nobody can guess is the one that decides which database
  * tier this needs — and estimating it from a row count was going to be wrong.
  * The first real run put 10,935 grants in from 16 of 355 funders; extrapolated
- * that is a quarter of a million rows, and three trigram indexes are not free.
+ * that is a quarter of a million rows. That measurement is what cut the text
+ * index from three (trigram, 0013) to one (tsvector, 0015) and put a
+ * three-year window on the ingest — so it stays here to be re-read.
  *
  * Null rather than an error when the function is unavailable: this is a
  * diagnostic, and a managed host that withholds `pg_total_relation_size`

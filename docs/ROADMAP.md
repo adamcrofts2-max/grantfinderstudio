@@ -378,7 +378,8 @@ this cheque before", where no source answers "what is open".
       COUNT a funder who states none
 - [x] Bring the local grant search back, matching ANY term across description,
       title, recipient, region and tags, with trigram indexes where `pg_trgm`
-      is available
+      is available (the trigram half superseded by full text in 0015 — see
+      below)
 - [x] Fix the per-funder ingest, which had the same shape bug as the search: it
       handed the API's wrapper to the normaliser and would have rejected every
       real grant. The fixtures were written from the Data Standard rather than
@@ -418,9 +419,41 @@ this cheque before", where no source answers "what is open".
 - [x] Report the corpus SIZE, with indexes, on `/api/corpus`. The number that
       decides the database tier was never going to be estimated from a row
       count
-- [ ] Watch the size as the walk completes. 355 funders at ~683 grants each is
+- [x] Watch the size as the walk completes. 355 funders at ~683 grants each is
       about 240,000 rows with three GIN indexes, which will not fit a 0.5 GB
-      tier — decide the tier before it becomes a surprise
+      tier — decide the tier before it becomes a surprise. **Measured on 20,000
+      real rows: 57 MB with the trigram indexes, 33 MB with one tsvector index,
+      31 MB with none.** Answered by the two items below rather than by paying
+      for a tier
+- [x] **One full-text index instead of three trigram indexes** (migration
+      0015). The trigram indexes were 26 MB per 20,000 grants — larger than the
+      grants. A `search_vector tsvector` column over title, description,
+      recipient, region and the classification tags, filled by a trigger so no
+      writer can forget it, and every term queried as a prefix (`somer:*`) so
+      half a word still finds Somerset. Stemming makes plurals better than
+      trigrams ever were; what is lost is matching the middle of a word
+- [x] **Hold the last three years, and count what that drops** (`RECENT_YEARS`,
+      migration 0016). ~240,000 rows was ~420 MB even with one index, which no
+      free tier holds; three years is about a quarter of the rows and still
+      leaves almost every active funder characterisable. Saves STORAGE and NOT
+      fetch time — their API declares no date filter, so the old grants are
+      fetched, read and dropped. `awards_discarded` is on the record and on the
+      admin panel, because the page cap taught what an uncounted cap costs
+- [x] Delete what was stored before the window existed (migration 0017), so
+      the page's "from the last 3 years" is not printed over a grant from 2015.
+      Derived, re-fetchable open data only — and a grant with no award date is
+      kept, because a missing field is not evidence of age
+- [x] Measure the SEARCH, not just the storage: at 65,008 grants a full search
+      page is ~470 ms of database work (`searchAwards` 78 ms, `facetsFor` 251,
+      `funderSummaries` 139), and the compacted corpus is 69 MB. Rig kept as
+      `search-latency.probe.test.ts`, skipped unless pointed at a database
+- [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
+      the text predicate about ten times, one per facet option, which is 251 of
+      the 470 ms. Not urgent — half a second is not a page anybody complains
+      about — and it touches the counts, so it needs its own careful pass
+- [x] Recency chips narrowed to 1 and 2 years, both inside the window. A
+      five-year chip would have selected the whole corpus and read as a filter
+      that does nothing, which teaches people the counts are decoration
 - [ ] Re-fetch the funders whose records were cut short, once the first pass is
       done, so their figures stop being wrong
 - [ ] Decide how fresh is fresh enough. Visits advance the record whenever
@@ -429,7 +462,10 @@ this cheque before", where no source answers "what is open".
       are. Revisit once the first real pass reports a total
 - [ ] Re-read funders already loaded, on a rolling basis, so a grant added by a
       publisher this month is found. Today a finished walk stays finished until
-      somebody restarts it
+      somebody restarts it. This is also what keeps the three-year window TRUE
+      over time: 0017 tidied what was stored before the window existed, but
+      rows drift out of it as months pass and are only removed when their
+      funder is next walked
 - [x] **Narrow the results, with counted chips derived from the results.** Not
       checkboxes over a fixed taxonomy: the topics are each publisher's own
       free text, so a curated list would invent categories the data does not

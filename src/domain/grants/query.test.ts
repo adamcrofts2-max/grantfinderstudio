@@ -103,3 +103,43 @@ describe('ranking what comes back', () => {
     expect(page.map((g) => g.title)).toEqual(['A', 'skills']);
   });
 });
+
+describe('ranking a row the database matched by its stem', () => {
+  /**
+   * The database search is full text now (migration 0015), so Postgres stems:
+   * a search for "youths" MATCHES a grant that says "youth". The ranking is a
+   * plain substring check, and a plain substring check scored that row zero —
+   * below rows that matched nothing at all. A row the query returned and the
+   * ranking cannot see is worse than one that was never returned, because it
+   * makes the ordering look random.
+   */
+  const grant = {
+    title: 'Youth skills programme',
+    description: 'Practical training for young people',
+    recipientName: 'Wells Youth Collective',
+    region: 'Somerset',
+    amountGbp: 12_000,
+  };
+
+  const score = (terms: string[]): number =>
+    relevance(grant, { terms, region: null, amountSoughtGbp: null });
+
+  it('scores the plural term against the singular text', () => {
+    expect(score(['youths'])).toBe(score(['youth']));
+  });
+
+  it('already scored the singular term against plural text', () => {
+    // Free, and always was: "skills" contains "skill".
+    expect(score(['skill'])).toBe(2);
+  });
+
+  it('does not match a different word that merely ends in s', () => {
+    // "was" must not be read as "wa", nor "its" as "it" — hence the length
+    // floor. This is one rule about English plurals, not a stemmer.
+    expect(score(['ass'])).toBe(0);
+  });
+
+  it('still scores an unrelated term zero', () => {
+    expect(score(['heritages'])).toBe(0);
+  });
+});

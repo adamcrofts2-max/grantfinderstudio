@@ -110,6 +110,136 @@ describe('searching what is held', () => {
     // asserts the boundary holds even if something bypasses the tokeniser.
     expect((await searchAwards(tx(), ['%'])).awards).toEqual([]);
   });
+
+  it('returns nothing from ANY entry point for a term of pure punctuation', async () => {
+    // The same case, at all three doors, because getting it right at one is
+    // how it went wrong: the guard asked whether a term was non-blank and the
+    // predicate asked whether one survived the whitelist, so `%` passed the
+    // guard, produced no text clause, and the WHERE fell through to TRUE —
+    // every grant in the corpus, presented as a result.
+    const junk = ['%', '&', '!', '(', ':*'];
+    expect((await searchAwards(tx(), junk)).awards).toEqual([]);
+    expect((await facetsFor(tx(), junk, NO_FILTERS)).total).toBe(0);
+    expect(await funderSummaries(tx(), junk, NO_FILTERS)).toEqual([]);
+  });
+
+  it('cannot be made to raise by a tsquery operator', async () => {
+    // `&`, `|`, `!` and `<->` are tsquery syntax. Passed through they would
+    // not match anything — they would make `to_tsquery` raise, which turns a
+    // typed character into a 500 on the search page.
+    await expect(searchAwards(tx(), ['youth & !', 'somerset | (devon'])).resolves.toBeTruthy();
+  });
+});
+
+describe('matching words rather than substrings', () => {
+  /**
+   * Migration 0015 moved the search from three GIN trigram indexes to one
+   * tsvector index, because the trigram indexes were larger than the grants
+   * they indexed and the corpus has to fit a free database tier. That changes
+   * WHAT MATCHES, so the new behaviour is pinned here rather than left to be
+   * discovered by somebody searching.
+   */
+  it('finds the plural from the singular', async () => {
+    const { awards } = await searchAwards(tx(), ['parcel']);
+    expect(ids(awards)).toEqual(['aw_2']);
+  });
+
+  it('finds the singular from the plural, which trigrams never did', async () => {
+    // "Practical training for young people" — a search for "youths" used to
+    // match nothing at all, because no substring of the row is "youths".
+    // Stemming makes them one word.
+    const { awards } = await searchAwards(tx(), ['youths']);
+    expect(ids(awards)).toContain('aw_1');
+  });
+
+  it('finds a word from its prefix, because people type half a word', async () => {
+    // This is what `:*` in `tsqueryFor` is for. Without it "somer" would find
+    // nothing, and somebody mid-word would watch the results empty out.
+    expect(ids((await searchAwards(tx(), ['somer'])).awards)).toEqual(['aw_1']);
+    expect(ids((await searchAwards(tx(), ['yorks'])).awards)).toEqual(['aw_2']);
+  });
+
+  it('searches the classification tags, which are often the only "what for"', async () => {
+    // "Heritage" appears in no title, description, recipient or region on
+    // aw_3 — only in its tag. The tag is in the indexed vector because
+    // `array_to_string` is STABLE and so cannot be used in an index
+    // expression, which is why 0015 maintains a column with a trigger.
+    expect(ids((await searchAwards(tx(), ['heritage'])).awards)).toEqual(['aw_3']);
+  });
+
+  it('no longer matches the middle of a word, and that is the trade', async () => {
+    // `merset` matched Somerset under trigrams. It does not now. Written down
+    // as an expectation rather than left as a surprise: the loss is real, it
+    // is not how anybody searches, and it bought the corpus its storage.
+    expect((await searchAwards(tx(), ['merset'])).awards).toEqual([]);
+  });
+
+  it('keeps the counts and the list on exactly the same predicate', async () => {
+    // The whole reason `buildWhere` exists. A facet total that came from a
+    // different WHERE than the list is a lie with a number on it — and the
+    // text clause is the part that just changed.
+    const terms = ['youths', 'somer'];
+    const { awards } = await searchAwards(tx(), terms);
+    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    expect(facets.total).toBe(awards.length);
+  });
+});
+
+describe('the index the search is built on', () => {
+  /**
+   * Proves the predicate can actually USE the index — not merely that both
+   * exist. The expression in `buildWhere` and the column the trigger fills
+   * are in different files and could drift apart with every test still
+   * passing, leaving a corpus of a quarter of a million grants on a
+   * sequential scan per facet count.
+   *
+   * `enable_seqscan = off` is what makes this testable on a four-row fixture:
+   * Postgres would never choose an index here on cost, so the question asked
+   * is "CAN it", which is the question that matters.
+   */
+  it('is used by the search, not scanned past', async () => {
+    await harness.db.exec('SET enable_seqscan = off;');
+    try {
+      const { rows } = await harness.db.query<{ 'QUERY PLAN': string }>(
+        `EXPLAIN SELECT count(*) FROM funder_awards a
+          WHERE a.search_vector @@ to_tsquery('english', 'youth:*')`,
+      );
+      const plan = rows.map((row) => row['QUERY PLAN']).join('\n');
+      expect(plan).toContain('funder_awards_search_idx');
+    } finally {
+      await harness.db.exec('SET enable_seqscan = on;');
+    }
+  });
+
+  it('fills the vector for a row written by anything at all', async () => {
+    // The argument for a trigger over computing this in `replaceFunderAwards`:
+    // this row was inserted by a test with plain SQL, exactly as the admin
+    // per-funder ingest and every fixture does it. A vector computed in one
+    // writer would leave all of them unsearchable, and the tests would have
+    // agreed with the code because both skipped the same step.
+    const { rows } = await harness.db.query<{ v: string | null }>(
+      `SELECT search_vector::text AS v FROM funder_awards WHERE id = 'aw_1'`,
+    );
+    expect(rows[0]?.v).toContain('youth');
+  });
+
+  it('keeps the vector current when a row is updated', async () => {
+    await harness.db.exec(
+      `UPDATE funder_awards SET description = 'Allotment beds and a polytunnel'
+        WHERE id = 'aw_3'`,
+    );
+    expect(ids((await searchAwards(tx(), ['polytunnel'])).awards)).toEqual(['aw_3']);
+  });
+
+  it('holds no trigram indexes any more', async () => {
+    // 26 MB per 20,000 grants, which at the corpus's full size was the
+    // difference between fitting a free database tier and not.
+    const { rows } = await harness.db.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+        WHERE tablename = 'funder_awards' AND indexname LIKE '%trgm'`,
+    );
+    expect(rows).toEqual([]);
+  });
 });
 
 describe('a screen nobody has typed into', () => {

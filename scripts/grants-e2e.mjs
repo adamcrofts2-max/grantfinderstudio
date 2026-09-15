@@ -7,6 +7,18 @@
  * "the code is shaped right" and "the running product agrees" — and a Next
  * server action cannot be posted to over raw HTTP, because its id is
  * build-specific. So: a browser.
+ *
+ * ## What it needs
+ *
+ * A production build served on :3000, `THREESIXTYGIVING_BASE_URL` pointing at
+ * this script's own stub (`http://127.0.0.1:4599/api/v1/`),
+ * `ADMIN_CLAIM_SECRET` set, and **a database whose corpus has not been
+ * touched in the last two minutes**. The first block asserts that a page visit
+ * alone fills the record, and a visit-triggered step is refused while the
+ * lease from the previous one is still held — so an earlier run, or
+ * `npm run smoke` against the same database, will make this report a fault
+ * that is not there. Clear `admin_accounts`, `admin_sessions` and `corpus_load`
+ * between runs.
  */
 import { createServer } from 'node:http';
 import { existsSync, readdirSync } from 'node:fs';
@@ -34,10 +46,47 @@ function chromiumPath() {
   return undefined;
 }
 
+/**
+ * Get to a form field, opening whatever is holding it shut.
+ *
+ * Ported from `npm run walk`, which needed exactly this and for exactly the
+ * same reason. Onboarding's steps are `<details>` cards, so a field is in the
+ * DOM and unclickable until its `<summary>` is opened — and which step is open
+ * depends on how far setup has got, which a server action decides AFTER the
+ * page that triggered it has rendered.
+ *
+ * This ran as `if (await summary.count()) await summary.click()` and then
+ * filled the field regardless: a single attempt, matched on the summary's
+ * wording, with no check that it worked. It stopped working and the failure
+ * was a 30-second Playwright timeout on a visible-looking input, which says
+ * nothing about why. Finding the holder from the FIELD rather than from its
+ * label is the part that makes it durable — copy changes, structure does not.
+ */
+async function reachField(page, name, { reload = `${B}/onboarding`, tries = 12 } = {}) {
+  const field = page.locator(`[name="${name}"]`).first();
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    if ((await field.count()) > 0) {
+      if (await field.isVisible()) return true;
+      const holder = page
+        .locator('details', { has: page.locator(`[name="${name}"]`) })
+        .locator('summary')
+        .first();
+      if ((await holder.count()) > 0) {
+        await holder.click();
+        if (await field.isVisible()) return true;
+      }
+    }
+    if (reload === null) return false;
+    await page.waitForTimeout(1000);
+    await page.goto(reload, { waitUntil: 'networkidle' });
+  }
+  return false;
+}
+
 const B = 'http://127.0.0.1:3000';
 const API_PORT = 4599;
 
-const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2', 'GB-CHC-STUB-3'];
+const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2', 'GB-CHC-STUB-3', 'GB-CHC-STUB-4'];
 
 /**
  * A spread of sizes, places and labels, so the filters have something to bite
@@ -48,7 +97,10 @@ const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2', 'GB-CHC-STUB-3'];
 const SHAPES = {
   'GB-CHC-STUB-1': { amount: 17500, place: 'Somerset', topic: 'Young people', year: '2025' },
   'GB-CHC-STUB-2': { amount: 3200, place: 'Devon', topic: 'Children and young people', year: '2025' },
-  'GB-CHC-STUB-3': { amount: 240000, place: 'Somerset', topic: 'Heritage', year: '2019' },
+  'GB-CHC-STUB-3': { amount: 240000, place: 'Somerset', topic: 'Heritage', year: '2024' },
+  // Outside the three-year window. Their API has no date filter, so this IS
+  // fetched and read; it must then be dropped and counted rather than stored.
+  'GB-CHC-STUB-4': { amount: 9000, place: 'Somerset', topic: 'Young people', year: '2019' },
 };
 const grant = (id, org) => ({
   grant_id: id,
@@ -69,7 +121,12 @@ const grant = (id, org) => ({
 });
 
 /** How many grants each stub funder published, so grouping has something to group. */
-const GRANTS_PER_FUNDER = { 'GB-CHC-STUB-1': 6, 'GB-CHC-STUB-2': 1, 'GB-CHC-STUB-3': 1 };
+const GRANTS_PER_FUNDER = {
+  'GB-CHC-STUB-1': 6,
+  'GB-CHC-STUB-2': 1,
+  'GB-CHC-STUB-3': 1,
+  'GB-CHC-STUB-4': 1,
+};
 
 const api = createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -156,15 +213,23 @@ try {
   // `after()` runs the step once the response is out, so give it a moment and
   // then read the progress endpoint — which is the only honest way to see that
   // a page view really did cause work.
+  //
+  // The window has to be LONGER THAN THE LEASE. A visit-triggered step is
+  // refused if one ran in the last `VISIT_MIN_SECONDS` (90), which is the
+  // whole point of the lease — and this loop waited 24 seconds, so anything
+  // that had touched the corpus in the previous minute and a half made it
+  // report "a page visit did not cause the record to fill" when the product
+  // was working exactly as designed. Running `npm run smoke` against the same
+  // database first does precisely that.
   let progressed = false;
-  for (let attempt = 0; attempt < 12 && !progressed; attempt += 1) {
+  for (let attempt = 0; attempt < 60 && !progressed; attempt += 1) {
     await page.waitForTimeout(2000);
     const body = await (await fetch(`${B}/api/corpus`)).json();
     progressed = Boolean(body.progress?.startedAt) && body.progress.fundersDone > 0;
     if (!progressed) await page.goto(`${B}/grants`, { waitUntil: 'networkidle' });
   }
   if (progressed) ok('a page visit alone started and advanced the record');
-  else fail('a page visit did not cause the record to fill');
+  else fail('a page visit did not cause the record to fill in two minutes');
 
   // --- and searching finds what the visit loaded ---------------------------
   //
@@ -225,6 +290,15 @@ try {
     console.log('  step result:', (after.match(/\d+ funders? read[^.]*\./) ?? ['(none)'])[0]);
     if (/funders? read/.test(after)) ok('a step ran and reported');
     else fail('the step reported nothing');
+
+    // The three-year window, on the record rather than in a comment. STUB-4
+    // published one grant, in 2019, and their API offers no way to not fetch
+    // it — so the panel has to say it was fetched, read and not kept.
+    if (/Older than the last 3 years/i.test(after)) ok('the panel names the window');
+    else fail('the panel does not name the three-year window');
+    if (/Older than the last 3 years[^0-9]*[1-9]/i.test(after)) {
+      ok('the discarded grant is counted, not silent');
+    } else fail('a grant outside the window was dropped without being counted');
   }
 
   // --- one grant, read as a grant ------------------------------------------
@@ -245,6 +319,13 @@ try {
   else ok('the funder is named');
   if (!/Add a fund from them/.test(loaded)) fail('no link through to adding a fund');
   else ok('the link through to a fund is there');
+  // £9,000 is STUB-4's 2019 grant. It matched every word of the search and is
+  // absent because of the window, which is the only way to tell a dropped
+  // grant from one that was never published.
+  if (/£9,000/.test(loaded)) fail('a grant older than the window is in the search');
+  else ok('grants older than the window are not searchable');
+  if (!/last 3 years/i.test(loaded)) fail('the search never says how far back it holds');
+  else ok('the search says how far back it holds');
 
   // --- by funder, which is the unit of the decision -------------------------
   //
@@ -427,8 +508,9 @@ try {
   // Everything below needs an organisation, and until now this check never
   // made one — so the screens a SET-UP applicant sees were untested.
   await page.goto(`${B}/onboarding`, { waitUntil: 'networkidle' });
-  const own = page.locator('summary', { hasText: /Enter your details yourself|Can.t find it/iu }).first();
-  if (await own.count()) await own.click();
+  if (!(await reachField(page, 'legalName'))) {
+    fail('could not reach the self-declared profile form');
+  }
   await page.fill('input[name="legalName"]', 'Rivermead Community Interest Company');
   await page.selectOption('select[name="legalForm"]', { index: 1 });
   await page.selectOption('select[name="jurisdiction"]', { index: 1 });
@@ -447,12 +529,9 @@ try {
    * project form collapsed inside a <details> — present in the DOM and
    * unclickable. The third time this class of race has cost time here.
    */
-  let projectReady = false;
-  for (let attempt = 0; attempt < 12 && !projectReady; attempt += 1) {
-    await page.waitForTimeout(1000);
-    await page.goto(`${B}/onboarding`, { waitUntil: 'networkidle' });
-    projectReady = await page.locator('input[name="projectName"]').first().isVisible();
-  }
+  // Same helper: the project step is a collapsed <details> until the profile
+  // has saved, and polling for visibility alone never opened it.
+  const projectReady = await reachField(page, 'projectName');
   if (!projectReady) {
     fail('onboarding did not move on to the project after the profile was saved');
   } else {

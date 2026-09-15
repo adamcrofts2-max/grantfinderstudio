@@ -84,6 +84,13 @@ interface FakeOptions {
   unlicensed?: string[];
   /** Funders whose grant fetch throws. */
   broken?: string[];
+  /**
+   * Funders who publish one recent grant and one from a decade ago.
+   *
+   * Which is what almost every real publisher looks like: their whole history
+   * is on the API, because the API has no date filter to ask otherwise.
+   */
+  stale?: string[];
   /** Report a `count`, or null to leave it out and force an empty page. */
   total?: number | null;
 }
@@ -115,6 +122,12 @@ function fakeApi(options: FakeOptions): { http: HttpClient; asked: string[] } {
         const row = options.unlicensed?.includes(orgId)
           ? grantRow(`${orgId}-1`, orgId, { data_license: null })
           : grantRow(`${orgId}-1`, orgId);
+        if (options.stale?.includes(orgId)) {
+          const recent = grantRow(`${orgId}-new`, orgId);
+          const old = grantRow(`${orgId}-old`, orgId);
+          old.data.awardDate = '2015-05-01';
+          return { count: 2, next: null, results: [recent, old] };
+        }
         if (options.enormous?.includes(orgId)) {
           // A `next` that never runs out, which is what a publisher with tens
           // of thousands of grants looks like from here.
@@ -367,6 +380,65 @@ describe('the lease that lets this run itself', () => {
 
     await runInTransaction((tx) => startCorpusLoad(tx));
     expect(await runInTransaction((tx) => claimCorpusStep(tx, 0))).toBe(true);
+  });
+});
+
+describe('the three-year window', () => {
+  /**
+   * The corpus holds `RECENT_YEARS`, because all of 360Giving measured at
+   * roughly 420 MB and no free database tier is that big. The window is a
+   * storage decision, and these tests pin the two things that make it honest:
+   * what is dropped is dropped, and what is dropped is COUNTED.
+   */
+  it('keeps the recent grant and drops the decade-old one', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-OLD'], stale: ['GB-CHC-OLD'] });
+
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.awardsWritten).toBe(1);
+    expect(result.discarded).toBe(1);
+    expect((await loaded()).awards).toBe(1);
+  });
+
+  it('records what it discarded, so a partial corpus can be audited', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-OLD'], stale: ['GB-CHC-OLD'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    const progress = await runInTransaction((tx) => readCorpusProgress(tx));
+    expect(progress.awardsDiscarded).toBe(1);
+  });
+
+  it('fetched the old grant anyway, because their API has no date filter', async () => {
+    // The point of this test is that the window is NOT a speed-up and must
+    // never be described as one. `org/{id}/grants_made/` declares no filter
+    // fields, so every grant a funder ever published crosses the wire
+    // whatever we keep. Someone reading `discarded: 1` should not conclude
+    // that one request was saved.
+    const { http, asked } = fakeApi({ funders: ['GB-CHC-OLD'], stale: ['GB-CHC-OLD'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    const grantAsks = asked.filter((url) => url.includes('/grants_made/'));
+    expect(grantAsks).toHaveLength(1);
+    expect(grantAsks[0]).not.toMatch(/since|date|after/iu);
+  });
+
+  it('keeps everything when the window is opened wide', async () => {
+    // Proves the drop is the window's doing and not the fixture's — the same
+    // two grants, one setting changed.
+    const { http } = fakeApi({ funders: ['GB-CHC-OLD'], stale: ['GB-CHC-OLD'] });
+    const result = await advanceCorpus(http, runInTransaction, {
+      baseUrl: BASE,
+      recentYears: 50,
+    });
+
+    expect(result.awardsWritten).toBe(2);
+    expect(result.discarded).toBe(0);
+  });
+
+  it('counts nothing discarded when every grant is inside the window', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-1', 'GB-CHC-2'] });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+    expect(result.discarded).toBe(0);
   });
 });
 
