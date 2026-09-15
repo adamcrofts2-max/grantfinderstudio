@@ -2652,3 +2652,103 @@ No console, no button and no environment variable is touched before those
 first four. It also fails if any of the three superseded messages comes back:
 "no grants have been loaded yet", "has not been started here", or "start it
 under Funders".
+
+---
+
+## Filtering, and why not checkboxes
+
+> "Is there a better way to filter them? Through checkboxes? Or something
+> else?"
+
+Checkboxes over a fixed list of topics cannot work on this data, and the reason
+is in the data rather than in the taste.
+
+A grant's `tags` are its publisher's own `classifications[].title` — free text,
+chosen independently by two hundred-odd publishers. "Young people", "Youth",
+"Children & young people" and "Children and Young People" are four labels for
+one idea and all four are in the corpus. `region` is the same: a county from
+one publisher, a city from the next, a ward from the third. A fixed checkbox
+list over that is unusable, and a curated taxonomy on top of it would be us
+inventing categories the data does not have and then quietly mis-filing grants
+into them.
+
+### What was built instead
+
+**Options derived from the results in front of you, each carrying a count.** You
+are shown the handful of topics that actually occur in your results, not the
+four hundred that might; and because every option says how many grants it would
+leave, you can never tick one and get nothing. A filter without a count is a
+trap — you tap it, you get nothing, and all you learn is that you wasted a tap.
+
+**Counted as "what would I get if I picked this."** Each dimension is counted
+with the OTHER dimensions still applied and its own released
+(`without(filters, dimension)`). Counting with its own applied would show every
+unpicked option as zero and make a live screen look like a dead end one tap
+from being useful. This is the property the whole feature turns on, and it has
+a test named after it.
+
+**Dimensions phrased as the decisions a CIC is making**, not as the attributes
+a row happens to have:
+
+| | Why |
+| --- | --- |
+| Size of grant | The strongest signal there is. Somebody needing £15,000 is not helped by £2m capital grants, however well the words match. |
+| Still giving | A funder whose last published grant was in 2018 is not a prospect. |
+| Where the money went | Most UK grant-making is geographically restricted, so it is often the difference between eligible and not. |
+| What it was for | Last, because it is the least reliable field of the four. |
+
+Plus one seeded from their own profile: **"About what we need"**, half to double
+their stated ask, as a single tap. Nobody assembles that correctly by hand from
+a list of bands.
+
+**Bands, not a slider.** Grant sizes are log-scaled — £1k to £2m in one corpus
+— so a linear slider spends nine tenths of its travel on the last tenth of the
+data and offers a precision ("£17,400") that means nothing. Bands are how
+funders themselves talk about size. The bands are asserted to cover every
+amount with no gap and no overlap, because a grant in two bands makes every
+count wrong and a grant in none makes it unreachable, and both are silent.
+
+### Chips as LINKS, which is the technical point as well as the visual one
+
+Each chip is an `<a>`, not a checkbox. A checkbox needs either a submit button
+or client-side JavaScript; a link needs neither. One tap narrows, the URL
+carries the state, the back button undoes it, a narrowed search can be sent to
+a colleague as it stands, and the page filters with no client JS at all. On a
+phone a wrapping row of chips also beats a sidebar that has nowhere to live.
+
+### Two things the screenshots showed
+
+Worth recording because neither was visible in a test:
+
+- **The panel pushed every result below the fold.** Four rows of chips is most
+  of a 390px screen, so somebody who had just searched saw filters instead of
+  grants. It is folded away now and opens itself whenever a filter is active,
+  with the active count always in the summary — so a filter can never be on
+  without being visible. The e2e asserts both states, and asserts no sideways
+  scroll at 390px.
+- **The licence footer repeated itself**: "Stub Trust 1, published to the
+  360Giving Data Standard; Stub Trust 2, published to the …" — it was listing
+  `attribution`, one line per publisher, growing with the result set. It names
+  the distinct **licences** now, which is the part a reader has to act on.
+
+### One query, not one per chip
+
+`facetsFor` is a single round trip: five `WITH` clauses of pure aggregates,
+unioned. Nothing but counts crosses the wire even when a search matches a
+hundred thousand grants. Critically, the page's WHERE and every facet's WHERE
+come from the same `buildWhere` — a count that came from a different predicate
+than the list is a lie with a number on it.
+
+## The dev server no longer clobbers the production build
+
+This bit twice, and cost about an hour each time. `next dev` and `next build`
+both write `.next`, so starting the dev server after a build leaves a half-dev
+tree that `next start` then serves — which showed up as a React hydration error
+(#418) on a page with nothing wrong with it, unreproducible the moment anything
+was rebuilt.
+
+`next.config.mjs` now takes `distDir` from `NEXT_DIST_DIR`, and `npm run dev`
+sets it to `.next-dev`. The two cannot collide.
+
+It is already written in this file that running dev after build clobbers
+`.next`. Knowing it was not enough; the configuration is.

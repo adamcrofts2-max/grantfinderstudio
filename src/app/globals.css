@@ -422,6 +422,104 @@ a:hover { color: var(--accent-hover); }
 .link-quiet:hover { color: var(--ink); }
 .link-quiet:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* ---------- Narrowing results ---------------------------------------------
+   Chips rather than checkboxes, and each one is a LINK. No submit button, no
+   client-side state, the back button undoes a filter, and a narrowed search
+   can be sent to somebody as a URL. On a phone a wrapping row also beats a
+   sidebar that has nowhere to go.
+   -------------------------------------------------------------------------- */
+
+.narrow {
+  margin-top: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+/* Folded away by default: four rows of chips is most of a phone screen, and
+   opened it pushed every result below the fold. It opens itself whenever a
+   filter is active, and the summary always says how many are on. */
+.narrow-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
+  padding: var(--s-4);
+  cursor: pointer;
+  font-size: var(--t-sm); font-weight: 650;
+  list-style: none;
+}
+.narrow-summary::-webkit-details-marker { display: none; }
+.narrow-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--r-lg); }
+
+.narrow-body {
+  display: grid; gap: var(--s-4);
+  padding: 0 var(--s-4) var(--s-4);
+}
+
+/* The label follows the state in CSS, for the reason the paste panel does:
+   a details element is toggled by the browser without telling React, so a
+   label rendered from a prop reads "Open" on an open panel for ever after. */
+.narrow-summary .chev { color: var(--accent); font-size: var(--t-sm); font-weight: 600; }
+.narrow-summary .chev-toggle::after { content: 'Open'; }
+details[open] > .narrow-summary .chev-toggle::after { content: 'Close'; }
+
+.narrow-row { display: grid; gap: var(--s-2); }
+
+.narrow-label {
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.narrow-hint {
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Wraps at every width. The chips are the one thing on the page allowed to
+   run to several lines on a phone, because a horizontal scroller hides
+   options and a truncated list is worse than a tall one. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  /* 44px of tappable height at the default font size — a chip that needs aim
+     is worse than no chip. */
+  min-height: 2.25rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 550;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.chip:hover { border-color: var(--ink-soft); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.chip-on {
+  background: var(--accent-bg);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.chip-on:hover { border-color: var(--accent); }
+
+/* The count is the point of the chip: it says what you would get. Quiet
+   enough not to compete with the label, present enough to read at a glance. */
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-xs);
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+.chip-on .chip-count { color: var(--accent); }
+
+.narrow-clear { margin: 0; }
+
 /* ---------- Status ------------------------------------------------------- */
 
 .badge {

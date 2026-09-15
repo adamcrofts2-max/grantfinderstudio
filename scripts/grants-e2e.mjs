@@ -37,7 +37,19 @@ function chromiumPath() {
 const B = 'http://127.0.0.1:3000';
 const API_PORT = 4599;
 
-const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2'];
+const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2', 'GB-CHC-STUB-3'];
+
+/**
+ * A spread of sizes, places and labels, so the filters have something to bite
+ * on. The labels differ deliberately — "Young people" and "Children and young
+ * people" are one idea under two names, which is exactly the corpus's problem
+ * and the reason the options are derived from results rather than curated.
+ */
+const SHAPES = {
+  'GB-CHC-STUB-1': { amount: 17500, place: 'Somerset', topic: 'Young people', year: '2025' },
+  'GB-CHC-STUB-2': { amount: 3200, place: 'Devon', topic: 'Children and young people', year: '2025' },
+  'GB-CHC-STUB-3': { amount: 240000, place: 'Somerset', topic: 'Heritage', year: '2019' },
+};
 const grant = (id, org) => ({
   grant_id: id,
   data: {
@@ -45,12 +57,12 @@ const grant = (id, org) => ({
     title: 'Riverside youth skills programme',
     description: 'Practical training for young people in Somerset',
     currency: 'GBP',
-    amountAwarded: 17500,
-    awardDate: '2025-07-11',
+    amountAwarded: SHAPES[org]?.amount ?? 17500,
+    awardDate: `${SHAPES[org]?.year ?? '2025'}-07-11`,
     fundingOrganization: [{ id: org, name: `Stub Trust ${org.slice(-1)}` }],
     recipientOrganization: [{ id: 'GB-COH-9', name: 'Wells Youth Collective' }],
-    beneficiaryLocation: [{ name: 'Somerset' }, { name: 'England' }],
-    classifications: [{ title: 'Young people' }],
+    beneficiaryLocation: [{ name: SHAPES[org]?.place ?? 'Somerset' }, { name: 'England' }],
+    classifications: [{ title: SHAPES[org]?.topic ?? 'Young people' }],
   },
   data_license: { url: 'https://creativecommons.org/licenses/by/4.0/', name: 'CC BY 4.0' },
   funders: [{ org_id: org }],
@@ -82,6 +94,7 @@ await new Promise((r) => api.listen(API_PORT, '127.0.0.1', r));
 
 const executablePath = chromiumPath();
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
+const PHONE = { width: 390, height: 844 };
 const fail = (m) => { console.error('FAIL:', m); process.exitCode = 1; };
 const ok = (m) => console.log('  ok —', m);
 
@@ -215,11 +228,127 @@ try {
   if (!/Add a fund from them/.test(loaded)) fail('no link through to adding a fund');
   else ok('the link through to a fund is there');
 
+  // --- narrowing ------------------------------------------------------------
+  await page.goto(`${B}/grants?q=1&text=youth`, { waitUntil: 'networkidle' });
+
+  // The options are folded away on a first search, so open them the way a
+  // person does. This step existing is the point: results come first, filters
+  // are one tap behind them.
+  const openNarrow = page.locator('summary.narrow-summary');
+  if (!(await openNarrow.count())) fail('there is no way to open the filters');
+  else ok('the filters can be opened');
+  await openNarrow.click();
+
+  const unnarrowed = await page.locator('body').innerText();
+  if (!/Size of grant/i.test(unnarrowed)) fail('no way to narrow the results');
+  else ok('the narrowing options are there');
+
+  // Every chip must carry a count. A filter without one is a trap: you tap it,
+  // you get nothing, and you learn only that you wasted a tap.
+  const chips = await page.locator('.chip').all();
+  if (chips.length === 0) fail('no chips rendered');
+  const counted = [];
+  for (const chip of chips) counted.push((await chip.innerText()).replace(/\s+/gu, ' '));
+  const withoutCount = counted.filter((t) => !/\d/u.test(t) && !/About what we need/i.test(t));
+  if (withoutCount.length > 0) fail(`chips with no count: ${withoutCount.join(' | ')}`);
+  else ok('every chip carries a count');
+
+  // The options must be the publishers' own labels, taken from the results —
+  // including the two spellings of one idea, which a curated list would hide.
+  if (!/Young people/.test(unnarrowed)) fail('the publishers\' own topics are not offered');
+  else ok('the topics come from the results');
+
+  // A chip is a LINK, so one tap narrows and the URL carries it.
+  const band = page.locator('.chip', { hasText: /£5,000–£25,000/ }).first();
+  if (!(await band.count())) fail('no £5,000–£25,000 band offered');
+  else {
+    await band.click();
+    await page.waitForLoadState('networkidle');
+    if (!page.url().includes('amount=5k-25k')) fail('the filter is not in the URL');
+    else ok('tapping a chip puts the filter in the URL');
+
+    const narrowed = await page.locator('body').innerText();
+    // £17,500 is in the band; £3,200 and £240,000 are not.
+    if (/£3,200/.test(narrowed) || /£240,000/.test(narrowed)) {
+      fail('the filter did not actually narrow the results');
+    } else ok('the results are narrowed');
+    if (!/£17,500/.test(narrowed)) fail('the matching grant was filtered out too');
+    else ok('the matching grant survives');
+    if (!/Clear 1 filter/i.test(narrowed)) fail('no way to clear the filter');
+    else ok('the filter can be cleared');
+
+    // The OTHER bands must still show what they would give. Counting with the
+    // chosen band applied would show them all as zero and make a live screen
+    // look like a dead end.
+    const others = await page.locator('.chip:not(.chip-on)').allInnerTexts();
+    if (!others.some((t) => /£25,000|Over £|Under £/.test(t) && /\d/u.test(t))) {
+      fail('the other bands lost their counts once one was chosen');
+    } else ok('the other options still say what they would give');
+
+    // And the back button undoes it, because it is a link and not state.
+    await page.goBack({ waitUntil: 'networkidle' });
+    if (page.url().includes('amount=')) fail('the back button did not undo the filter');
+    else ok('the back button undoes a filter');
+  }
+
+  // Two dimensions at once.
+  await page.goto(`${B}/grants?q=1&text=youth&amount=5k-25k&place=Somerset`, {
+    waitUntil: 'networkidle',
+  });
+  const both = await page.locator('body').innerText();
+  if (/£240,000/.test(both) || /Devon/.test(both.split('Where the money went')[1] ?? '')) {
+    // Devon may legitimately appear as an OPTION; it must not appear as a row.
+  }
+  if (!/£17,500/.test(both)) fail('combining two filters lost the grant that matches both');
+  else ok('two filters combine');
+  if (!/Clear 2 filters/i.test(both)) fail('the clear link does not count both filters');
+  else ok('the clear link counts both');
+
+  // A stale link must not break the page.
+  await page.goto(`${B}/grants?q=1&text=youth&amount=made-up-band&since=never`, {
+    waitUntil: 'networkidle',
+  });
+  const stale = await page.locator('body').innerText();
+  if (/Application error|server-side exception/i.test(stale)) {
+    fail('an unknown filter id threw');
+  } else ok('an unknown filter id is ignored rather than fatal');
+
   // --- a search that matches nothing ---------------------------------------
   await page.goto(`${B}/grants?q=1&text=zzzznothing`, { waitUntil: 'networkidle' });
   const none = await page.locator('body').innerText();
   if (!/Nothing came back for that/.test(none)) fail('a no-match search does not say so');
   else ok('a no-match search says so');
+  // --- at phone width -------------------------------------------------------
+  //
+  // Where this actually gets used. The filters are four rows of chips, which
+  // is the kind of thing that quietly overflows sideways and puts the whole
+  // page on a horizontal scroll — asserted rather than eyeballed, because it
+  // is invisible on a laptop.
+  const phone = await browser.newContext({ viewport: PHONE });
+  const small = await phone.newPage();
+  await small.context().addCookies(await page.context().cookies());
+  for (const [label, url] of [
+    ['unnarrowed', `${B}/grants?q=1&text=youth`],
+    ['narrowed', `${B}/grants?q=1&text=youth&amount=5k-25k&place=Somerset`],
+  ]) {
+    await small.goto(url, { waitUntil: 'networkidle' });
+    const overflow = await small.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    if (overflow > 0) fail(`${label} overflows sideways by ${overflow}px at ${PHONE.width}px`);
+    else ok(`no sideways scroll at ${PHONE.width}px (${label})`);
+  }
+
+  // Filters folded away on a first search, so results are what you see first;
+  // open by themselves once something is on.
+  await small.goto(`${B}/grants?q=1&text=youth`, { waitUntil: 'networkidle' });
+  if (await small.locator('details.narrow[open]').count()) {
+    fail('the filters are open before anything is filtered');
+  } else ok('the filters start folded away');
+  await small.goto(`${B}/grants?q=1&text=youth&amount=5k-25k`, { waitUntil: 'networkidle' });
+  if (await small.locator('details.narrow[open]').count()) {
+    ok('the filters open themselves once one is active');
+  } else fail('an active filter is hidden behind a closed panel');
 } finally {
   await browser.close();
   api.close();

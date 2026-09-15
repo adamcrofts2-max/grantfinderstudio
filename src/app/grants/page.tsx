@@ -4,11 +4,13 @@ import { getDatabase } from '@/db';
 import { requireSession } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import { queryTerms, rankGrants } from '@/domain/grants/query';
+import { filtersFromParams, hasFilters } from '@/domain/grants/facets';
 import { gbp } from '@/app/components';
 import { nudgeCorpusOnVisit } from '@/app/corpus-autostart';
 
 import { searchCorpus, type CorpusState, type FoundGrant } from './search';
 import { GrantSearchForm } from './GrantSearchForm';
+import { Narrow } from './Narrow';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,7 +155,8 @@ export default async function GrantsPage({
   const suggested = [...groups, region].filter((part): part is string => Boolean(part)).join(' ');
   const text = asked ? str(params['text']) : suggested;
 
-  const result = await searchCorpus(text);
+  const filters = filtersFromParams(params);
+  const result = await searchCorpus(text, filters);
 
   /**
    * Arriving here is what fills the record.
@@ -173,9 +176,18 @@ export default async function GrantsPage({
       ? rankGrants(result.grants, { terms, region, amountSoughtGbp: ask })
       : [];
 
+  /**
+   * Distinct LICENCES, not attributions.
+   *
+   * The first version listed `attribution`, which is one line per publisher —
+   * so the footer read "Stub Trust 1, published to the 360Giving Data
+   * Standard; Stub Trust 2, published to the 360Giving Data Standard; …" and
+   * grew with the result set. The licence is the part a reader has to act on,
+   * and there are only a handful of them.
+   */
   const licences =
     result.state === 'ok'
-      ? [...new Set(ranked.map((g) => g.attribution).filter((a): a is string => a !== null))]
+      ? [...new Set(ranked.map((g) => g.licence).filter((l): l is string => l !== null))].toSorted()
       : [];
 
   return (
@@ -193,6 +205,15 @@ export default async function GrantsPage({
       </header>
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />
+
+      {result.state === 'ok' ? (
+        <Narrow
+          amountSoughtGbp={ask}
+          base={{ q: '1', text }}
+          facets={result.facets}
+          filters={filters}
+        />
+      ) : null}
 
       {result.state === 'failed' ? null : <CorpusNotice corpus={result.corpus} />}
 
@@ -236,15 +257,21 @@ export default async function GrantsPage({
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
             {result.corpus.awards === 0
               ? 'There are no grants here to search yet — the record is still being built, as above.'
-              : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement".`}
+              : hasFilters(filters)
+                ? 'Your words match grants, but not once the filters above are applied. Remove one and the counts will show you what is there.'
+                : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement".`}
           </p>
         </section>
       ) : (
         <>
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
-            {count(ranked.length)}
-            {result.capped ? '+' : ''} of {count(result.corpus.awards)} grants held, the
-            closest to your work first.
+            {result.facets.total > ranked.length
+              ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
+              : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}
+            {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}{' '}
+            <span style={{ color: 'var(--ink-3)' }}>
+              {count(result.corpus.awards)} grants held in all.
+            </span>
           </p>
 
           <ul className="facts" style={{ marginTop: 'var(--s-3)' }}>
@@ -260,7 +287,7 @@ export default async function GrantsPage({
         own open licence — check it before republishing a row, since some are share-alike.
         {licences.length === 0
           ? ''
-          : ` Shown here: ${licences.slice(0, 4).join('; ')}${licences.length > 4 ? ' and others' : ''}.`}
+          : ` On this page: ${licences.slice(0, 4).join(', ')}${licences.length > 4 ? ' and others' : ''}.`}
       </p>
     </div>
   );

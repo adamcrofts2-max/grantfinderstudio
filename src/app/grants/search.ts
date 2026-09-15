@@ -1,5 +1,13 @@
 import { withAdmin } from '@/db';
-import { corpusSize, recentAwards, searchAwards, type AwardResult } from '@/db/grants';
+import {
+  corpusSize,
+  facetsFor,
+  recentAwards,
+  searchAwards,
+  type AwardResult,
+  type Facets,
+} from '@/db/grants';
+import { NO_FILTERS, type GrantFilters } from '@/domain/grants/facets';
 import { readCorpusProgress, isLoading, loadFraction, type CorpusProgress } from '@/db/corpus';
 import { queryTerms } from '@/domain/grants/query';
 
@@ -16,6 +24,7 @@ export interface FoundGrant {
   tags: readonly string[];
   /** The licence line that must travel with anything derived from the source. */
   attribution: string | null;
+  licence: string | null;
 }
 
 export interface CorpusState {
@@ -33,6 +42,8 @@ export type CorpusSearch =
       grants: FoundGrant[];
       capped: boolean;
       corpus: CorpusState;
+      /** What the search matched before the page limit, and what to offer next. */
+      facets: Facets;
     }
   | { state: 'failed'; message: string };
 
@@ -54,6 +65,7 @@ function toFound(award: AwardResult): FoundGrant | null {
     region: award.region,
     tags: award.tags,
     attribution: award.attribution,
+    licence: award.licence,
   };
 }
 
@@ -82,7 +94,10 @@ const found = (awards: readonly AwardResult[]): FoundGrant[] =>
  * Fails SOFT and says why. A search that cannot run must not take the page
  * with it.
  */
-export async function searchCorpus(text: string): Promise<CorpusSearch> {
+export async function searchCorpus(
+  text: string,
+  filters: GrantFilters = NO_FILTERS,
+): Promise<CorpusSearch> {
   const terms = queryTerms(text);
 
   try {
@@ -109,8 +124,14 @@ export async function searchCorpus(text: string): Promise<CorpusSearch> {
       return { state: 'idle', corpus: state, recent: found(recent) };
     }
 
-    const { awards, capped } = await withAdmin((tx) => searchAwards(tx, terms));
-    return { state: 'ok', grants: found(awards), capped, corpus: state };
+    // One connection, both queries: the page and its counts must come from
+    // the same view of the table, and they are the same predicate by
+    // construction — see `buildWhere`.
+    const { awards, capped, facets } = await withAdmin(async (tx) => {
+      const page = await searchAwards(tx, terms, filters);
+      return { ...page, facets: await facetsFor(tx, terms, filters) };
+    });
+    return { state: 'ok', grants: found(awards), capped, corpus: state, facets };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);
     return {

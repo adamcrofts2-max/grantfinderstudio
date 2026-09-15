@@ -12,7 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "oxlint",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
-    "dev": "next dev",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
     "start": "next start",
     "migrations:generate": "node scripts/generate-migrations.mjs",
     "prebuild": "node scripts/generate-migrations.mjs",

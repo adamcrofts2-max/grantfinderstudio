@@ -414,6 +414,24 @@ this cheque before", where no source answers "what is open".
 - [ ] Re-read funders already loaded, on a rolling basis, so a grant added by a
       publisher this month is found. Today a finished walk stays finished until
       somebody restarts it
+- [x] **Narrow the results, with counted chips derived from the results.** Not
+      checkboxes over a fixed taxonomy: the topics are each publisher's own
+      free text, so a curated list would invent categories the data does not
+      have. Size, recency, place and topic, each option counted as "what would
+      I get if I picked this"
+- [x] Seed the first filter from their own ask — "About what we need", half to
+      double, one tap
+- [x] Chips as links rather than checkboxes: no client JS, the URL carries the
+      state, the back button undoes a filter, a narrowed search is shareable
+- [x] Fold the filters away so results come first on a phone, opening by
+      themselves once one is active; assert no sideways scroll at 390px
+- [x] Name the distinct licences in the footer rather than one attribution line
+      per publisher, which grew with the result set
+- [x] Give the dev server its own `distDir`, so `next dev` can no longer
+      clobber a production build and produce a phantom hydration error
+- [ ] Group results by FUNDER, which is the real unit of decision — how many
+      grants, median size, range, when they last gave, whether they fund in
+      your area. Probably worth more than any filter
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never

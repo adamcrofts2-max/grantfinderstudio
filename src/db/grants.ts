@@ -23,6 +23,16 @@
 
 import type { Queryable } from './client.js';
 import type { Jurisdiction } from '../domain/types.js';
+import {
+  AMOUNT_BANDS,
+  NO_FILTERS,
+  RECENCY,
+  bandById,
+  recencyById,
+  without,
+  type Dimension,
+  type GrantFilters,
+} from '../domain/grants/facets.js';
 
 export interface AwardResult {
   id: string;
@@ -40,6 +50,8 @@ export interface AwardResult {
   tags: string[];
   /** The licence line that must travel with anything derived from the source. */
   attribution: string | null;
+  /** The licence itself, which is what a footer should name. */
+  licence: string | null;
 }
 
 interface Row {
@@ -56,13 +68,14 @@ interface Row {
   region: string | null;
   tags: string[] | null;
   attribution: string | null;
+  licence: string | null;
 }
 
 const SELECT = `
   SELECT a.id, a.funder_id, f.name AS funder_name, f.website AS funder_website,
          a.recipient_name, a.title, a.amount_gbp::text AS amount_gbp,
          a.awarded_on::text AS awarded_on, a.description,
-         a.jurisdiction, a.region, a.tags, d.attribution
+         a.jurisdiction, a.region, a.tags, d.attribution, d.licence
     FROM funder_awards a
     JOIN funders f ON f.id = a.funder_id
     LEFT JOIN source_datasets d ON d.id = a.source_dataset_id`;
@@ -82,6 +95,7 @@ function toAward(row: Row): AwardResult {
     region: row.region,
     tags: row.tags ?? [],
     attribution: row.attribution,
+    licence: row.licence,
   };
 }
 
@@ -119,30 +133,250 @@ function escapeLike(term: string): string {
  * with it. The caller is told when it was capped so it can say so rather than
  * quietly showing a slice.
  */
+/**
+ * The WHERE clause for a search, assembled from terms and filters.
+ *
+ * Built here rather than inlined so that the page query and every facet count
+ * are provably the same predicate. They have to be: a count that came from a
+ * different WHERE than the list is a lie with a number on it.
+ *
+ * Returns SQL with `$n` placeholders and the values to bind, so nothing a
+ * person typed is ever concatenated into the statement.
+ */
+function buildWhere(
+  terms: readonly string[],
+  filters: GrantFilters,
+  startAt = 0,
+): { sql: string; values: unknown[] } {
+  const values: unknown[] = [];
+  const clauses: string[] = [];
+  const bind = (value: unknown): string => {
+    values.push(value);
+    return `$${startAt + values.length}`;
+  };
+
+  const patterns = terms.filter((t) => t.trim() !== '').map((t) => `%${escapeLike(t)}%`);
+  if (patterns.length > 0) {
+    const p = bind(patterns);
+    clauses.push(
+      `(a.recipient_name ILIKE ANY (${p})
+        OR a.title ILIKE ANY (${p})
+        OR a.description ILIKE ANY (${p})
+        OR a.region ILIKE ANY (${p})
+        OR EXISTS (SELECT 1 FROM unnest(a.tags) AS t WHERE t ILIKE ANY (${p})))`,
+    );
+  }
+
+  const bands = filters.bands
+    .map(bandById)
+    .filter((band): band is NonNullable<typeof band> => band !== null);
+  if (bands.length > 0) {
+    clauses.push(
+      `(${bands
+        .map((band) =>
+          band.max === null
+            ? `a.amount_gbp >= ${bind(band.min)}`
+            : `(a.amount_gbp >= ${bind(band.min)} AND a.amount_gbp < ${bind(band.max)})`,
+        )
+        .join(' OR ')})`,
+    );
+  }
+
+  const recency = filters.since === null ? null : recencyById(filters.since);
+  if (recency !== null) {
+    // Interval arithmetic in Postgres rather than a date computed in Node: a
+    // serverless function's clock and the database's are not the same clock,
+    // and "the last two years" should not move depending on which answered.
+    clauses.push(
+      `a.awarded_on >= (now() - make_interval(years => ${bind(recency.years)}::int))::date`,
+    );
+  }
+
+  if (filters.places.length > 0) {
+    const places = bind(filters.places.map((place) => `%${escapeLike(place)}%`));
+    clauses.push(`a.region ILIKE ANY (${places})`);
+  }
+
+  if (filters.topics.length > 0) {
+    // Exact labels, because these came from the facet list and are the
+    // publisher's own strings — matching them loosely would merge distinct
+    // labels behind the person's back.
+    clauses.push(`a.tags && ${bind(filters.topics)}::text[]`);
+  }
+
+  return { sql: clauses.length === 0 ? 'TRUE' : clauses.join(' AND '), values };
+}
+
 export async function searchAwards(
   tx: Queryable,
   terms: readonly string[],
+  filters: GrantFilters = NO_FILTERS,
   limit = 120,
 ): Promise<{ awards: AwardResult[]; capped: boolean }> {
-  const patterns = terms
-    .filter((t) => t.trim() !== '')
-    .map((t) => `%${escapeLike(t)}%`);
-  if (patterns.length === 0) return { awards: [], capped: false };
+  if (terms.filter((t) => t.trim() !== '').length === 0) {
+    return { awards: [], capped: false };
+  }
 
+  const where = buildWhere(terms, filters);
   const { rows } = await tx.query<Row>(
     `${SELECT}
-      WHERE a.recipient_name ILIKE ANY ($1)
-         OR a.title ILIKE ANY ($1)
-         OR a.description ILIKE ANY ($1)
-         OR a.region ILIKE ANY ($1)
-         OR EXISTS (SELECT 1 FROM unnest(a.tags) AS t WHERE t ILIKE ANY ($1))
+      WHERE ${where.sql}
       ORDER BY a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
-      LIMIT $2`,
-    [patterns, limit + 1],
+      LIMIT $${where.values.length + 1}`,
+    [...where.values, limit + 1],
   );
 
   const capped = rows.length > limit;
   return { awards: rows.slice(0, limit).map(toAward), capped };
+}
+
+export interface FacetOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface Facets {
+  amount: FacetOption[];
+  since: FacetOption[];
+  place: FacetOption[];
+  topic: FacetOption[];
+  /** Grants matching the text and every active filter. */
+  total: number;
+}
+
+/** How many places and topics to offer: enough to be useful, few enough to read. */
+const FACET_WIDTH = 8;
+
+/**
+ * An option that would leave nothing is not an option.
+ *
+ * Dropping the zeroes is what keeps the row short and keeps every chip a real
+ * move — the whole reason the counts are computed at all.
+ */
+function keep(options: FacetOption[]): FacetOption[] {
+  return options.filter((option) => option.count > 0);
+}
+
+/**
+ * Counts for every option a person could pick next.
+ *
+ * Each dimension is counted with the OTHER dimensions still applied and its
+ * own released, which is what makes the numbers answer the question actually
+ * being asked — "how many would I get if I picked this" — rather than "how
+ * many are there given I already picked this", which shows every unpicked
+ * option as zero and makes a live screen look like a dead end.
+ *
+ * One round trip, aggregates only, so nothing but counts crosses the wire even
+ * when a search matches a hundred thousand grants.
+ */
+export async function facetsFor(
+  tx: Queryable,
+  terms: readonly string[],
+  filters: GrantFilters,
+): Promise<Facets> {
+  if (terms.filter((t) => t.trim() !== '').length === 0) {
+    return { amount: [], since: [], place: [], topic: [], total: 0 };
+  }
+
+  const values: unknown[] = [];
+  /** One dimension's predicate, with its placeholders numbered for the whole query. */
+  const predicate = (dimension: Dimension | null): string => {
+    const where = buildWhere(
+      terms,
+      dimension === null ? filters : without(filters, dimension),
+      values.length,
+    );
+    values.push(...where.values);
+    return where.sql;
+  };
+
+  const parts: string[] = [];
+
+  // Amounts keep the domain's order rather than the database's: bands read as
+  // a scale, so sorting them by popularity would make them harder to use.
+  parts.push(
+    `amount AS (${AMOUNT_BANDS.map((band) => {
+      const upper = band.max === null ? '' : ` AND a.amount_gbp < ${band.max}`;
+      return `SELECT '${band.id}' AS value, count(*)::int AS n
+                FROM funder_awards a
+               WHERE (${predicate('amount')}) AND a.amount_gbp >= ${band.min}${upper}`;
+    }).join(' UNION ALL ')})`,
+  );
+
+  parts.push(
+    `since AS (${RECENCY.map(
+      (option) => `SELECT '${option.id}' AS value, count(*)::int AS n
+                     FROM funder_awards a
+                    WHERE (${predicate('since')})
+                      AND a.awarded_on >= (now() - make_interval(years => ${option.years}))::date`,
+    ).join(' UNION ALL ')})`,
+  );
+
+  parts.push(
+    `place AS (
+       SELECT a.region AS value, count(*)::int AS n
+         FROM funder_awards a
+        WHERE (${predicate('place')}) AND a.region IS NOT NULL AND a.region <> ''
+        GROUP BY a.region
+        ORDER BY n DESC, a.region
+        LIMIT ${FACET_WIDTH})`,
+  );
+
+  parts.push(
+    `topic AS (
+       SELECT t AS value, count(*)::int AS n
+         FROM funder_awards a, unnest(a.tags) AS t
+        WHERE (${predicate('topic')}) AND t <> ''
+        GROUP BY t
+        ORDER BY n DESC, t
+        LIMIT ${FACET_WIDTH})`,
+  );
+
+  parts.push(
+    `total AS (SELECT count(*)::int AS n FROM funder_awards a WHERE (${predicate(null)}))`,
+  );
+
+  const { rows } = await tx.query<{ dim: string; value: string | null; n: number }>(
+    `WITH ${parts.join(', ')}
+     SELECT 'amount' AS dim, value, n FROM amount
+     UNION ALL SELECT 'since', value, n FROM since
+     UNION ALL SELECT 'place', value, n FROM place
+     UNION ALL SELECT 'topic', value, n FROM topic
+     UNION ALL SELECT 'total', NULL, n FROM total`,
+    values,
+  );
+
+  const counted = (dim: string, value: string): number =>
+    rows.find((row) => row.dim === dim && row.value === value)?.n ?? 0;
+
+  return {
+    amount: keep(
+      AMOUNT_BANDS.map((band) => ({
+        value: band.id,
+        label: band.label,
+        count: counted('amount', band.id),
+      })),
+    ),
+    since: keep(
+      RECENCY.map((option) => ({
+        value: option.id,
+        label: option.label,
+        count: counted('since', option.id),
+      })),
+    ),
+    place: keep(
+      rows
+        .filter((row) => row.dim === 'place' && row.value !== null)
+        .map((row) => ({ value: row.value as string, label: row.value as string, count: row.n })),
+    ),
+    topic: keep(
+      rows
+        .filter((row) => row.dim === 'topic' && row.value !== null)
+        .map((row) => ({ value: row.value as string, label: row.value as string, count: row.n })),
+    ),
+    total: rows.find((row) => row.dim === 'total')?.n ?? 0,
+  };
 }
 
 /** The most recent awards held, for a screen that nobody has typed into yet. */
