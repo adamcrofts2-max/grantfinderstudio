@@ -25,7 +25,28 @@ export async function GET(): Promise<Response> {
       fraction: loadFraction(progress),
       progress,
     });
-  } catch {
-    return Response.json({ ok: false, error: 'Progress could not be read.' }, { status: 500 });
+  } catch (error) {
+    /**
+     * Say WHICH thing went wrong.
+     *
+     * This returned a flat "Progress could not be read." — which is what it
+     * says when the database is simply not there, and is useless to whoever
+     * pastes it. This endpoint exists to be read by a person diagnosing a
+     * deployment, so it has to distinguish "no database" from "the database
+     * answered and something else broke". `/api/health` already does; there
+     * was no reason for this not to.
+     */
+    const message = error instanceof Error ? error.message : String(error);
+    const unreachable = /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|terminat|connect/iu.test(message);
+    console.error('[grantfinderstudio] corpus progress could not be read:', error);
+    return Response.json(
+      {
+        ok: false,
+        error: unreachable
+          ? 'The database could not be reached, so there is no progress to report. See /api/health.'
+          : 'The database answered but the progress could not be read. See the server log.',
+      },
+      { status: 503 },
+    );
   }
 }

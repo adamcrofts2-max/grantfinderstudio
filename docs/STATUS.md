@@ -3089,3 +3089,28 @@ fix removed, because a regression test that passes either way is decoration.
   time. The bracket trick (`stub[-]anthropic`) is not a style choice.
 - **`nohup … &` in a chained command dies with the chain.** Start a server in
   its own call, verify it, then use it.
+
+## One paste tells us everything about the first real run
+
+`GET /api/corpus` is open, needs no session, and now reports:
+
+```json
+{ "ok": true, "loading": true, "fraction": 0.12,
+  "progress": { "fundersTotal": 4218, "fundersDone": 512,
+                "awardsWritten": 18344, "fundersUnlicensed": 37,
+                "lastError": null, "lastOrgId": "GB-CHC-1164883" } }
+```
+
+Which is the whole diagnosis of a first deployment in one copy-paste:
+`fundersTotal` is the number nobody knows and everything about sizing depends
+on; `fundersUnlicensed` says how much of the corpus the licence rule is
+declining; and `lastError` carries the **exact URL and reason** when 360Giving
+refuses us — verified by pointing a step at a dead API:
+
+> `Could not reach https://…/api/v1/org/funder/?limit=50&offset=0: fetch failed`
+
+It also stopped lying on the way to being useful. It answered a flat *"Progress
+could not be read."* — the same sentence whether the database was absent or
+present-and-broken, which is useless to whoever pastes it. It distinguishes
+them now, the way `/api/health` always has. There was no reason for the one
+endpoint built for diagnosis to be the vaguest.
