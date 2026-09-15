@@ -520,6 +520,8 @@ details[open] > .narrow-summary .chev-toggle::after { content: 'Close'; }
 
 .narrow-clear { margin: 0; }
 
+.setup-alternative { margin: var(--s-3) 0 0; }
+
 /* ---------- Funders or grants ---------------------------------------------
    Two views of one result set, as links for the same reasons the chips are:
    the URL carries the choice, the back button works, and it is shareable.

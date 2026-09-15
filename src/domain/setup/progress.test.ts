@@ -161,3 +161,40 @@ describe('adding a fund, on a deployment with no key', () => {
     }
   });
 });
+
+describe('finding a fund in the first place', () => {
+  /**
+   * The step said "Add a fund you are considering" and assumed you arrived
+   * with one in mind. Somebody who has just told us who they are and what they
+   * need does not — and the two screens that answer "who would fund us" were
+   * nowhere in the guided journey, behind a folded navigation. The product's
+   * best asset was undiscoverable to exactly the person it is for.
+   */
+  const readyForAFund = {
+    hasOrganisation: true,
+    hasProject: true,
+    confirmedFacts: 5,
+    pendingFacts: 0,
+    opportunities: 0,
+    applications: 0,
+    writerAvailable: false,
+  };
+
+  it('offers a way to find a fund, not only a way to type one in', () => {
+    const step = setupSteps(readyForAFund).find((s) => s.id === 'opportunity')!;
+    expect(step.href).toBe('/opportunities/add');
+    expect(step.alternative?.href).toBe('/funders');
+    expect(step.alternative?.label).toMatch(/who funds work like yours/iu);
+  });
+
+  it('is the step in front of somebody who has done the rest', () => {
+    // So the alternative is not offered on a card nobody is looking at.
+    expect(setupProgress(readyForAFund).next?.id).toBe('opportunity');
+  });
+
+  it('offers no alternative on the steps that need none', () => {
+    // Every other step's own action is something the person can already do.
+    const others = setupSteps(readyForAFund).filter((s) => s.id !== 'opportunity');
+    expect(others.every((s) => s.alternative === undefined)).toBe(true);
+  });
+});

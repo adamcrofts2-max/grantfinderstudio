@@ -191,6 +191,14 @@ export default async function FundersPage() {
           their priorities page. Every line below is countable, and you can open the grants
           behind it.
         </p>
+        {/* The other half of the pair. This screen works from YOUR PROFILE;
+            /grants searches the whole record by words and filters it. A person
+            who found one of the two had no way of knowing the other existed. */}
+        <p className="page-sub" style={{ marginTop: 'var(--s-3)' }}>
+          Worked out from your own details. To ask a different question —{' '}
+          <em>chapel roof</em>, <em>food bank Leeds</em> —{' '}
+          <a href="/grants">search every grant we hold</a>.
+        </p>
       </header>
 
       {organisation === null ? (

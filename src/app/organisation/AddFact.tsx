@@ -38,9 +38,18 @@ const CLAIM_HINT: Record<string, string> = {
  * The suggestions are the keys extraction uses, so a fact typed here and the
  * same fact read out of a document later are one fact rather than two.
  */
-export function AddFact({ known, open = false }: { known: string[]; open?: boolean }) {
+export function AddFact({
+  known,
+  open = false,
+  /** Pre-chosen, when somebody arrived from a prompt that named it. */
+  claim: wanted = '',
+}: {
+  known: string[];
+  open?: boolean;
+  claim?: string;
+}) {
   const [state, submit, saving] = useActionState(addFactAction, EMPTY_SELF_DECLARED);
-  const [claim, setClaim] = useState('');
+  const [claim, setClaim] = useState(wanted);
   const was = (field: string): string => valueOf(state.values, field);
 
   const remaining = SUGGESTED_CLAIMS.filter((suggested) => !known.includes(suggested));

@@ -230,6 +230,16 @@ export default async function GrantsPage({
           already been paid out. So it is not a list of what is open. It is the best evidence
           there is of who gives to work like yours, and how much.
         </p>
+        {/* Two screens answer a version of "who would fund us", and a person
+            who found one had no way of knowing the other existed. This one is
+            driven by WHAT YOU TYPE; /funders is driven by your own profile and
+            weighs each funder against your ask. Each now says so and points at
+            the other. */}
+        <p className="page-sub" style={{ marginTop: 'var(--s-3)' }}>
+          Searching here is for a question you have in mind. If you would rather we worked it
+          out from your own details — and weighed each funder against what you are asking for
+          — <a href="/funders">see who funds work like yours</a>.
+        </p>
       </header>
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />

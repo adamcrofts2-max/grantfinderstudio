@@ -42,6 +42,17 @@ export function SetupGuide({ progress }: { progress: SetupProgress }) {
         {next.action}
       </a>
 
+      {/* The step's own action can assume something the person has not got —
+          "add a fund you are considering" assumes they have one in mind. This
+          is the way to get one. */}
+      {next.alternative === undefined ? null : (
+        <p className="setup-alternative">
+          <a className="link-quiet" href={next.alternative.href}>
+            {next.alternative.label}
+          </a>
+        </p>
+      )}
+
       {after === null ? null : (
         <p className="setup-after">
           <span className="setup-after-label">Then</span> {after.title.toLowerCase()}

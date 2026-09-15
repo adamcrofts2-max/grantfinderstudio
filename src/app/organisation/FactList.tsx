@@ -2,6 +2,8 @@
 
 import { useActionState, useState } from 'react';
 import { confirmFactAction, correctFactAction } from './actions';
+import { factShortfall, nextFacts } from '@/domain/provenance/next-facts';
+import { CONFIRMED_FACTS_NEEDED } from '@/domain/setup/progress';
 import { EMPTY_FACT_ACTION } from './state';
 
 export interface FactView {
@@ -119,12 +121,72 @@ export function FactList({ facts }: { facts: FactView[] }) {
   const unconfirmed = facts.filter((f) => !f.confirmed);
   const confirmed = facts.filter((f) => f.confirmed);
 
+  /**
+   * What is still needed, named.
+   *
+   * This card used to lead with "Everything is checked" whenever nothing was
+   * waiting to be confirmed — true about the facts ON the page, and false
+   * about whether there are enough of them. So somebody sent here by a setup
+   * step reading "Tell us about yourself (4 of 5)" arrived at a page
+   * congratulating them, with no hint of what a fifth fact might be. The
+   * product was asking them to satisfy a counter.
+   *
+   * Nothing here is congratulation until the Writer can actually draft.
+   */
+  const shortfall = factShortfall(confirmed.length, CONFIRMED_FACTS_NEEDED);
+  const prompts = shortfall === null ? [] : nextFacts(facts.map((f) => f.claim), 3);
+
   return (
     <>
+      {shortfall === null ? null : (
+        <section className="card">
+          <h2 className="card-title">
+            {shortfall.short === 1 ? 'One more fact' : `${shortfall.short} more facts`}
+          </h2>
+          <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+            {shortfall.sentence}
+          </p>
+          {prompts.length === 0 ? null : (
+            <>
+              <p className="hint" style={{ marginTop: 'var(--s-4)' }}>
+                The ones worth having first:
+              </p>
+              <ul className="facts" style={{ marginTop: 'var(--s-2)' }}>
+                {prompts.map((prompt) => (
+                  <li className="fact" key={prompt.claim}>
+                    <div className="fact-main">
+                      <div className="fact-body">
+                        <p className="fact-claim">{prompt.label}</p>
+                        {prompt.because === '' ? null : (
+                          <p className="fact-source">Worth having because {prompt.because}.</p>
+                        )}
+                      </div>
+                      <div className="fact-do">
+                        {/* A link rather than a button: it opens the form
+                            below with this claim already chosen, so the
+                            question a person was asked is the question the
+                            form is asking. */}
+                        <a
+                          className="link-quiet"
+                          href={`/organisation?claim=${encodeURIComponent(prompt.claim)}#add-fact`}
+                        >
+                          Tell us
+                          <span className="sr-only"> — {prompt.label}</span>
+                        </a>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="card">
         <h2 className="card-title">
           {unconfirmed.length === 0
-            ? 'Everything is checked'
+            ? 'Nothing waiting to be checked'
             : `${unconfirmed.length} to check`}
         </h2>
         <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>

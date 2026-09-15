@@ -422,6 +422,120 @@ try {
   const none = await page.locator('body').innerText();
   if (!/Nothing came back for that/.test(none)) fail('a no-match search does not say so');
   else ok('a no-match search says so');
+  // --- set up, the way somebody not on Companies House would ----------------
+  //
+  // Everything below needs an organisation, and until now this check never
+  // made one — so the screens a SET-UP applicant sees were untested.
+  await page.goto(`${B}/onboarding`, { waitUntil: 'networkidle' });
+  const own = page.locator('summary', { hasText: /Enter your details yourself|Can.t find it/iu }).first();
+  if (await own.count()) await own.click();
+  await page.fill('input[name="legalName"]', 'Rivermead Community Interest Company');
+  await page.selectOption('select[name="legalForm"]', { index: 1 });
+  await page.selectOption('select[name="jurisdiction"]', { index: 1 });
+  await page.fill('input[name="region"]', 'Somerset');
+  await page.fill('input[name="incorporationDate"]', '2021-04-06');
+  await page
+    .locator('form', { has: page.locator('input[name="legalName"]') })
+    .locator('button[type="submit"]')
+    .click();
+
+  /**
+   * Wait for the STATE to change, not for the network to fall quiet.
+   *
+   * `networkidle` resolved before the server action had finished, so the next
+   * step reloaded /onboarding, found the profile step still open and the
+   * project form collapsed inside a <details> — present in the DOM and
+   * unclickable. The third time this class of race has cost time here.
+   */
+  let projectReady = false;
+  for (let attempt = 0; attempt < 12 && !projectReady; attempt += 1) {
+    await page.waitForTimeout(1000);
+    await page.goto(`${B}/onboarding`, { waitUntil: 'networkidle' });
+    projectReady = await page.locator('input[name="projectName"]').first().isVisible();
+  }
+  if (!projectReady) {
+    fail('onboarding did not move on to the project after the profile was saved');
+  } else {
+    ok('onboarding moves on to the project');
+    await page.fill('input[name="projectName"]', 'Riverside youth skills');
+    await page.fill('input[name="amountSoughtGbp"]', '18000');
+    await page.fill('input[name="durationMonths"]', '12');
+    const groups = await page.locator('input[name="beneficiaries"]').all();
+    if (groups.length > 0) await groups[0].check();
+    await page
+      .locator('form', { has: page.locator('input[name="projectName"]') })
+      .locator('button[type="submit"]')
+      .click();
+  }
+
+  let onFacts = false;
+  for (let attempt = 0; attempt < 12 && !onFacts; attempt += 1) {
+    await page.waitForTimeout(1000);
+    await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+    onFacts = !new URL(page.url()).pathname.startsWith('/onboarding');
+  }
+  if (!onFacts) fail('setup did not take');
+  else ok('the organisation exists and its facts page is reachable');
+
+  // --- the journey a person is actually on ----------------------------------
+  //
+  // Three gaps the walkthrough found, each of which left somebody stuck with
+  // the product apparently working.
+  await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+  const facts = await page.locator('body').innerText();
+
+  // 1. The page used to lead with "Everything is checked" while the setup
+  //    guide was asking for a fifth fact — congratulating somebody it was
+  //    simultaneously chasing.
+  const needsMore = /more fact/i.test(facts) || /One more fact/i.test(facts);
+  if (/Everything is checked/i.test(facts)) {
+    fail('the facts page still congratulates while more are needed');
+  } else ok('the facts page does not congratulate prematurely');
+
+  if (needsMore) {
+    // 2. It has to NAME what is missing. "4 of 5" is a counter, not a question
+    //    anybody can answer.
+    if (!/What you exist to do|Who you are for|What the work actually is/i.test(facts)) {
+      fail('the shortfall is a bare count with no named facts');
+    } else ok('the missing facts are named');
+    if (!/Worth having because/i.test(facts)) fail('no reason is given for a suggested fact');
+    else ok('each suggested fact says why it matters');
+
+    // And the prompt has to arrive at a form already asking that question.
+    await page.locator('.fact a', { hasText: /Tell us/i }).first().click();
+    await page.waitForLoadState('networkidle');
+    const chosen = await page.locator('select[name="claim"]').inputValue();
+    if (chosen === '') fail('the named fact did not carry into the form');
+    else ok(`the form opens already asking for "${chosen}"`);
+  }
+
+  // 3. The guided journey never showed anybody where to FIND a fund. Step 4
+  //    assumed you arrive with one in mind.
+  await page.goto(`${B}/`, { waitUntil: 'networkidle' });
+  // The NEXT-step card, not the whole page: "See all 5 steps" lists every
+  // step's title, so matching against the body found "Add a fund you are
+  // considering" whatever step was actually in front of the person.
+  const nextStep = await page.locator('.setup-hero').first().innerText();
+  if (/Add a fund/i.test(nextStep)) {
+    if (!(await page.locator('.setup-alternative a').count())) {
+      fail('the add-a-fund step offers no way to find one');
+    } else ok('the add-a-fund step offers a way to find one');
+  } else {
+    // Not the step in front of them right now, so assert it from the domain
+    // instead of contriving five confirmed facts in a browser.
+    ok(`the next step is "${nextStep}" — the add-a-fund alternative is unit-tested`);
+  }
+
+  // The two screens that answer "who would fund us" must point at each other.
+  await page.goto(`${B}/grants`, { waitUntil: 'networkidle' });
+  if (!(await page.locator('a[href="/funders"]').count())) {
+    fail('/grants does not mention /funders');
+  } else ok('/grants points at /funders');
+  await page.goto(`${B}/funders`, { waitUntil: 'networkidle' });
+  if (!(await page.locator('a[href="/grants"]').count())) {
+    fail('/funders does not mention /grants');
+  } else ok('/funders points at /grants');
+
   // --- at phone width -------------------------------------------------------
   //
   // Where this actually gets used. The filters are four rows of chips, which

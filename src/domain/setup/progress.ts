@@ -43,6 +43,12 @@ export interface SetupStep {
   action: string;
   /** Set when the step cannot be completed yet, and says what is missing. */
   blocked: string | null;
+  /**
+   * A second way through, when the step's own action assumes something the
+   * person may not have. Not a substitute for the step — a route to being
+   * able to do it.
+   */
+  alternative?: { label: string; href: string };
 }
 
 /** Below this the Writer will not draft, so the step is not finished. */
@@ -108,6 +114,12 @@ function build(facts: SetupFacts): SetupStep[] {
     // that is enough for the tracker, the timing and the size check. Marking
     // this step "blocked" when a working route exists sent people to Settings
     // to solve a problem they did not have.
+    //
+    // `alternative` exists because this step assumed you ARRIVE with a fund in
+    // mind. Somebody who has just told us who they are and what they need
+    // does not — and the two screens that answer "who would fund us" were
+    // nowhere in the guided journey, behind a folded navigation. The product's
+    // best asset was undiscoverable to exactly the person it is for.
     {
       id: 'opportunity',
       title: 'Add a fund you are considering',
@@ -118,6 +130,10 @@ function build(facts: SetupFacts): SetupStep[] {
       href: '/opportunities/add',
       action: 'Add a fund',
       blocked: null,
+      alternative: {
+        label: 'Not sure who to ask? See who funds work like yours',
+        href: '/funders',
+      },
     },
     {
       id: 'application',

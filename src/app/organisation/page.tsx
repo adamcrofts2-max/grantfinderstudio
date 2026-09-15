@@ -17,8 +17,21 @@ export const dynamic = 'force-dynamic';
  * may the Writer rely on them. Skipping it would mean a funding application
  * resting on something nobody checked.
  */
-export default async function OrganisationPage() {
+export default async function OrganisationPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const organisationId = await requireOrganisationId();
+  const params = await searchParams;
+  /**
+   * The claim somebody was asked for, carried through to the form.
+   *
+   * A prompt that says "tell us what you exist to do" and then hands over a
+   * blank `<select>` has made the person answer the question twice. The link
+   * names the claim; the form opens with it chosen.
+   */
+  const wantedClaim = typeof params['claim'] === 'string' ? params['claim'] : '';
   const database = await getDatabase();
   const facts = await database.withTenant(organisationId, (tx) => loadFacts(tx));
 
@@ -58,7 +71,8 @@ export default async function OrganisationPage() {
       <div style={{ marginTop: 'var(--s-5)' }}>
         <AddFact
           known={facts.map((fact) => fact.claim)}
-          open={nextIsFacts && nothingPending}
+          open={wantedClaim !== '' || (nextIsFacts && nothingPending)}
+          claim={wantedClaim}
         />
       </div>
 

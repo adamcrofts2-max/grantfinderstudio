@@ -2839,3 +2839,98 @@ Adding five grants to the shared fixture in `grants.test.ts` broke thirteen
 existing tests at once, because every facet count in that file is asserted
 against exactly what the fixture holds. The new rows live in the block that
 needs them now. A test that wants more data should add it where it is used.
+
+---
+
+## Walking the product as a CIC would
+
+> "Think how a user would be using this website"
+
+So I signed up as one and followed the guide wherever it pointed, at phone
+width, recording what was actually in front of a person at each step. That is
+`npm run walk` now — not an assertion harness, a reading. It found three things
+no test was ever going to.
+
+### 1. The middle of the journey was a counter with nothing behind it
+
+The guide said **"Tell us about yourself (4 of 5)"** and sent you to
+`/organisation`, which led with **"Everything is checked"**.
+
+Four of five *what*? A CIC who has given their name, legal form, area and
+incorporation date has no idea what a fifth fact is supposed to be. And the
+page they were sent to congratulated them while the product chased them — the
+heading was true about the facts ON the page and false about whether there were
+enough of them. The product was asking somebody to satisfy a counter.
+
+`src/domain/provenance/next-facts.ts` now names them:
+
+> **One more fact** — 1 more confirmed fact and the Writer can draft for you; it
+> needs 5, and you have 4. The ones worth having first:
+> **What you exist to do** — worth having because almost every form opens with
+> it, and funders quote it back at you. → *Tell us*
+
+Each prompt says why a FUNDER wants it, never what the field is. "Tell us"
+carries the claim into the form, so the question somebody was asked is the
+question the form is asking — a prompt that hands over a blank `<select>` has
+made them answer twice. The suggestions are drawn from the same vocabulary the
+document extractor uses, so a fact typed here and the same fact read out of a
+PDF later are one fact rather than two.
+
+And "Everything is checked" is now "Nothing waiting to be checked", which is
+what it always meant.
+
+### 2. The journey never showed anybody where to FIND a fund
+
+Step 4 is "Add a fund you are considering" — and it assumed you arrive with one
+in mind. Somebody who has just told us who they are and what they need does
+not. Meanwhile `/funders` and `/grants`, the two screens that answer "who would
+fund us", were nowhere in the guided journey and the navigation is folded away
+during setup by design.
+
+**The product's best asset was undiscoverable to exactly the person it is
+for.** A step now carries an optional `alternative` — a second way through when
+its own action assumes something the person has not got:
+
+> Not sure who to ask? **See who funds work like yours**
+
+### 3. Two screens answer the same question, and the better one was hidden
+
+This one is my doing. `/funders` already existed and is the best screen in the
+product: funders grouped by strength of evidence ("Funded your kind of work, in
+your area (1)" / "Too little published to say (3)"), a bar showing where the
+applicant's ask sits against what that funder actually gives, and sentences like
+*"Your £18,000 is below most of what they give; some funders will not process a
+small application."*
+
+Last session I built a by-funder view into `/grants` — a thinner version of a
+screen that was already there, without noticing. **Reading the product before
+extending it would have cost ten minutes.**
+
+The two are not redundant, though: `/funders` works from the PROFILE and weighs
+each funder against your ask; `/grants` searches the whole record by words and
+filters it. A person who found one had no way of knowing the other existed, so
+each now says which question it answers and links to the other. Merging them
+into one searchable screen is the right end state and is on the roadmap as a
+decision, not a fix.
+
+### What the walk confirmed is good
+
+Worth writing down so it does not get "improved":
+
+- Onboarding is two steps and the self-declared route works properly — a CIC
+  not on the register is not a second-class path.
+- `/grants` pre-searches from the profile and says so: *"Searched for 'young
+  people Somerset' from your own details."*
+- `/tracker` computes the last day you could still start, worked back through
+  the writing at four hours a week, and exports an `.ics` so the reminding
+  happens in the person's own calendar.
+- `/funders` ends with "What this is and is not", which is the most honest
+  paragraph in the product.
+
+### A race I have now hit three times
+
+`waitForLoadState('networkidle')` is not "the server action finished". After
+submitting the profile it resolved early, so the next step found the project
+form collapsed inside a `<details>` — present in the DOM and unclickable. The
+walk and the e2e both poll for the STATE they are waiting for now. Networkidle
+is a network condition and this is a state machine.

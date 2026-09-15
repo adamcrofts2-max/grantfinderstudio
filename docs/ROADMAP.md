@@ -446,8 +446,27 @@ this cheque before", where no source answers "what is open".
 - [x] Enforce the design tokens: every `var(--x)` in globals.css must exist. An
       undefined custom property is silent — it made the selected tab black on
       black through a clean build, lint and test run
+- [x] **Name the facts still needed**, with why a funder wants each, instead of
+      "(4 of 5)" beside a page reading "Everything is checked". The prompt
+      carries the claim into the form so nobody answers the question twice
+- [x] Put discovery INTO the guided journey: "Add a fund you are considering"
+      assumed you arrive with one in mind, and the two screens that answer
+      "who would fund us" were behind a folded navigation
+- [x] Cross-link `/funders` and `/grants`, each saying which question it
+      answers. A person who found one had no way of knowing the other existed
+- [x] `npm run walk` — sign up as a CIC, follow the guide, and print what is
+      actually in front of a person at each screen. Found all three of the
+      above; no assertion would have
+- [ ] **Decide: merge `/funders` and `/grants` into one searchable screen.**
+      `/funders` is the better screen (evidence grouping, the amount-fit bar,
+      "what this is and is not") and `/grants` is the better query (words,
+      filters, counts). Two screens answering one question is a product
+      decision, not a bug — but it is the next big simplification
 - [ ] Sort the funder list by something the reader picks — most recent, biggest
       typical grant, most grants — rather than only by our own ranking
+- [ ] Let a CIC not on Companies House reach `/funders` and `/tracker` sooner.
+      Four pages silently redirect a half-set-up account to onboarding, which
+      is right for tenant data and wrong for `/funders`, which is shared
 - [ ] "See all 40 grants from this funder" from inside a funder row, rather
       than the three most recent
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
