@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,487 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a saved answer, ~70 assertions) and `npm run walk`.
+**1,530 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 84 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3518,3 +3518,129 @@ That check did turn up something real on its own, though, now on the roadmap:
 it demands https outright rather than matching the base's protocol, so the
 console's own "change it only to point at a mirror or a staging copy" breaks on
 any non-https mirror at the second page of grants.
+
+## The budget engine and the logic model
+
+Four tables — `budgets`, `budget_lines`, `outcomes`, `reviews` — have been in
+0001 since the beginning. Until now **no non-test code touched any of them**,
+while `src/domain/budget/validate.ts` sat complete and fully tested next door
+and the readiness card on every application read:
+
+> **Readiness — 40%**
+> 5 questions still to answer.
+> No budget has been built.
+> No outcomes have been defined.
+
+Two named gaps nobody could close, scored at zero each. The same shape as the
+missing answer box: domain built, table built, form missing, nothing failing
+loudly enough to notice. That is what made it the next thing to do rather than
+the next box down.
+
+### Where a funder's budget rules may honestly come from
+
+`validateBudget` takes a `FunderRestrictions` with six fields.
+`restrictionsFromCriteria` is the new module that answers where one may come
+from, and the answer is narrower than the interface:
+
+| field | source |
+|---|---|
+| `minTotalGbp`, `maxTotalGbp` | the `amount` criterion, human-verified |
+| `capitalPermitted`, `revenuePermitted` | the `capital_revenue` criterion, human-verified |
+| `excludedCategories` | **nothing. Left empty.** |
+| `maxOverheadPercent` | **nothing. Left null.** |
+
+So two of `validateBudget`'s checks — `category_excluded` and
+`overheads_exceed_cap` — cannot fire, and will not until a criterion kind
+carries them. Guessing either from a funder's prose is exactly the invention
+this product refuses, so the function returns what it DID check and what it
+could not, and the card prints both:
+
+> Not checked: which cost categories they refuse to pay for; any cap on
+> overheads. We hold nothing verified about those, and will not guess at them
+> from a funder's prose — read their guidance before you submit.
+
+A card that let somebody believe their overheads had been checked against a
+cap would be worse than one that says nothing. Nothing known also means
+PERMISSIVE, not refused: a funder who published no cost-type rule has not
+prohibited anything, and `unknown` is never coerced to a fail.
+
+### Why the logic model is three boxes
+
+`activity → output → outcome`, the columns 0001 gave the table, which are the
+boxes almost every UK funder's form asks for in that order. "We ran 12
+workshops" is an output; "34 young people moved into work or training" is an
+outcome; conflating them is the weakness assessors name most often. One
+free-text box would let that happen — three make the form ask the question,
+and a row with an output and no outcome is refused with "Say what changes for
+somebody as a result." The indicator and target stay optional, because plenty
+of funders do not ask and a blank is honest where an invented measure is not.
+
+### Readiness was reporting 100% on an empty application
+
+Wiring the two real inputs exposed something worse than either of them. With a
+budget and outcomes done, the card read **100% ready** directly above "0 of 0
+questions answered". Three causes, all the same fault:
+
+- `ratio(0, 0)` is null, and a null score is EXCLUDED from the average — so
+  "no questions imported" did not count against the application at all. Now
+  scored zero, with a blocker, because an application with nothing in it has
+  not been started rather than nearly finished.
+- Word-limit compliance scored full marks with no answers. Its own test said
+  so — *"word-limit compliance is vacuously satisfied when no answers exist
+  yet"* — and asserted 21% anyway. The bug was written down and blessed. Now
+  null until something is written.
+- `eligibilityVerdict` was hardcoded `'eligible'`, so the card has claimed
+  "you meet every criterion we can check" on every application ever opened,
+  whatever the engine thought. Now `'unknown'` — "we have not checked" is the
+  true answer, and this domain has a word for it. Running the engine here for
+  real needs the profile and project the query does not load; that is on the
+  roadmap.
+
+Measured on the walk: an empty application went from 50% to **13%**, and the
+same application with a balanced budget and one outcome row reads 63% rather
+than 100%.
+
+## A bug found because a `catch` had nothing to say
+
+The walkthrough would not get past onboarding: every attempt left
+`organisations` at zero and the form saying *"We could not save that. Nothing
+has been changed — please try again."* The action's `catch {}` bound no error
+and logged nothing, so there was nothing to go on. Adding one `console.error`
+produced it immediately:
+
+```
+[grantfinderstudio] self-declared profile could not be saved: Error: NEXT_REDIRECT
+  digest: 'NEXT_REDIRECT;push;/sign-in;307;'
+```
+
+**Next signals a redirect by throwing, and the action was catching it.**
+`claimOrganisation()` sat inside the try; `requireSession()` inside it
+redirects a signed-out visitor to `/sign-in`; the catch turned that working
+redirect into a save failure. Anybody whose session expired mid-form got
+"please try again" against a message that would never change, with no hint
+that signing in again was the answer.
+
+Fixed twice over. Structurally: the guard moved OUT of the try in both
+onboarding actions, so a redirect cannot be caught — which is how every other
+action in the app already does it, checked. And `app/control-flow.ts` adds
+`rethrowControlFlow`, which re-throws anything whose `digest` is a Next
+redirect or not-found and lets real errors through to be handled as errors. It
+matches on the digest rather than importing Next's `isRedirectError` from an
+unstable internal path.
+
+Both catch blocks now log. *A `catch` that binds no error is a decision to
+discard the only explanation anybody will ever get.*
+
+### A note on my own test figures
+
+The first e2e run reported two budget failures that were not failures. The
+project the check sets up asks for **£18,000**, and I had written the
+"mismatched" first line as £18,000 — so it matched, no mismatch was reported,
+and the later lines then overshot the ask so the budget was correctly NOT
+submittable. Both assertions were wrong about the product rather than the
+product being wrong about the budget.
+
+Worth recording because the failure looked exactly like a broken feature, and
+the temptation at that point is to go and "fix" working code. The figures now
+sit in the script with a comment saying what each is chosen to do, so the next
+person changing the project's ask sees what depends on it.

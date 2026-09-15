@@ -34,10 +34,14 @@ describe('assessReadiness', () => {
       outcomesDefined: 0,
       attachmentsProvided: 0,
     });
-    // 21%: unresolved eligibility scores 0.5, and word-limit compliance is
-    // vacuously satisfied when no answers exist yet. The blockers carry the
-    // real signal.
-    expect(r.percent).toBe(21);
+    // 8%: unresolved eligibility scores 0.5 and nothing else scores at all.
+    //
+    // This asserted 21%, and its own comment said why — "word-limit
+    // compliance is vacuously satisfied when no answers exist yet". That was
+    // the bug, written down and blessed: a component scoring full marks for
+    // emptiness. Compliance is now null until something is written, so it is
+    // excluded rather than counted as perfect.
+    expect(r.percent).toBe(8);
     expect(r.blockers.length).toBeGreaterThan(3);
   });
 
@@ -119,10 +123,35 @@ describe('assessReadiness', () => {
     expect(r.blockers).toContain('1 required attachment missing.');
   });
 
-  it('handles an application with no questions imported yet', () => {
+  it('scores no questions as zero, not as "does not apply"', () => {
+    // It was null, which the average excludes — so an application with no
+    // questions in it scored full marks on whatever was left. With a budget
+    // and outcomes done it reported **100% ready** directly above the words
+    // "0 of 0 questions answered". An application with nothing in it has not
+    // been started, let alone nearly finished.
     const r = assessReadiness({ ...complete, questionsTotal: 0, questionsAnswered: 0 });
-    expect(r.components.find((c) => c.id === 'questions')?.score).toBeNull();
+    expect(r.components.find((c) => c.id === 'questions')?.score).toBe(0);
     expect(r.components.find((c) => c.id === 'questions')?.detail).toContain('have been imported');
+    expect(r.blockers.join(' ')).toContain('No questions from the funder');
+  });
+
+  it('cannot reach 100% with no questions, however much else is done', () => {
+    const r = assessReadiness({
+      ...complete,
+      questionsTotal: 0,
+      questionsAnswered: 0,
+      budgetHasLines: true,
+      budgetSubmittable: true,
+      outcomesDefined: 3,
+    });
+    expect(r.percent).toBeLessThan(100);
+  });
+
+  it('does not credit word limits before anything is written', () => {
+    const r = assessReadiness({ ...complete, questionsAnswered: 0, answersOverWordLimit: 0 });
+    const compliance = r.components.find((c) => c.id === 'compliance');
+    expect(compliance?.score).toBeNull();
+    expect(compliance?.detail).toContain('nothing to measure');
   });
 
   it('never exceeds 100 percent even with over-provision', () => {

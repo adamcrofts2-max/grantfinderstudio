@@ -1,6 +1,7 @@
 'use server';
 
 import { getDatabase, withAdmin } from '@/db';
+import { rethrowControlFlow } from '@/app/control-flow';
 import { CompaniesHouseClient, describeFailure } from '@/ingestion/companieshouse/client';
 import { looksLikeCompanyNumber } from '@/ingestion/companieshouse/normalise';
 import {
@@ -180,9 +181,13 @@ export async function saveManualProfileAction(
     return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
-  try {
+  // Outside the try, deliberately. `claimOrganisation` reaches
+  // `requireSession`, which redirects a signed-out visitor — and Next signals
+  // a redirect by throwing, so a catch below would swallow it and report a
+  // save failure instead. See `app/control-flow.ts`.
+  const orgClaim = await claimOrganisation();
 
-    const orgClaim = await claimOrganisation();
+  try {
     const database = await getDatabase();
     await database.withTenant(orgClaim.organisationId, async (tx) => {
       await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, legalName);
@@ -196,7 +201,14 @@ export async function saveManualProfileAction(
       });
     });
     await commitOrganisation(orgClaim);
-  } catch {
+  } catch (error) {
+    rethrowControlFlow(error);
+    // Logged, because it was not. This message is the end of the road for
+    // somebody setting up, and a bare `catch {}` left whoever runs the
+    // deployment with nothing to go on — the reason existed and was thrown
+    // away. The user's message stays deliberately unspecific; the server log
+    // is where the cause belongs.
+    console.error('[grantfinderstudio] self-declared profile could not be saved:', error);
     return {
       saved: false,
       message: 'We could not save that. Nothing has been changed — please try again.',
@@ -266,8 +278,10 @@ export async function saveProjectAction(
     return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
+  // Outside the try, for the reason given on the profile action above.
+  const orgClaim = await claimOrganisation();
+
   try {
-    const orgClaim = await claimOrganisation();
     const database = await getDatabase();
     await database.withTenant(orgClaim.organisationId, async (tx) => {
       await ensureOrganisation(tx, orgClaim.organisationId, orgClaim.userId, name);
@@ -281,7 +295,9 @@ export async function saveProjectAction(
       });
     });
     await commitOrganisation(orgClaim);
-  } catch {
+  } catch (error) {
+    rethrowControlFlow(error);
+    console.error('[grantfinderstudio] the project could not be saved:', error);
     return {
       saved: false,
       message: 'We could not save that. Nothing has been changed — please try again.',

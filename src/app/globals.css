@@ -1763,3 +1763,95 @@ summary:focus-visible {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The budget and the logic model
+
+   Added with the budget engine. A budget is the one place in this product
+   where a table is the right shape: four columns of the same kind of thing,
+   compared down the column, with a total underneath. Everything else here is
+   cards, and forcing this into cards would have lost the comparison.
+   --------------------------------------------------------------------------- */
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-base);
+}
+.budget-table th,
+.budget-table td {
+  padding: var(--s-3) var(--s-3) var(--s-3) 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.budget-table thead th {
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* Money lines up, so the column can be read as a column. */
+.budget-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.budget-table .muted { color: var(--ink-soft); }
+.budget-table tfoot th,
+.budget-table tfoot td { font-weight: 650; border-bottom: none; padding-top: var(--s-4); }
+.budget-table tfoot tr:last-child th,
+.budget-table tfoot tr:last-child td { font-weight: 400; color: var(--ink-soft); padding-top: var(--s-2); }
+
+/* A problem belongs beside the line it concerns, not in a list underneath
+   where somebody has to match it back up. */
+.line-problem {
+  display: block;
+  margin-top: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--negative);
+}
+
+/* Remove, and anything else that must be reachable without competing with
+   the action people actually came for. */
+.btn-quiet {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--t-sm);
+  color: var(--ink-faint);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.btn-quiet:hover { color: var(--negative); }
+
+/* Two fields that belong together on one line, and stack on a phone. */
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--s-4);
+}
+
+.optional { font-weight: 400; color: var(--ink-faint); }
+
+.logic-model { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-4); }
+.logic-model > li {
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+/* activity → output → outcome, side by side, because the relation between
+   them is the thing the reader is checking. */
+.logic-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--s-4);
+}
+.logic-row p:not(.eyebrow) { margin-top: var(--s-1); }
+.logic-model > li > .hint { margin-top: var(--s-3); }
+.logic-model > li > form { margin-top: var(--s-3); }

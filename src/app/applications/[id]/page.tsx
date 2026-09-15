@@ -2,12 +2,19 @@ import { notFound } from 'next/navigation';
 import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
+import { loadBudgetLines } from '@/db/budget';
+import { loadOutcomes } from '@/db/outcomes';
+import { loadCriteria } from '@/db/queries';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
+import { validateBudget } from '@/domain/budget/validate';
+import { restrictionsFromCriteria } from '@/domain/budget/restrictions';
 
 import { Workspace, type QuestionView } from './Workspace';
 import { PasteQuestions } from './PasteQuestions';
 import { ReviewPanel } from './ReviewPanel';
+import { BudgetPanel } from './BudgetPanel';
+import { OutcomesPanel } from './OutcomesPanel';
 import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +32,18 @@ export default async function ApplicationPage({
     const application = await loadApplication(tx, id);
     if (!application) return null;
     const facts = await loadFacts(tx);
+    const budgetLines = await loadBudgetLines(tx, id);
+    const outcomes = await loadOutcomes(tx, id);
+    // Only criteria a human has verified — `loadCriteria` filters on
+    // `verified_at`, which is what makes the budget check the funder's rule
+    // rather than somebody's reading of their prose.
+    // `mapCriteria` also reports rows it could not read; a criterion that
+    // does not map is not a rule, so it is not one the budget is checked
+    // against either.
+    const criteria =
+      application.opportunityId === null
+        ? []
+        : (await loadCriteria(tx, application.opportunityId)).criteria;
 
     const questions: QuestionView[] = [];
     for (const q of application.questions) {
@@ -55,11 +74,11 @@ export default async function ApplicationPage({
           : [],
       });
     }
-    return { application, facts, questions };
+    return { application, facts, questions, budgetLines, outcomes, criteria };
   });
 
   if (!page) notFound();
-  const { application, facts, questions } = page;
+  const { application, facts, questions, budgetLines, outcomes, criteria } = page;
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
@@ -80,16 +99,34 @@ export default async function ApplicationPage({
     })
     .join('\n\n---\n\n');
 
+  // The funder's own verified terms, and what they leave unchecked. Two of
+  // `validateBudget`'s rules have no criterion kind behind them and are never
+  // filled — see `restrictionsFromCriteria`, which returns that list so the
+  // card can say so rather than implying a check it did not make.
+  const funderRules = restrictionsFromCriteria(criteria);
+  const budget = validateBudget(
+    budgetLines,
+    funderRules.restrictions,
+    application.amountRequestedGbp,
+  );
+
   const readiness = assessReadiness({
-    eligibilityVerdict: 'eligible',
+    // UNKNOWN, because nothing here has evaluated it. This said 'eligible' —
+    // so the card claimed "you meet every criterion we can check" on every
+    // application ever opened, whatever the eligibility engine thought, and
+    // scored it full marks for doing so. Running the engine properly needs
+    // the applicant profile and project this query does not load; until it
+    // does, "we have not checked" is the true answer and 'unknown' is how
+    // this domain says it. On the roadmap to wire for real.
+    eligibilityVerdict: 'unknown',
     questionsTotal: questions.length,
     questionsAnswered: answered,
     answersWithUnsupportedClaims: unsupported,
     evidenceNeeded: 0,
     evidenceProvided: 0,
-    budgetSubmittable: false,
-    budgetHasLines: false,
-    outcomesDefined: 0,
+    budgetSubmittable: budget.isSubmittable,
+    budgetHasLines: budgetLines.length > 0,
+    outcomesDefined: outcomes.length,
     attachmentsRequired: 0,
     attachmentsProvided: 0,
     answersOverWordLimit: overLimit,
@@ -165,6 +202,17 @@ export default async function ApplicationPage({
       <PasteQuestions applicationId={application.id} open={questions.length === 0} />
 
       <Workspace applicationId={application.id} questions={questions} />
+
+      <BudgetPanel
+        amountRequestedGbp={application.amountRequestedGbp}
+        applicationId={application.id}
+        known={funderRules.known}
+        lines={budgetLines}
+        unknown={funderRules.unknown}
+        validation={budget}
+      />
+
+      <OutcomesPanel applicationId={application.id} outcomes={outcomes} />
 
       {questions.length === 0 ? null : <ReviewPanel applicationId={application.id} />}
 

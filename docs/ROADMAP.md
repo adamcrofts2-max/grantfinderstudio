@@ -192,7 +192,6 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [x] Findings quoting words the application does not contain are discarded
 - [x] The Critic never rewrites, never scores, and never repeats a check the
       deterministic `checkDraft` already makes exactly
-- [ ] Store reviews against the application (the `reviews` table is still unused)
 - [ ] Readiness breakdown (completeness, never a success probability)
 
 **Step 2 — a human of the applicant's choosing (free, no supply side needed)**
@@ -214,8 +213,21 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Note the identity shift: software margins become services margins, and
       headcount starts scaling with revenue
 
-- [ ] Budget engine
-- [ ] Outcomes table
+**Also in this phase — what an application needs besides prose**
+- [x] **Budget engine.** `budgets`/`budget_lines` written for the first time
+      since 0001, `validateBudget` wired to the funder's own verified criteria
+      through the new `restrictionsFromCriteria`, and the card names the two
+      rules it CANNOT check rather than implying it did
+- [x] **Outcomes table.** activity → output → outcome as three fields, because
+      the distinction is what assessors read; indicator and target optional
+- [ ] Carry a cost-category exclusion and an overhead cap as criterion kinds,
+      so `validateBudget`'s last two checks can fire. Until then they never
+      do, and the budget card says so
+- [ ] Wire `eligibilityVerdict` into readiness for real. It was hardcoded
+      `'eligible'`, is now honestly `'unknown'`, and running the engine needs
+      the applicant profile and project the application query does not load
+- [ ] Store reviews against the application (the `reviews` table is still
+      unused — the last of the four tables 0001 created with no writer)
 
 ## Phase 10 — Tracker, pipeline and export
 - [ ] Pipeline states
@@ -842,3 +854,7 @@ rather than faults, kept here rather than in a document nobody opens again.
       was meant; "Source: unknown" over figures from licensed grants; and the
       funder's top areas listed without saying how many are in the applicant's
       own area, which the shortlist two screens earlier does say
+- [x] `npm run e2e` says what failed in its verdict, not only that something
+      did. `E2E: FAILED` after eighty lines of `ok` is useless read through
+      `tail`, which is how it gets read — one run cost a full re-run to find
+      out why. The failures are repeated under the verdict now

@@ -54,6 +54,22 @@ export interface AddState {
 
 export const EMPTY_ADD: AddState = { ok: false, message: '' };
 
+/**
+ * The result of changing the budget or the outcomes.
+ *
+ * One shape for both, and for adding and removing, because the screen does
+ * the same thing with all four: say what happened, in a line, above the list
+ * that has just changed.
+ */
+export interface EditState {
+  ok: boolean;
+  message: string;
+  /** Which field to blame, so a form can point at it rather than shrug. */
+  field?: string;
+}
+
+export const EMPTY_EDIT: EditState = { ok: false, message: '' };
+
 /** One thing the Critic found wrong, as the workspace renders it. */
 export interface ReviewFinding {
   kind: string;

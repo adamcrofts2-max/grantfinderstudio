@@ -4,6 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
+import { addBudgetLine, deleteBudgetLine } from '@/db/budget';
+import { addOutcome, deleteOutcome } from '@/db/outcomes';
+import { isCostCategory } from '@/domain/budget/categories';
 import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
 import { MAX_ANSWER_LENGTH, countWords } from '@/domain/questions/words';
 import { draftSummary } from '@/domain/provenance/draft-summary';
@@ -20,10 +23,12 @@ import {
 import { loadVerifiedCriteriaLabels } from '@/db/workspace';
 import {
   EMPTY_DRAFT,
+  EMPTY_EDIT,
   EMPTY_REVIEW,
   EMPTY_WRITE,
   type AddState,
   type DraftState,
+  type EditState,
   type ReviewState,
   type WriteState,
 } from './state';
@@ -308,6 +313,179 @@ export async function addQuestionsAction(
     ok: true,
     message: `Added ${questions.length} question${questions.length === 1 ? '' : 's'}.`,
   };
+}
+
+/** Bounds on what a person can type into a budget line or an outcome. */
+const MAX_LINE_TEXT = 300;
+const MAX_OUTCOME_TEXT = 600;
+/** £100m. A bound, not a judgement: it stops a typo becoming a total. */
+const MAX_LINE_AMOUNT = 100_000_000;
+
+/** The application, if it is this organisation's. Used by all four editors. */
+async function ownApplication(
+  organisationId: string,
+  applicationId: string,
+): Promise<boolean> {
+  const database = await getDatabase();
+  return database.withTenant(
+    organisationId,
+    async (tx) => (await loadApplication(tx, applicationId)) !== null,
+  );
+}
+
+/**
+ * Add a line to the budget.
+ *
+ * ## Why the amount is parsed rather than trusted
+ *
+ * People type "£1,200" and "1200.00" and "1,200" into a money field, and a
+ * number input does not stop any of them arriving as text. The commas and the
+ * pound sign come off here; anything left that is not a number is a message
+ * rather than a NaN travelling to a numeric column.
+ */
+export async function addBudgetLineAction(
+  _previous: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  const organisationId = await requireOrganisationId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const category = formData.get('category');
+  const description = String(formData.get('description') ?? '').trim();
+  const rawAmount = String(formData.get('amountGbp') ?? '').trim();
+
+  if (applicationId === '' || !(await ownApplication(organisationId, applicationId))) {
+    return { ...EMPTY_EDIT, message: 'That application no longer exists.' };
+  }
+  if (!isCostCategory(category)) {
+    return { ...EMPTY_EDIT, field: 'category', message: 'Choose what kind of cost this is.' };
+  }
+  if (description === '') {
+    return {
+      ...EMPTY_EDIT,
+      field: 'description',
+      message: 'Say what the money buys — an assessor reads this line, not the category.',
+    };
+  }
+
+  const amount = Number(rawAmount.replaceAll(/[£,\s]/gu, ''));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      ...EMPTY_EDIT,
+      field: 'amountGbp',
+      message: 'Give an amount in pounds, greater than zero.',
+    };
+  }
+  if (amount > MAX_LINE_AMOUNT) {
+    return {
+      ...EMPTY_EDIT,
+      field: 'amountGbp',
+      message: 'That is larger than any grant we have seen. Check the figure.',
+    };
+  }
+
+  const database = await getDatabase();
+  await database.withTenant(organisationId, (tx) =>
+    addBudgetLine(tx, organisationId, applicationId, {
+      category,
+      description: description.slice(0, MAX_LINE_TEXT),
+      // Two decimal places, because the column is numeric(12,2) and rounding
+      // at the boundary is better than the database doing it silently.
+      amountGbp: Math.round(amount * 100) / 100,
+    }),
+  );
+
+  revalidatePath(`/applications/${applicationId}`);
+  return { ok: true, message: `Added "${description.slice(0, 60)}".` };
+}
+
+export async function removeBudgetLineAction(
+  _previous: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  const organisationId = await requireOrganisationId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const lineId = String(formData.get('lineId') ?? '');
+  if (applicationId === '' || lineId === '') {
+    return { ...EMPTY_EDIT, message: 'Nothing to remove.' };
+  }
+
+  const database = await getDatabase();
+  const removed = await database.withTenant(organisationId, (tx) =>
+    deleteBudgetLine(tx, applicationId, lineId),
+  );
+  revalidatePath(`/applications/${applicationId}`);
+  return removed
+    ? { ok: true, message: 'Removed.' }
+    : { ...EMPTY_EDIT, message: 'That line had already gone.' };
+}
+
+/**
+ * Add one row of the logic model.
+ *
+ * Activity, output and outcome are all required because the point of the row
+ * is the distinction between them. An indicator and a target are optional:
+ * plenty of funders do not ask, and a blank is honest where an invented
+ * measure would not be.
+ */
+export async function addOutcomeAction(
+  _previous: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  const organisationId = await requireOrganisationId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const text = (name: string): string =>
+    String(formData.get(name) ?? '').trim().slice(0, MAX_OUTCOME_TEXT);
+  const activity = text('activity');
+  const output = text('output');
+  const outcome = text('outcome');
+  const indicator = text('indicator');
+  const target = text('target');
+
+  if (applicationId === '' || !(await ownApplication(organisationId, applicationId))) {
+    return { ...EMPTY_EDIT, message: 'That application no longer exists.' };
+  }
+  for (const [field, value, prompt] of [
+    ['activity', activity, 'Say what you will actually do.'],
+    ['output', output, 'Say what that produces — how many, how often.'],
+    ['outcome', outcome, 'Say what changes for somebody as a result.'],
+  ] as const) {
+    if (value === '') return { ...EMPTY_EDIT, field, message: prompt };
+  }
+
+  const database = await getDatabase();
+  await database.withTenant(organisationId, (tx) =>
+    addOutcome(tx, organisationId, applicationId, {
+      activity,
+      output,
+      outcome,
+      indicator: indicator === '' ? null : indicator,
+      target: target === '' ? null : target,
+    }),
+  );
+
+  revalidatePath(`/applications/${applicationId}`);
+  return { ok: true, message: 'Added.' };
+}
+
+export async function removeOutcomeAction(
+  _previous: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  const organisationId = await requireOrganisationId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const id = String(formData.get('outcomeId') ?? '');
+  if (applicationId === '' || id === '') {
+    return { ...EMPTY_EDIT, message: 'Nothing to remove.' };
+  }
+
+  const database = await getDatabase();
+  const removed = await database.withTenant(organisationId, (tx) =>
+    deleteOutcome(tx, applicationId, id),
+  );
+  revalidatePath(`/applications/${applicationId}`);
+  return removed
+    ? { ok: true, message: 'Removed.' }
+    : { ...EMPTY_EDIT, message: 'That row had already gone.' };
 }
 
 /**

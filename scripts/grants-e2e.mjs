@@ -181,8 +181,19 @@ await new Promise((r) => api.listen(API_PORT, '127.0.0.1', r));
 const executablePath = chromiumPath();
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const PHONE = { width: 390, height: 844 };
-const fail = (m) => { console.error('FAIL:', m); process.exitCode = 1; };
-const ok = (m) => console.log('  ok —', m);
+/**
+ * Failures are collected as well as printed.
+ *
+ * `E2E: FAILED` on its own at the end of eighty lines of `ok` is useless the
+ * moment anybody reads the log through `tail`, which is how it gets read — a
+ * run reported FAILED with every visible line passing, and finding out why
+ * meant running the whole thing again. The verdict now repeats what failed,
+ * so the last lines always carry the reason.
+ */
+const failures = [];
+const fail = (m) => { failures.push(m); console.error('FAIL:', m); process.exitCode = 1; };
+let passed = 0;
+const ok = (m) => { passed += 1; console.log('  ok —', m); };
 
 try {
   // --- the applicant --------------------------------------------------------
@@ -778,6 +789,89 @@ try {
         .evaluate((el) => el.value);
       if (/young people aged 14 to 19/u.test(kept)) ok('and is still there after a reload');
       else fail('a saved answer did not survive a reload');
+
+      // --- the budget ------------------------------------------------------
+      //
+      // `budgets`, `budget_lines` and `outcomes` were in the schema from 0001
+      // with nothing writing to them, while the readiness card said "No
+      // budget has been built" and scored the application down for it.
+      const readiness = () => {
+        const el = page.locator('body');
+        return el.innerText().then((t) => Number(/Readiness — (\d+)%/u.exec(t)?.[1] ?? '-1'));
+      };
+      const before = await readiness();
+
+      const line = async (desc, category, amount) => {
+        await page.fill('#budget-description', desc);
+        await page.selectOption('#budget-category', category);
+        await page.fill('#budget-amount', amount);
+        await page.locator('button').filter({ hasText: /Add this line/iu }).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(900);
+      };
+      // The project above asks for £18,000, so these figures are chosen to
+      // MISS it and then to meet it exactly. Getting that the wrong way round
+      // the first time made the product look broken when it was right: a
+      // first line equal to the ask matched, so no mismatch was reported, and
+      // the assertion was the thing at fault.
+      await line('Youth worker, 2 days a week', 'staff', '12,000');
+      const oneLine = await page.locator('body').innerText();
+      if (/asks for/u.test(oneLine) && /12,000/u.test(oneLine) && /18,000/u.test(oneLine)) {
+        ok('a budget that does not match the ask says so, with both figures');
+      } else fail(`the budget/ask mismatch was not reported: ${oneLine.slice(0, 200)}`);
+
+      await line('Room hire', 'venues', '4000');
+      await line('Premises and insurance', 'overheads', '2000');
+      const balanced = await page.locator('body').innerText();
+      if (/Nothing here would stop this budget going in/iu.test(balanced)) {
+        ok('and says so when it does match');
+      } else fail('a balanced budget was not reported submittable');
+      if (/Not checked:/u.test(balanced)) {
+        ok('and names the funder rules it could NOT check');
+      } else fail('the budget implies checks it cannot make');
+
+      await page.fill('#budget-description', 'A typo');
+      await page.fill('#budget-amount', 'twelve');
+      await page.locator('button').filter({ hasText: /Add this line/iu }).first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(700);
+      if (/Give an amount in pounds/iu.test(await page.locator('body').innerText())) {
+        ok('an amount that is not a number is refused with a sentence');
+      } else fail('a non-numeric amount was not refused');
+
+      // --- the logic model -------------------------------------------------
+      await page.fill('#outcome-activity', 'Run a weekly evening session in Wells');
+      await page.fill('#outcome-output', '40 sessions a year, reaching 60 young people');
+      await page.fill('#outcome-outcome', 'At least 25 move into work or training');
+      await page.locator('button').filter({ hasText: /Add this row/iu }).first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(900);
+      const withOutcome = (await page.locator('body').innerText()).toLowerCase();
+      if (withOutcome.includes('we will') && withOutcome.includes('which produces') && withOutcome.includes('so that')) {
+        ok('the logic model shows activity, output and outcome apart');
+      } else fail('the logic model did not render its three parts');
+
+      await page.fill('#outcome-activity', 'Something');
+      await page.fill('#outcome-output', 'Some of it');
+      await page.locator('button').filter({ hasText: /Add this row/iu }).first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(700);
+      if (/Say what changes for somebody/iu.test(await page.locator('body').innerText())) {
+        ok('a row with no outcome is refused, because that is the point of the row');
+      } else fail('a row with an output but no outcome was accepted');
+
+      // --- and readiness moved, because it is fed real data now ------------
+      const after = await readiness();
+      const body = await page.locator('body').innerText();
+      if (after > before) ok(`readiness moved with the work (${before}% → ${after}%)`);
+      else fail(`readiness did not move: ${before}% → ${after}%`);
+      if (/No budget has been built/iu.test(body)) fail('still says no budget has been built');
+      else ok('and no longer asks for a budget that exists');
+      if (/No outcomes have been defined/iu.test(body)) fail('still says no outcomes defined');
+      else ok('nor for outcomes that exist');
+      if (after === 100) {
+        fail('an application with no questions answered reports 100% ready');
+      } else ok('and does not claim 100% with the questions still empty');
     }
   }
 } finally {
@@ -785,4 +879,9 @@ try {
   api.close();
 }
 
-console.log(process.exitCode ? '\nE2E: FAILED' : '\nE2E: clean');
+if (failures.length > 0) {
+  console.log(`\nE2E: FAILED — ${failures.length} of ${failures.length + passed} checks`);
+  for (const [i, message] of failures.entries()) console.log(`  ${i + 1}. ${message}`);
+} else {
+  console.log(`\nE2E: clean — ${passed} checks`);
+}

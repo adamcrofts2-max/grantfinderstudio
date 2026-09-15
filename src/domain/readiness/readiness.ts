@@ -82,17 +82,23 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
     blockers.push('You are not eligible for this fund.');
   }
 
-  const questionScore = ratio(input.questionsAnswered, input.questionsTotal);
+  // ZERO, not "does not apply". `ratio(0, 0)` is null, and a null score is
+  // excluded from the average — so an application with no questions in it
+  // scored full marks on everything that was left and reported 100% ready,
+  // above the words "0 of 0 questions answered". An application with nothing
+  // in it is not nearly ready; it has not been started.
   components.push({
     id: 'questions',
     label: 'Questions',
-    score: questionScore,
+    score: input.questionsTotal === 0 ? 0 : ratio(input.questionsAnswered, input.questionsTotal),
     detail:
       input.questionsTotal === 0
         ? 'No questions have been imported yet.'
         : `${input.questionsAnswered} of ${input.questionsTotal} answered.`,
   });
-  if (input.questionsTotal > 0 && input.questionsAnswered < input.questionsTotal) {
+  if (input.questionsTotal === 0) {
+    blockers.push('No questions from the funder’s form yet.');
+  } else if (input.questionsAnswered < input.questionsTotal) {
     const remaining = input.questionsTotal - input.questionsAnswered;
     blockers.push(
       remaining === 1 ? '1 question still to answer.' : `${remaining} questions still to answer.`,
@@ -170,10 +176,18 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
   components.push({
     id: 'compliance',
     label: 'Word limits',
-    score: compliant ? 1 : 0,
-    detail: compliant
-      ? 'Every answer is within its word limit.'
-      : `${input.answersOverWordLimit} answers exceed their word limit.`,
+    // Not applicable until something has been written. "Every answer is
+    // within its word limit" is true of no answers, and a component that
+    // scores full marks for emptiness is the same vacuous claim the draft
+    // card once made about tracing every sentence of a draft that cited
+    // nothing.
+    score: input.questionsAnswered === 0 ? null : compliant ? 1 : 0,
+    detail:
+      input.questionsAnswered === 0
+        ? 'Nothing written yet, so there is nothing to measure.'
+        : compliant
+          ? 'Every answer is within its word limit.'
+          : `${input.answersOverWordLimit} answers exceed their word limit.`,
   });
   if (!compliant) {
     blockers.push(
