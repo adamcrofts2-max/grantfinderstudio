@@ -68,6 +68,9 @@ const grant = (id, org) => ({
   funders: [{ org_id: org }],
 });
 
+/** How many grants each stub funder published, so grouping has something to group. */
+const GRANTS_PER_FUNDER = { 'GB-CHC-STUB-1': 6, 'GB-CHC-STUB-2': 1, 'GB-CHC-STUB-3': 1 };
+
 const api = createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   res.setHeader('content-type', 'application/json');
@@ -84,7 +87,15 @@ const api = createServer((req, res) => {
   const m = /\/org\/([^/]+)\/grants_made\//.exec(url.pathname);
   if (m) {
     const org = decodeURIComponent(m[1]);
-    res.end(JSON.stringify({ count: 1, next: null, results: [grant(`${org}-1`, org)] }));
+    const n = GRANTS_PER_FUNDER[org] ?? 1;
+    const results = Array.from({ length: n }, (_, i) => {
+      const row = grant(`${org}-${i + 1}`, org);
+      // A spread of sizes within the funder, so a median and an
+      // interquartile range are meaningful rather than one repeated number.
+      row.data.amountAwarded = (SHAPES[org]?.amount ?? 17500) + i * 1000;
+      return row;
+    });
+    res.end(JSON.stringify({ count: n, next: null, results }));
     return;
   }
   res.statusCode = 404;
@@ -156,7 +167,10 @@ try {
   else fail('a page visit did not cause the record to fill');
 
   // --- and searching finds what the visit loaded ---------------------------
-  await page.goto(`${B}/grants?q=1&text=somerset`, { waitUntil: 'networkidle' });
+  //
+  // Asked of the grant list, so the assertion is about one specific grant
+  // being findable rather than about how the default view groups things.
+  await page.goto(`${B}/grants?q=1&text=somerset&view=grants`, { waitUntil: 'networkidle' });
   const selfLoaded = await page.locator('body').innerText();
   if (/Riverside youth skills programme/.test(selfLoaded)) {
     ok('the grant is searchable without anybody loading it');
@@ -213,8 +227,12 @@ try {
     else fail('the step reported nothing');
   }
 
-  // --- /grants with grants in it -------------------------------------------
-  await page.goto(`${B}/grants?q=1&text=somerset`, { waitUntil: 'networkidle' });
+  // --- one grant, read as a grant ------------------------------------------
+  //
+  // Explicitly the grant list: funders are the default view now, and this
+  // block is about whether a single row carries what a person needs — amount,
+  // recipient, funder, and the way onward.
+  await page.goto(`${B}/grants?q=1&text=somerset&view=grants`, { waitUntil: 'networkidle' });
   const loaded = await page.locator('body').innerText();
   if (/Application error|server-side exception/i.test(loaded)) fail('/grants threw after loading');
   if (!/Riverside youth skills programme/.test(loaded)) fail('the loaded grant is not on the page');
@@ -228,8 +246,87 @@ try {
   if (!/Add a fund from them/.test(loaded)) fail('no link through to adding a fund');
   else ok('the link through to a fund is there');
 
-  // --- narrowing ------------------------------------------------------------
+  // --- by funder, which is the unit of the decision -------------------------
+  //
+  // The applicant's question is "who would fund us", not "which grants mention
+  // youth work". So funders are the default view and the grant list is one tap
+  // away, with the choice in the URL like everything else here.
   await page.goto(`${B}/grants?q=1&text=youth`, { waitUntil: 'networkidle' });
+  const funderView = await page.locator('body').innerText();
+  if (!/By funder/i.test(funderView)) fail('there is no by-funder view');
+  else ok('the by-funder view is there');
+  if (!/funders? have given/i.test(funderView)) fail('the count does not describe funders');
+  else ok('the count describes funders, not rows');
+
+  // The line that says WHY a funder is on the list has to be made of the same
+  // parts the ordering is, or the reader cannot check the ranking.
+  if (!/grants like yours/i.test(funderView)) fail('no reason is given for a funder');
+  else ok('each funder says why it is there');
+
+  /**
+   * The selected tab has to be legible.
+   *
+   * It was not: `var(--bg)` is a token this design system never had, so the
+   * colour fell back to the inherited ink and "By funder" rendered as black
+   * text on a black pill. A build, a lint and a thousand unit tests all
+   * passed. Computed styles are the only thing that sees it.
+   */
+  const contrast = await page.locator('.view-on').evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { color: s.color, background: s.backgroundColor };
+  });
+  if (contrast.color === contrast.background) {
+    fail(`the selected tab is invisible: ${contrast.color} on ${contrast.background}`);
+  } else ok('the selected tab is legible');
+
+  const firstFunder = page.locator('.funder-card summary').first();
+  if (!(await firstFunder.count())) fail('no funder cards rendered');
+  else {
+    await firstFunder.click();
+    const opened = await page.locator('.funder-card').first().innerText();
+    // Six grants is above MIN_AWARDS_TO_CHARACTERISE, so this one is described.
+    if (!/Typically/i.test(opened)) fail('an eligible funder is not described');
+    else ok('a funder with enough grants is described');
+    if (!/Median/i.test(opened) || !/Range/i.test(opened)) fail('the figures are missing');
+    else ok('the figures are there');
+    if (!/Last gave/i.test(opened)) fail('recency is not stated');
+    else ok('recency is stated');
+    if (!/most recent/i.test(opened)) fail('no example grants inside the funder');
+    else ok('the funder carries its own grants');
+    if (!/Add a fund from them/i.test(opened)) fail('no way through to adding a fund');
+    else ok('the way through to a fund is there');
+  }
+
+  // A funder with too few grants must NOT be given a median. A median over one
+  // grant is not a policy, and saying less is the honest option.
+  const cards = await page.locator('.funder-card').all();
+  let checkedThin = false;
+  for (const card of cards) {
+    const text = await card.innerText();
+    if (/Stub Trust 2|Stub Trust 3/.test(text)) {
+      await card.locator('summary').click();
+      const body = await card.innerText();
+      if (/Typically/i.test(body)) fail('a single grant was described as typical');
+      else if (/Too few to summarise/i.test(body)) {
+        ok('a funder with too few grants is not summarised');
+        checkedThin = true;
+      }
+      break;
+    }
+  }
+  if (!checkedThin) fail('could not find a thin funder to check');
+
+  // And the grant list is still one tap away.
+  await page.locator('.view', { hasText: /Every grant/i }).first().click();
+  await page.waitForLoadState('networkidle');
+  if (!page.url().includes('view=grants')) fail('the view is not in the URL');
+  else ok('the view choice is in the URL');
+  const grantView = await page.locator('body').innerText();
+  if (!/matching grant/i.test(grantView)) fail('the grant list did not come back');
+  else ok('every grant is still one tap away');
+
+  // --- narrowing ------------------------------------------------------------
+  await page.goto(`${B}/grants?q=1&text=youth&view=grants`, { waitUntil: 'networkidle' });
 
   // The options are folded away on a first search, so open them the way a
   // person does. This step existing is the point: results come first, filters
@@ -267,6 +364,11 @@ try {
     if (!page.url().includes('amount=5k-25k')) fail('the filter is not in the URL');
     else ok('tapping a chip puts the filter in the URL');
 
+    // The view you were reading must survive a filter. Tapping a chip on
+    // "Every grant" used to bounce you back to the funder view.
+    if (!page.url().includes('view=grants')) fail('filtering lost the chosen view');
+    else ok('filtering keeps the view you were reading');
+
     const narrowed = await page.locator('body').innerText();
     // £17,500 is in the band; £3,200 and £240,000 are not.
     if (/£3,200/.test(narrowed) || /£240,000/.test(narrowed)) {
@@ -292,7 +394,9 @@ try {
   }
 
   // Two dimensions at once.
-  await page.goto(`${B}/grants?q=1&text=youth&amount=5k-25k&place=Somerset`, {
+  // On the grant list, because this is checking that two predicates combine,
+  // not what the funder view renders.
+  await page.goto(`${B}/grants?q=1&text=youth&amount=5k-25k&place=Somerset&view=grants`, {
     waitUntil: 'networkidle',
   });
   const both = await page.locator('body').innerText();

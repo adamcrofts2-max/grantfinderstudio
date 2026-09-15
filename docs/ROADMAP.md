@@ -429,9 +429,27 @@ this cheque before", where no source answers "what is open".
       per publisher, which grew with the result set
 - [x] Give the dev server its own `distDir`, so `next dev` can no longer
       clobber a production build and produce a phantom hydration error
-- [ ] Group results by FUNDER, which is the real unit of decision — how many
-      grants, median size, range, when they last gave, whether they fund in
-      your area. Probably worth more than any filter
+- [x] **Group results by FUNDER**, the real unit of the decision — matching
+      grants, typical size as an interquartile range, full range, when they
+      last gave, how many went to your area, and the label they use most.
+      Every grant is still one tap away, and the view is in the URL
+- [x] Say why each funder is on the list, in the same clauses the ordering is
+      built from, including the unflattering ones — "nothing published for 7
+      years" appears on the row
+- [x] Refuse to summarise a funder below MIN_AWARDS_TO_CHARACTERISE: name the
+      grants instead of inventing a median over three of them
+- [x] Carry the chosen view through a filter tap. Filtering used to bounce you
+      from the grant list back to the funder list
+- [x] Count zero "in your area" when the applicant has no area — `ILIKE '%%'`
+      matched every row and would have told everyone that every funder works
+      where they are
+- [x] Enforce the design tokens: every `var(--x)` in globals.css must exist. An
+      undefined custom property is silent — it made the selected tab black on
+      black through a clean build, lint and test run
+- [ ] Sort the funder list by something the reader picks — most recent, biggest
+      typical grant, most grants — rather than only by our own ranking
+- [ ] "See all 40 grants from this funder" from inside a funder row, rather
+      than the three most recent
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never

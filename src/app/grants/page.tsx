@@ -4,13 +4,15 @@ import { getDatabase } from '@/db';
 import { requireSession } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import { queryTerms, rankGrants } from '@/domain/grants/query';
-import { filtersFromParams, hasFilters } from '@/domain/grants/facets';
+import { filtersFromParams, filtersToParams, hasFilters } from '@/domain/grants/facets';
+import { rankFunders } from '@/domain/grants/funders';
 import { gbp } from '@/app/components';
 import { nudgeCorpusOnVisit } from '@/app/corpus-autostart';
 
 import { searchCorpus, type CorpusState, type FoundGrant } from './search';
 import { GrantSearchForm } from './GrantSearchForm';
 import { Narrow } from './Narrow';
+import { FunderList } from './FunderList';
 
 export const dynamic = 'force-dynamic';
 
@@ -156,7 +158,33 @@ export default async function GrantsPage({
   const text = asked ? str(params['text']) : suggested;
 
   const filters = filtersFromParams(params);
-  const result = await searchCorpus(text, filters);
+  const result = await searchCorpus(text, filters, { region });
+
+  /**
+   * Funders or grants.
+   *
+   * Funders by default, because "who would fund us" is the question and a
+   * list of grants makes the reader group them in their head. The grant list
+   * is one tap away and unchanged — the choice is in the URL like everything
+   * else on this page, so it survives the back button and can be shared.
+   */
+  const view = str(params['view']) === 'grants' ? 'grants' : 'funders';
+  const viewHref = (next: 'funders' | 'grants'): string =>
+    `/grants?${new URLSearchParams({
+      q: '1',
+      text,
+      ...filtersToParams(filters),
+      ...(next === 'grants' ? { view: 'grants' } : {}),
+    }).toString()}`;
+
+  const funders =
+    result.state === 'ok'
+      ? rankFunders(result.funders, {
+          region,
+          amountSoughtGbp: ask,
+          asOf: new Date().toISOString().slice(0, 10),
+        })
+      : [];
 
   /**
    * Arriving here is what fills the record.
@@ -209,7 +237,15 @@ export default async function GrantsPage({
       {result.state === 'ok' ? (
         <Narrow
           amountSoughtGbp={ask}
-          base={{ q: '1', text }}
+          /**
+           * `view` travels with every filter link.
+           *
+           * Without it, tapping a chip while reading "Every grant" bounced you
+           * back to the funder view — the filter applied and the page you were
+           * on vanished. The chips rebuild the filter half of the URL from
+           * scratch, so anything else that must survive has to be in `base`.
+           */
+          base={{ q: '1', text, ...(view === 'grants' ? { view: 'grants' } : {}) }}
           facets={result.facets}
           filters={filters}
         />
@@ -265,20 +301,51 @@ export default async function GrantsPage({
       ) : (
         <>
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
-            {result.facets.total > ranked.length
-              ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
-              : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}
-            {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}{' '}
-            <span style={{ color: 'var(--ink-3)' }}>
-              {count(result.corpus.awards)} grants held in all.
-            </span>
+            {view === 'funders'
+              ? `${count(funders.length)} funder${funders.length === 1 ? '' : 's'} have given ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} like yours. The ones most likely to fund you first.`
+              : result.facets.total > ranked.length
+                ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
+                : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}
+            {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}
           </p>
 
-          <ul className="facts" style={{ marginTop: 'var(--s-3)' }}>
-            {ranked.map((grant) => (
-              <GrantRow grant={grant} key={grant.id} />
-            ))}
-          </ul>
+          <div className="views" role="tablist" aria-label="How to group these results">
+            <a
+              aria-selected={view === 'funders'}
+              className={view === 'funders' ? 'view view-on' : 'view'}
+              href={viewHref('funders')}
+              rel="nofollow"
+              role="tab"
+            >
+              By funder{funders.length === 0 ? '' : ` (${count(funders.length)})`}
+            </a>
+            <a
+              aria-selected={view === 'grants'}
+              className={view === 'grants' ? 'view view-on' : 'view'}
+              href={viewHref('grants')}
+              rel="nofollow"
+              role="tab"
+            >
+              Every grant
+            </a>
+          </div>
+
+          {view === 'funders' ? (
+            <FunderList
+              context={{
+                region,
+                amountSoughtGbp: ask,
+                asOf: new Date().toISOString().slice(0, 10),
+              }}
+              funders={funders}
+            />
+          ) : (
+            <ul className="facts" style={{ marginTop: 'var(--s-3)' }}>
+              {ranked.map((grant) => (
+                <GrantRow grant={grant} key={grant.id} />
+              ))}
+            </ul>
+          )}
         </>
       )}
 

@@ -379,6 +379,221 @@ export async function facetsFor(
   };
 }
 
+
+export interface FunderExample {
+  id: string;
+  title: string | null;
+  description: string | null;
+  recipientName: string | null;
+  amountGbp: number;
+  awardedOn: string;
+  region: string | null;
+}
+
+export interface FunderSummary {
+  funderId: string;
+  funderName: string;
+  funderWebsite: string | null;
+  /** Grants of theirs matching the search and filters — not their whole history. */
+  matching: number;
+  amounts: { min: number; lowerQuartile: number; median: number; upperQuartile: number; max: number };
+  firstAwardedOn: string | null;
+  lastAwardedOn: string | null;
+  /** Of the matching grants, how many went to the applicant's own area. */
+  inYourRegion: number;
+  /** The label they use most often across the matching grants. */
+  commonTag: string | null;
+  /** The most recent matching grants, for the expanded view. */
+  examples: FunderExample[];
+}
+
+/** Funders on one screen. More than this is a list nobody reads. */
+const FUNDER_LIMIT = 40;
+/** Grants shown inside one funder before "see them all". */
+const EXAMPLES_PER_FUNDER = 3;
+
+/**
+ * The matching grants, grouped by who gave them.
+ *
+ * ## Why this view exists
+ *
+ * An applicant's question is not "which grants mention youth work", it is "who
+ * would fund us, and for how much". Twenty grant rows from one foundation
+ * answer that worse than one line saying *18 grants like yours, typically
+ * £10,000–£35,000, last gave March 2025, 6 of them in Somerset* — because the
+ * decision being made is about a funder, and a list of grants makes the reader
+ * do the grouping in their head.
+ *
+ * ## Statistics over the MATCHING grants
+ *
+ * Not over the funder's whole history, deliberately. "What do they give for
+ * work like ours" is a different and more useful question than "what do they
+ * give", and it is the one a search has already framed. The count is stated
+ * next to the figures so nobody mistakes a median of three grants for a
+ * policy — and `src/domain/funder/behaviour.ts` already holds the rule about
+ * how many awards it takes before a median means anything.
+ *
+ * ## Two queries, not forty-one
+ *
+ * One grouped aggregate over the whole matched set, then one windowed query for
+ * the few example grants per funder on screen. Doing the examples per funder
+ * would be a query per row.
+ */
+export async function funderSummaries(
+  tx: Queryable,
+  terms: readonly string[],
+  filters: GrantFilters,
+  options: { region?: string | null; limit?: number } = {},
+): Promise<FunderSummary[]> {
+  if (terms.filter((t) => t.trim() !== '').length === 0) return [];
+
+  const limit = options.limit ?? FUNDER_LIMIT;
+  const region = options.region?.trim() ?? '';
+  const where = buildWhere(terms, filters);
+  const values = [...where.values];
+  const bind = (value: unknown): string => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+  // An empty region must count zero, not everything: `ILIKE '%%'` matches
+  // every row, which would have told every applicant that every funder works
+  // in their area.
+  const regionPattern = bind(region === '' ? null : `%${escapeLike(region)}%`);
+  const limitAt = bind(limit);
+
+  const { rows } = await tx.query<{
+    funder_id: string;
+    funder_name: string;
+    funder_website: string | null;
+    matching: number;
+    amount_min: string;
+    amount_q1: string;
+    amount_median: string;
+    amount_q3: string;
+    amount_max: string;
+    first_awarded_on: string | null;
+    last_awarded_on: string | null;
+    in_region: number;
+    common_tag: string | null;
+  }>(
+    `SELECT a.funder_id,
+            f.name    AS funder_name,
+            f.website AS funder_website,
+            count(*)::int                                                    AS matching,
+            min(a.amount_gbp)::text                                          AS amount_min,
+            percentile_cont(0.25) WITHIN GROUP (ORDER BY a.amount_gbp)::text AS amount_q1,
+            percentile_cont(0.5)  WITHIN GROUP (ORDER BY a.amount_gbp)::text AS amount_median,
+            percentile_cont(0.75) WITHIN GROUP (ORDER BY a.amount_gbp)::text AS amount_q3,
+            max(a.amount_gbp)::text                                          AS amount_max,
+            min(a.awarded_on)::text                                          AS first_awarded_on,
+            max(a.awarded_on)::text                                          AS last_awarded_on,
+            count(*) FILTER (
+              WHERE ${regionPattern}::text IS NOT NULL AND a.region ILIKE ${regionPattern}
+            )::int                                                           AS in_region,
+            (SELECT t FROM funder_awards b, unnest(b.tags) AS t
+               WHERE b.funder_id = a.funder_id AND t <> ''
+               GROUP BY t ORDER BY count(*) DESC, t LIMIT 1)                 AS common_tag
+       FROM funder_awards a
+       JOIN funders f ON f.id = a.funder_id
+      WHERE ${where.sql}
+      GROUP BY a.funder_id, f.name, f.website
+      -- Repeated giving first, then recency. Both are evidence rather than
+      -- preference, and both are things the screen can state in a sentence.
+      ORDER BY count(*) DESC, max(a.awarded_on) DESC NULLS LAST, f.name
+      LIMIT ${limitAt}`,
+    values,
+  );
+
+  if (rows.length === 0) return [];
+
+  const examples = await funderExamples(
+    tx,
+    terms,
+    filters,
+    rows.map((row) => row.funder_id),
+  );
+
+  return rows.map((row) => ({
+    funderId: row.funder_id,
+    funderName: row.funder_name,
+    funderWebsite: row.funder_website,
+    matching: row.matching,
+    amounts: {
+      min: Number(row.amount_min),
+      lowerQuartile: Number(row.amount_q1),
+      median: Number(row.amount_median),
+      upperQuartile: Number(row.amount_q3),
+      max: Number(row.amount_max),
+    },
+    firstAwardedOn: row.first_awarded_on,
+    lastAwardedOn: row.last_awarded_on,
+    inYourRegion: row.in_region,
+    commonTag: row.common_tag,
+    examples: examples.get(row.funder_id) ?? [],
+  }));
+}
+
+/**
+ * A few of each funder's matching grants, in one query.
+ *
+ * A window function rather than a query per funder: forty funders on screen
+ * would otherwise be forty-one round trips, and the evidence a person actually
+ * reads is two or three grants apiece.
+ */
+async function funderExamples(
+  tx: Queryable,
+  terms: readonly string[],
+  filters: GrantFilters,
+  funderIds: readonly string[],
+): Promise<Map<string, FunderExample[]>> {
+  const where = buildWhere(terms, filters);
+  const values = [...where.values, funderIds, EXAMPLES_PER_FUNDER];
+  const idsAt = `$${values.length - 1}`;
+  const perFunderAt = `$${values.length}`;
+
+  const { rows } = await tx.query<{
+    id: string;
+    funder_id: string;
+    title: string | null;
+    description: string | null;
+    recipient_name: string | null;
+    amount_gbp: string | null;
+    awarded_on: string | null;
+    region: string | null;
+  }>(
+    `WITH ranked AS (
+       SELECT a.id, a.funder_id, a.title, a.description, a.recipient_name,
+              a.amount_gbp::text AS amount_gbp, a.awarded_on::text AS awarded_on, a.region,
+              row_number() OVER (
+                PARTITION BY a.funder_id
+                ORDER BY a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
+              ) AS rank
+         FROM funder_awards a
+        WHERE ${where.sql} AND a.funder_id = ANY (${idsAt}::text[])
+     )
+     SELECT id, funder_id, title, description, recipient_name, amount_gbp, awarded_on, region
+       FROM ranked WHERE rank <= ${perFunderAt}`,
+    values,
+  );
+
+  const byFunder = new Map<string, FunderExample[]>();
+  for (const row of rows) {
+    if (row.awarded_on === null) continue;
+    const list = byFunder.get(row.funder_id) ?? [];
+    list.push({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      recipientName: row.recipient_name,
+      amountGbp: Number(row.amount_gbp ?? 0),
+      awardedOn: row.awarded_on,
+      region: row.region,
+    });
+    byFunder.set(row.funder_id, list);
+  }
+  return byFunder;
+}
+
 /** The most recent awards held, for a screen that nobody has typed into yet. */
 export async function recentAwards(tx: Queryable, limit = 40): Promise<AwardResult[]> {
   const { rows } = await tx.query<Row>(

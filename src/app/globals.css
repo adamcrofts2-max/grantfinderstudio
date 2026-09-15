@@ -490,7 +490,7 @@ details[open] > .narrow-summary .chev-toggle::after { content: 'Close'; }
   padding: 0.35rem 0.7rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-full);
-  background: var(--bg);
+  background: var(--surface);
   color: var(--ink);
   font-size: var(--t-sm);
   font-weight: 550;
@@ -519,6 +519,82 @@ details[open] > .narrow-summary .chev-toggle::after { content: 'Close'; }
 .chip-on .chip-count { color: var(--accent); }
 
 .narrow-clear { margin: 0; }
+
+/* ---------- Funders or grants ---------------------------------------------
+   Two views of one result set, as links for the same reasons the chips are:
+   the URL carries the choice, the back button works, and it is shareable.
+   -------------------------------------------------------------------------- */
+
+.views {
+  display: flex; flex-wrap: wrap; gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.view {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: var(--t-sm); font-weight: 600;
+  text-decoration: none;
+}
+.view:hover { color: var(--ink); border-color: var(--ink-soft); }
+.view-on {
+  background: var(--ink); border-color: var(--ink); color: var(--surface);
+}
+.view:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.funders-grouped { list-style: none; margin: var(--s-4) 0 0; padding: 0; display: grid; gap: var(--s-3); }
+
+.funder-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.funder-summary {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3);
+  padding: var(--s-4);
+  cursor: pointer;
+  list-style: none;
+}
+.funder-summary::-webkit-details-marker { display: none; }
+.funder-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--r-lg); }
+.funder-summary .chev { color: var(--accent); font-size: var(--t-sm); font-weight: 600; white-space: nowrap; }
+.funder-summary .chev-toggle::after { content: 'Open'; }
+details[open] > .funder-summary .chev-toggle::after { content: 'Close'; }
+
+.funder-head { display: grid; gap: var(--s-1); min-width: 0; }
+.funder-name { font-weight: 700; font-size: var(--t-md); }
+/* The line that says why this funder is here, in the same terms the ordering
+   is made of — so the reader can check the ranking rather than trust it. */
+.funder-why { font-size: var(--t-sm); color: var(--ink-soft); }
+
+.funder-body { padding: 0 var(--s-4) var(--s-4); display: grid; gap: var(--s-4); }
+
+.funder-figures {
+  display: grid; gap: var(--s-3); margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+}
+.funder-figures dt {
+  font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.funder-figures dd { margin: var(--s-1) 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.funder-examples-label {
+  margin: 0; font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.funder-examples { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.funder-examples > li {
+  font-size: var(--t-sm); color: var(--ink-soft);
+  padding-top: var(--s-3); border-top: 1px solid var(--line);
+}
+.funder-examples > li:first-child { padding-top: 0; border-top: 0; }
+.funder-example-amount { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.funder-example-when { font-variant-numeric: tabular-nums; }
+.funder-example-title { display: block; color: var(--ink); }
 
 /* ---------- Status ------------------------------------------------------- */
 

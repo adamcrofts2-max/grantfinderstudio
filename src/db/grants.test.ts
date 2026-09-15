@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { corpusSize, facetsFor, recentAwards, searchAwards } from './grants.js';
+import { corpusSize, facetsFor, funderSummaries, recentAwards, searchAwards } from './grants.js';
 import { NO_FILTERS, type GrantFilters } from '../domain/grants/facets.js';
 import { createTestDatabase, type TestDatabase } from './testing/harness.js';
 import type { Queryable } from './client.js';
@@ -285,5 +285,123 @@ describe('the counts on the filters', () => {
   it('offers nothing at all when nothing was searched for', async () => {
     const facets = await facetsFor(tx(), [], NO_FILTERS);
     expect(facets).toEqual({ amount: [], since: [], place: [], topic: [], total: 0 });
+  });
+});
+
+describe('grouping the matches by who gave them', () => {
+  /**
+   * A second funder, added HERE rather than to the shared fixture.
+   *
+   * Putting these five grants in the fixture broke thirteen existing tests at
+   * once, because every facet count in this file is asserted against exactly
+   * what the fixture holds. A test that needs more data should add it where it
+   * needs it.
+   */
+  beforeEach(async () => {
+    await harness.db.exec(`
+    INSERT INTO funders (id, name, source_dataset_id)
+    VALUES ('funder_360g_GB-CHC-2', 'The Second Trust', 'ds_x');
+
+    -- Five grants, so this funder passes MIN_AWARDS_TO_CHARACTERISE and the
+    -- quartiles mean something: 1k, 2k, 3k, 4k, 5k in Somerset.
+    INSERT INTO funder_awards
+      (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+       source_dataset_id, title, description)
+    VALUES
+      ('bw_1', 'funder_360g_GB-CHC-2', 'Somerset Youth A', 1000, '2026-01-05',
+       'Somerset', ARRAY['Young people'], 'ds_x', 'Youth club', 'Somerset youth work'),
+      ('bw_2', 'funder_360g_GB-CHC-2', 'Somerset Youth B', 2000, '2026-02-05',
+       'Somerset', ARRAY['Young people'], 'ds_x', 'Youth club', 'Somerset youth work'),
+      ('bw_3', 'funder_360g_GB-CHC-2', 'Somerset Youth C', 3000, '2026-03-05',
+       'Somerset', ARRAY['Young people'], 'ds_x', 'Youth club', 'Somerset youth work'),
+      ('bw_4', 'funder_360g_GB-CHC-2', 'Somerset Youth D', 4000, '2026-04-05',
+       'Somerset', ARRAY['Young people'], 'ds_x', 'Youth club', 'Somerset youth work'),
+      ('bw_5', 'funder_360g_GB-CHC-2', 'Somerset Youth E', 5000, '2026-05-05',
+       'Somerset', ARRAY['Young people'], 'ds_x', 'Youth club', 'Somerset youth work');
+    `);
+  });
+
+  it('summarises each funder over the MATCHING grants, not their whole history', async () => {
+    // The Second Trust has five Somerset grants; one search term reaches only
+    // some of them, and the figures must describe those.
+    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
+    expect(second?.matching).toBe(5);
+    expect(second?.amounts.min).toBe(1000);
+    expect(second?.amounts.max).toBe(5000);
+    expect(second?.amounts.median).toBe(3000);
+    // Interpolated quartiles, the same rule funder/behaviour.ts uses, so a
+    // small sample does not report an actual award as a typical one.
+    expect(second?.amounts.lowerQuartile).toBe(2000);
+    expect(second?.amounts.upperQuartile).toBe(4000);
+  });
+
+  it('narrows the figures when the search narrows', async () => {
+    // "wells" reaches only aw_1 of the first funder. Its median must then be
+    // that grant, not the funder's usual.
+    const summaries = await funderSummaries(tx(), ['wells'], NO_FILTERS);
+    const first = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-1');
+    expect(first?.matching).toBe(1);
+    expect(first?.amounts.median).toBe(12000);
+  });
+
+  it('reports when the funder last gave, and when they started', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
+    expect(second?.lastAwardedOn).toBe('2026-05-05');
+    expect(second?.firstAwardedOn).toBe('2026-01-05');
+  });
+
+  it('counts how many went to the applicant’s own area', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset', 'devon'], NO_FILTERS, {
+      region: 'Somerset',
+    });
+    const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
+    expect(second?.inYourRegion).toBe(5);
+  });
+
+  it('counts ZERO in your area when the applicant has no area', async () => {
+    // The trap: an empty region becomes ILIKE '%%', which matches every row —
+    // and would have told every applicant that every funder works where they
+    // are.
+    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS, { region: '' });
+    expect(summaries.every((s) => s.inYourRegion === 0)).toBe(true);
+    const none = await funderSummaries(tx(), ['somerset'], NO_FILTERS, { region: null });
+    expect(none.every((s) => s.inYourRegion === 0)).toBe(true);
+  });
+
+  it('respects the filters, so a narrowed search groups the narrowed set', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset'], {
+      ...NO_FILTERS,
+      bands: ['under5k'],
+    });
+    const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
+    // 1k–4k are under £5,000; the £5,000 grant is not.
+    expect(second?.matching).toBe(4);
+    expect(second?.amounts.max).toBe(4000);
+  });
+
+  it('carries a few of the matching grants for the funder’s own row', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
+    expect(second?.examples).toHaveLength(3);
+    // Most recent first: a funder's newest grants are the ones worth reading.
+    expect(second?.examples.map((e) => e.id)).toEqual(['bw_5', 'bw_4', 'bw_3']);
+  });
+
+  it('puts repeated giving first, then recency', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset', 'leeds', 'devon'], NO_FILTERS);
+    expect(summaries[0]?.funderId).toBe('funder_360g_GB-CHC-2');
+  });
+
+  it('names the label a funder uses most often', async () => {
+    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    expect(summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2')?.commonTag).toBe(
+      'Young people',
+    );
+  });
+
+  it('returns nothing for an empty search rather than the whole corpus', async () => {
+    expect(await funderSummaries(tx(), [], NO_FILTERS)).toEqual([]);
   });
 });

@@ -2752,3 +2752,90 @@ sets it to `.next-dev`. The two cannot collide.
 
 It is already written in this file that running dev after build clobbers
 `.next`. Knowing it was not enough; the configuration is.
+
+---
+
+## Grouped by funder, which is the unit of the decision
+
+The applicant's question is not "which grants mention youth work", it is "who
+would fund us, and for how much". Twenty grant rows from one foundation answer
+that worse than one line:
+
+> **Stub Trust 1** — 6 grants like yours · gave within 2 years
+> Typically £18,750–£21,250 · Median £20,000 · Range £17,500–£22,500 · Last
+> gave July 2025 · Mostly labelled "Young people"
+
+…because the decision is about a funder, and a list of grants makes the reader
+do the grouping in their head. Funders are the default view; **Every grant** is
+one tap away and the choice lives in the URL like everything else here.
+
+### The figures describe the MATCHING grants
+
+Not the funder's whole history, deliberately. "What do they give for work like
+ours" is a different and more useful question than "what do they give", and it
+is the one a search has already framed. The count sits next to the figures so
+nobody mistakes a median of three grants for a policy.
+
+**And below `MIN_AWARDS_TO_CHARACTERISE` there are no figures at all.** The row
+says "Too few to summarise — 1 grant here" and lists the grant instead. That
+bar already existed in `src/domain/funder/behaviour.ts`; this view reuses it
+rather than inventing a second opinion about when a median means something.
+`percentile_cont` in Postgres interpolates the same way the domain's
+`percentile` does, so the two agree.
+
+### "Typically" is the interquartile range
+
+The middle half of what they gave. A mean is dragged around by one large grant,
+and a range alone (£1,000–£2m) says nothing about what to ask for.
+
+### Why each row says why it is there
+
+`whyThisFunder` returns the same clauses `funderScore` is built from — repeated
+giving (capped, so the largest publisher in the corpus cannot top every list by
+volume alone), the applicant's own area, recency, and whether their ask is a
+size this funder actually gives. So the ordering can be checked rather than
+trusted, which is the same rule `rankGrants` follows.
+
+It also says the unflattering part. A funder with nothing published for seven
+years says exactly that on its own row; leaving it out would make the list look
+better than it is.
+
+### Two queries, not forty-one
+
+One grouped aggregate over the whole matched set, then one windowed query
+(`row_number() OVER (PARTITION BY funder_id …)`) for the two or three example
+grants per funder on screen. Per-funder example queries would be a round trip
+per row.
+
+## Three faults found by looking, not by testing
+
+**Filtering lost the view you were reading.** Tap a chip while on "Every grant"
+and you were bounced back to the funder list — the filter applied and your page
+vanished. The chips rebuild the filter half of the URL from scratch, so
+anything else that must survive has to be in `base`. Caught by the e2e, which
+now asserts it.
+
+**An empty region matched every row.** `region ILIKE '%%'` is true for
+everything, so the "how many went to your area" count would have told every
+applicant that every funder works where they are. It binds NULL and counts zero
+when the applicant has no region, with a test named after the trap.
+
+**The selected tab was black text on a black pill.** `var(--bg)` is a token
+this design system never had. An undefined custom property is an *invalid
+substitution*: the declaration is dropped and `color` falls back to the
+inherited ink. The build passed, the lint passed, 1,384 tests passed. It took a
+screenshot to notice and a computed-style probe to explain.
+
+So there is now `src/app/tokens.test.ts`: every `var(--x)` in `globals.css`
+must be a token that exists, unless it supplies its own fallback. CLAUDE.md
+already said not to invent values outside the tokens; this is that rule
+enforced rather than remembered. The e2e also asserts the selected tab's text
+colour differs from its background, because that is the one thing only a
+running browser can see.
+
+### A note on my own test hygiene
+
+Adding five grants to the shared fixture in `grants.test.ts` broke thirteen
+existing tests at once, because every facet count in that file is asserted
+against exactly what the fixture holds. The new rows live in the block that
+needs them now. A test that wants more data should add it where it is used.

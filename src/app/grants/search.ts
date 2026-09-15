@@ -2,10 +2,12 @@ import { withAdmin } from '@/db';
 import {
   corpusSize,
   facetsFor,
+  funderSummaries,
   recentAwards,
   searchAwards,
   type AwardResult,
   type Facets,
+  type FunderSummary,
 } from '@/db/grants';
 import { NO_FILTERS, type GrantFilters } from '@/domain/grants/facets';
 import { readCorpusProgress, isLoading, loadFraction, type CorpusProgress } from '@/db/corpus';
@@ -44,6 +46,8 @@ export type CorpusSearch =
       corpus: CorpusState;
       /** What the search matched before the page limit, and what to offer next. */
       facets: Facets;
+      /** The same matches, grouped by who gave them. */
+      funders: FunderSummary[];
     }
   | { state: 'failed'; message: string };
 
@@ -97,6 +101,7 @@ const found = (awards: readonly AwardResult[]): FoundGrant[] =>
 export async function searchCorpus(
   text: string,
   filters: GrantFilters = NO_FILTERS,
+  options: { region?: string | null } = {},
 ): Promise<CorpusSearch> {
   const terms = queryTerms(text);
 
@@ -127,11 +132,17 @@ export async function searchCorpus(
     // One connection, both queries: the page and its counts must come from
     // the same view of the table, and they are the same predicate by
     // construction — see `buildWhere`.
-    const { awards, capped, facets } = await withAdmin(async (tx) => {
+    const { awards, capped, facets, funders } = await withAdmin(async (tx) => {
       const page = await searchAwards(tx, terms, filters);
-      return { ...page, facets: await facetsFor(tx, terms, filters) };
+      return {
+        ...page,
+        facets: await facetsFor(tx, terms, filters),
+        funders: await funderSummaries(tx, terms, filters, {
+          region: options.region ?? null,
+        }),
+      };
     });
-    return { state: 'ok', grants: found(awards), capped, corpus: state, facets };
+    return { state: 'ok', grants: found(awards), capped, corpus: state, facets, funders };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);
     return {
