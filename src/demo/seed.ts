@@ -310,3 +310,45 @@ export async function seedDemoApplication(db: Queryable): Promise<void> {
     ON CONFLICT (id) DO NOTHING
   `);
 }
+
+/**
+ * A fund's form features, and whether anybody has actually seen that form.
+ *
+ * ## Why these two travel together
+ *
+ * They were set independently and drifted, in the way two copies of one fact
+ * always eventually do. The fund's own page passed
+ * `featuresKnown: DEMO_APPLICATION_FEATURES[id] !== undefined` and said
+ * "£30,000 for an unknown amount of work — nobody has seen this funder's form
+ * yet". The opportunity list did not pass `featuresKnown` at all, so it
+ * defaulted to true over a zeroed feature set, and the same fund on the same
+ * day read "£30,000 for about 1 hour of work · LOW EFFORT".
+ *
+ * One of those is a lie, and it is the flattering one: an hour is what
+ * `estimateEffort` charges for reading the guidance, so a spectacular
+ * value-per-hour was being derived entirely from ignorance — the exact thing
+ * the comment on `effortKnown` in `assess.ts` was written to prevent.
+ *
+ * Returning both from one call makes the honest answer the default. A caller
+ * cannot take the numbers and leave the caveat behind, because it arrives in
+ * the same object.
+ */
+export function applicationFeaturesFor(opportunityId: string): {
+  features: NonNullable<(typeof DEMO_APPLICATION_FEATURES)[string]>;
+  known: boolean;
+} {
+  const seeded = DEMO_APPLICATION_FEATURES[opportunityId];
+  if (seeded !== undefined) return { features: seeded, known: true };
+  return {
+    features: {
+      questionCount: 0,
+      totalWordBudget: 0,
+      requiredAttachments: 0,
+      requiresLatestAccounts: false,
+      requiredPolicies: [],
+      requiresMatchFunding: false,
+      requiresBudgetTemplate: false,
+    },
+    known: false,
+  };
+}

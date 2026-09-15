@@ -86,7 +86,17 @@ async function reachField(page, name, { reload = `${B}/onboarding`, tries = 12 }
 const B = 'http://127.0.0.1:3000';
 const API_PORT = 4599;
 
-const FUNDERS = ['GB-CHC-STUB-1', 'GB-CHC-STUB-2', 'GB-CHC-STUB-3', 'GB-CHC-STUB-4'];
+const FUNDERS = [
+  'GB-CHC-STUB-1',
+  'GB-CHC-STUB-2',
+  'GB-CHC-STUB-3',
+  'GB-CHC-STUB-4',
+  // Fails on every request, so the console has a failure to account for. A
+  // publisher that cannot be read used to be counted nowhere: `last_error`
+  // held one message and the next success cleared it, so a walk could lose
+  // its biggest publishers and report "42 of 42 — 100%, records cut short 0".
+  'GB-CHC-STUB-BROKEN',
+];
 
 /**
  * A spread of sizes, places and labels, so the filters have something to bite
@@ -144,6 +154,14 @@ const api = createServer((req, res) => {
   const m = /\/org\/([^/]+)\/grants_made\//.exec(url.pathname);
   if (m) {
     const org = decodeURIComponent(m[1]);
+    if (org === 'GB-CHC-STUB-BROKEN') {
+      // A publisher the walk cannot read. Counted nowhere before 0018: a
+      // failure wrote one `last_error` that the next success cleared, so a
+      // walk could lose its biggest publishers and report itself complete.
+      res.statusCode = 500;
+      res.end('{"detail":"something went wrong at this publisher"}');
+      return;
+    }
     const n = GRANTS_PER_FUNDER[org] ?? 1;
     const results = Array.from({ length: n }, (_, i) => {
       const row = grant(`${org}-${i + 1}`, org);
@@ -299,6 +317,19 @@ try {
     if (/Older than the last 3 years[^0-9]*[1-9]/i.test(after)) {
       ok('the discarded grant is counted, not silent');
     } else fail('a grant outside the window was dropped without being counted');
+
+    // A publisher that could not be read must be on the record too. This is
+    // the third and last uncounted way for the corpus to be short.
+    if (/Could not be read/i.test(after)) ok('the console reports unreadable funders');
+    else fail('the console has no row for a funder that could not be read');
+    if (/Could not be read[^0-9]*[1-9]/i.test(after)) {
+      ok('the failed funder is counted');
+    } else fail('a funder that threw was not counted');
+    if (/STUB-BROKEN/i.test(after)) ok('and it is named, so it can be re-fetched');
+    else fail('the failed funder is counted but not named');
+    if (/of which failed/i.test(after)) {
+      ok('"funders read" no longer reads as "we have all of it"');
+    } else fail('the read count still claims completeness while a funder failed');
   }
 
   // --- one grant, read as a grant ------------------------------------------
@@ -646,6 +677,109 @@ try {
   if (await small.locator('details.narrow[open]').count()) {
     ok('the filters open themselves once one is active');
   } else fail('an active filter is hidden behind a closed panel');
+
+  // --- a filter that leaves nothing stays on the screen --------------------
+  //
+  // It used not to. A chosen option counts zero, every zero was dropped, and
+  // so a filter could be ACTIVE AND INVISIBLE at once: the header said
+  // "narrowed by 1 filter — tap a filter again to remove it" over a row with
+  // nothing in it to tap, and the only way out was Clear, which discards
+  // every choice rather than the one that emptied the page.
+  await page.goto(`${B}/grants?q=1&text=youth&amount=over500k`, { waitUntil: 'networkidle' });
+  const emptied = await page.locator('body').innerText();
+  if (!/Nothing came back/i.test(emptied)) {
+    fail('the over-£500,000 band was expected to match nothing in the stub corpus');
+  } else {
+    const on = page.locator('.chip-on');
+    if ((await on.count()) === 0) {
+      fail('the chosen filter vanished from the screen while the header still counted it');
+    } else ok('a chosen filter that matches nothing is still on the screen');
+    const href = await on.first().getAttribute('href');
+    if (href === null || /amount=over500k/u.test(href)) {
+      fail('the chosen filter cannot be tapped off again');
+    } else ok('and tapping it removes just that one');
+  }
+
+  // --- an answer you write yourself ----------------------------------------
+  //
+  // The product promised this on three screens and did not have it: every
+  // question offered one action, "Draft from my facts", so with no Anthropic
+  // key — the default — the application screen had nothing a person could do.
+  //
+  // A fund of its own first, because this check never made one: it walked as
+  // far as the handoff to the add-a-fund form and stopped, so every screen
+  // downstream of a fund — the fund page, the tracker's dates, the
+  // application — went untested by it.
+  await page.goto(`${B}/opportunities/add`, { waitUntil: 'networkidle' });
+  await page.fill('input[name="funderName"]', 'Stub Trust 1');
+  await page.fill('input[name="title"]', 'Community Grants Programme');
+  await page.locator('button').filter({ hasText: /Add this fund/iu }).first().click();
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(1200);
+
+  await page.goto(`${B}/`, { waitUntil: 'networkidle' });
+  const oppLink = page.locator('a[href^="/opportunities/opp_"]').first();
+  if (!(await oppLink.count())) {
+    fail('a fund was added but does not appear on the home page');
+  } else {
+    ok('a fund added by hand appears on the home page');
+
+    // F3: the card must not claim an effort the fund's own page refuses to
+    // give. It used to say "about 1 hour of work · LOW EFFORT" beside a fund
+    // page saying "an unknown amount of work — nobody has seen this funder's
+    // form yet". An hour is what the model charges for reading the guidance.
+    const card = await page.locator('body').innerText();
+    if (/for about \d+ hours? of work/u.test(card)) {
+      fail('the card claims an effort figure for a form nobody has seen');
+    } else ok('the card does not invent an effort figure');
+    if (/LOW EFFORT/u.test(card)) {
+      fail('the card still badges the effort it says it cannot estimate');
+    } else ok('and does not badge one either');
+    if (/0 open question/u.test(card)) {
+      fail('the card reports "0 open questions" while eligibility is unknown');
+    } else ok('and says why eligibility cannot be checked instead');
+
+    await oppLink.click();
+    await page.waitForLoadState('networkidle');
+    const startApp = page.locator('a, button').filter({ hasText: /Start an application/iu }).first();
+    if (!(await startApp.count())) fail('no way to start an application from a fund');
+    else {
+      await startApp.click();
+      await page.waitForLoadState('networkidle');
+      const paste = page.locator('textarea').first();
+      await paste.fill('1. What do you exist to do? (50 words)\n2. Who benefits?');
+      await page.locator('button').filter({ hasText: /Add|Save/iu }).first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1500);
+
+      const boxes = page.locator('textarea[name="content"]');
+      if ((await boxes.count()) < 2) {
+        fail(`expected an answer box per question, found ${await boxes.count()}`);
+      } else ok('every question has a box to write the answer in');
+
+      await boxes.first().fill('We train young people aged 14 to 19 in Wells.');
+      await page.locator('button').filter({ hasText: /Save this answer/iu }).first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1500);
+      const afterSave = await page.locator('body').innerText();
+      if (/in your own words/i.test(afterSave)) ok('an answer written by hand saves');
+      else fail(`saving an answer by hand reported nothing: ${afterSave.slice(0, 200)}`);
+      if (/1 of 2 questions answered/i.test(afterSave)) {
+        ok('and counts towards the application');
+      } else fail('a saved answer did not count as answered');
+      if (/No Anthropic key/i.test(afterSave)) {
+        fail('writing an answer should not need a key');
+      } else ok('and needed no API key to do it');
+
+      await page.reload({ waitUntil: 'networkidle' });
+      const kept = await page
+        .locator('textarea[name="content"]')
+        .first()
+        .evaluate((el) => el.value);
+      if (/young people aged 14 to 19/u.test(kept)) ok('and is still there after a reload');
+      else fail('a saved answer did not survive a reload');
+    }
+  }
 } finally {
   await browser.close();
   api.close();

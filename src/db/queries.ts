@@ -12,7 +12,7 @@ import {
 } from '../domain/assessment/assess.js';
 import type { Award } from '../domain/funder/behaviour.js';
 import type { ApplicantProfile, ProjectRequest } from '../domain/types.js';
-import { DEMO_APPLICATION_FEATURES } from '../demo/seed.js';
+import { applicationFeaturesFor } from '../demo/seed.js';
 import { mapCriteria } from './criteria-mapper.js';
 import type { CriterionRow } from './criteria-mapper.js';
 import type { Queryable, TenantDatabase } from './client.js';
@@ -270,15 +270,19 @@ export interface AssessedOpportunity {
   assessment: OpportunityAssessment;
 }
 
-const NO_FEATURES = {
-  questionCount: 0,
-  totalWordBudget: 0,
-  requiredAttachments: 0,
-  requiresLatestAccounts: false,
-  requiredPolicies: [] as string[],
-  requiresMatchFunding: false,
-  requiresBudgetTemplate: false,
-};
+/**
+ * A fund's form features in the shape `assessOpportunity` takes them.
+ *
+ * Adapter over `applicationFeaturesFor`, kept to one line so the two fields
+ * are still set from one call — which is the whole point of that helper.
+ */
+function featureInput(opportunityId: string): {
+  features: ReturnType<typeof applicationFeaturesFor>['features'];
+  featuresKnown: boolean;
+} {
+  const found = applicationFeaturesFor(opportunityId);
+  return { features: found.features, featuresKnown: found.known };
+}
 
 /** Assess every opportunity for the tenant's organisation and project. */
 export async function assessAll(
@@ -311,7 +315,9 @@ export async function assessAll(
           opportunity,
           criteria,
           awards,
-          features: DEMO_APPLICATION_FEATURES[opportunity.id] ?? NO_FEATURES,
+          // Features and `featuresKnown` from one call, so this list cannot
+          // claim an effort estimate the fund's own page refuses to give.
+          ...featureInput(opportunity.id),
           asOf,
         }),
       });

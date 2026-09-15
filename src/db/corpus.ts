@@ -24,6 +24,18 @@ export interface CorpusProgress {
    * one whose figures nobody can check.
    */
   awardsDiscarded: number;
+  /**
+   * Funders the walk could not read at all, and which ones.
+   *
+   * The third member of the same family as `fundersUnlicensed` and
+   * `fundersTruncated`: a funder missing from the corpus for a reason
+   * somebody has to be able to see. Before this, a failure wrote `lastError`
+   * and the next successful step wiped it, so three publishers could fail and
+   * the panel would report the walk 100% complete with no problems.
+   */
+  fundersFailed: number;
+  /** The most recent failures, so an operator knows what to re-fetch. */
+  failedOrgIds: string[];
   startedAt: string | null;
   updatedAt: string | null;
   finishedAt: string | null;
@@ -41,6 +53,8 @@ const EMPTY: CorpusProgress = {
   fundersUnlicensed: 0,
   fundersTruncated: 0,
   awardsDiscarded: 0,
+  fundersFailed: 0,
+  failedOrgIds: [],
   startedAt: null,
   updatedAt: null,
   finishedAt: null,
@@ -56,6 +70,8 @@ interface Row {
   funders_unlicensed: number;
   funders_truncated: number;
   awards_discarded: number;
+  funders_failed: number;
+  failed_org_ids: string[] | null;
   started_at: string | null;
   updated_at: string | null;
   finished_at: string | null;
@@ -66,8 +82,9 @@ interface Row {
 export async function readCorpusProgress(tx: Queryable): Promise<CorpusProgress> {
   const { rows } = await tx.query<Row>(
     `SELECT cursor, funders_total, funders_done, awards_written, funders_unlicensed,
-            funders_truncated, awards_discarded, started_at::text,
-            updated_at::text, finished_at::text, last_error, last_org_id
+            funders_truncated, awards_discarded, funders_failed, failed_org_ids,
+            started_at::text, updated_at::text, finished_at::text,
+            last_error, last_org_id
        FROM corpus_load WHERE id = $1`,
     [ID],
   );
@@ -81,6 +98,8 @@ export async function readCorpusProgress(tx: Queryable): Promise<CorpusProgress>
     fundersUnlicensed: row.funders_unlicensed,
     fundersTruncated: row.funders_truncated,
     awardsDiscarded: row.awards_discarded,
+    fundersFailed: row.funders_failed,
+    failedOrgIds: row.failed_org_ids ?? [],
     startedAt: row.started_at,
     updatedAt: row.updated_at,
     finishedAt: row.finished_at,
@@ -106,13 +125,14 @@ export async function startCorpusLoad(tx: Queryable): Promise<void> {
   await tx.query(
     `INSERT INTO corpus_load
        (id, cursor, funders_total, funders_done, awards_written, funders_unlicensed,
-        funders_truncated, awards_discarded, started_at, updated_at, finished_at,
-        last_error, last_org_id)
-     VALUES ($1, 0, NULL, 0, 0, 0, 0, 0, now(), NULL, NULL, NULL, NULL)
+        funders_truncated, awards_discarded, funders_failed, failed_org_ids,
+        started_at, updated_at, finished_at, last_error, last_org_id)
+     VALUES ($1, 0, NULL, 0, 0, 0, 0, 0, 0, '{}', now(), NULL, NULL, NULL, NULL)
      ON CONFLICT (id) DO UPDATE SET
        cursor = 0, funders_total = NULL, funders_done = 0, awards_written = 0,
        funders_unlicensed = 0, funders_truncated = 0, awards_discarded = 0,
-       started_at = now(), updated_at = NULL, finished_at = NULL,
+       funders_failed = 0, failed_org_ids = '{}', started_at = now(),
+       updated_at = NULL, finished_at = NULL,
        last_error = NULL, last_org_id = NULL`,
     [ID],
   );
@@ -126,6 +146,8 @@ export interface CorpusStep {
   fundersUnlicensed: number;
   fundersTruncated: number;
   awardsDiscarded: number;
+  /** Funders that threw this step. Counted, and named. */
+  failedOrgIds: readonly string[];
   lastOrgId: string | null;
   finished: boolean;
   /** Null clears a previous failure; a string records this one. */
@@ -143,9 +165,18 @@ export async function recordCorpusStep(tx: Queryable, step: CorpusStep): Promise
        funders_unlicensed = funders_unlicensed + $6,
        funders_truncated = funders_truncated + $7,
        awards_discarded = awards_discarded + $8,
-       last_org_id = COALESCE($9, last_org_id),
-       finished_at = CASE WHEN $10 THEN now() ELSE NULL END,
-       last_error = $11,
+       funders_failed = funders_failed + $9,
+       -- Newest first, capped: a diagnostic an operator reads, not a queue.
+       failed_org_ids = (
+         SELECT COALESCE(array_agg(id), '{}')
+           FROM (
+             SELECT id FROM unnest($10::text[] || corpus_load.failed_org_ids) AS id
+             LIMIT 48
+           ) AS recent
+       ),
+       last_org_id = COALESCE($11, last_org_id),
+       finished_at = CASE WHEN $12 THEN now() ELSE NULL END,
+       last_error = $13,
        updated_at = now()
      WHERE id = $1`,
     [
@@ -157,6 +188,8 @@ export async function recordCorpusStep(tx: Queryable, step: CorpusStep): Promise
       step.fundersUnlicensed,
       step.fundersTruncated,
       step.awardsDiscarded,
+      step.failedOrgIds.length,
+      step.failedOrgIds,
       step.lastOrgId,
       step.finished,
       step.error,

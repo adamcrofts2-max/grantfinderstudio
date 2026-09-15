@@ -328,3 +328,62 @@ describe('an opportunity whose form nobody has seen', () => {
     expect(assessOpportunity(input()).effortKnown).toBe(true);
   });
 });
+
+describe('a fund nobody has seen the form for', () => {
+  /**
+   * Both of these were found by opening the product, not by reading it.
+   *
+   * The opportunity list said "£30,000 for about 1 hour of work · LOW EFFORT"
+   * about a fund whose own page said "an unknown amount of work — nobody has
+   * seen this funder's form yet". An hour is what `estimateEffort` charges for
+   * reading the guidance, so a spectacular value-per-hour was being derived
+   * entirely from ignorance. And the same card read "with 0 open questions to
+   * settle first" directly above "some eligibility questions are unresolved".
+   */
+  const typed = (): AssessmentInput =>
+    input({
+      criteria: [],
+      featuresKnown: false,
+      features: {
+        questionCount: 0,
+        totalWordBudget: 0,
+        requiredAttachments: 0,
+        requiresLatestAccounts: false,
+        requiredPolicies: [],
+        requiresMatchFunding: false,
+        requiresBudgetTemplate: false,
+      },
+    });
+
+  it('refuses to put a number on the work', () => {
+    const a = assessOpportunity(typed());
+    expect(a.headline).toContain('an unknown amount of work');
+    expect(a.headline).not.toMatch(/about \d+ hour/u);
+  });
+
+  it('says no criteria are published rather than "0 open questions"', () => {
+    // There is a difference between nothing left to settle and nothing to
+    // settle it against, and only the second is true of a fund somebody typed.
+    const a = assessOpportunity(typed());
+    expect(a.eligibility.verdict).toBe('unknown');
+    expect(a.headline).not.toContain('0 open question');
+    expect(a.headline).toContain('Nothing is published here about who can apply');
+  });
+
+  it('marks the effort unknown, so no card can badge it', () => {
+    expect(assessOpportunity(typed()).effortKnown).toBe(false);
+  });
+
+  it('still counts real unresolved criteria when there are some', () => {
+    const a = assessOpportunity(
+      input({
+        criteria: [
+          { kind: 'match_funding', id: 'm', label: 'Match funding', required: true },
+        ],
+      }),
+    );
+    if (a.eligibility.verdict === 'unknown' && a.eligibility.unknowns.length > 0) {
+      expect(a.headline).toMatch(/with \d+ open question/u);
+    }
+  });
+});

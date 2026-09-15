@@ -22,6 +22,7 @@
  */
 
 import { z } from 'zod';
+import { countWords } from '../../domain/questions/words.js';
 import type { Fact } from '../../domain/provenance/facts.js';
 import { usableFacts } from '../../domain/provenance/facts.js';
 import type { AgentDefinition } from '../run.js';
@@ -160,11 +161,6 @@ export interface CheckedDraft {
   /** Problems that must be resolved before the draft is trustworthy. */
   issues: DraftIssue[];
   gaps: string[];
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed === '' ? 0 : trimmed.split(/\s+/u).length;
 }
 
 /**

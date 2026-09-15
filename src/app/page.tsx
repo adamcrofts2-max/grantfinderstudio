@@ -118,10 +118,21 @@ export default async function HomePage() {
               </div>
               <div className="metric">
                 <RecommendationPill value={assessment.recommendation.recommendation} />
+                {/* The figure and the caveat have to move together. The
+                    headline was made honest about an unseen form and this
+                    block was not, so a card read "an unknown amount of work"
+                    beside "~1h · LOW EFFORT" — the same contradiction, moved
+                    four inches to the right. `effortKnown` is false whenever
+                    nobody has seen the funder's questions, and an hour is
+                    what the model charges for reading the guidance. */}
                 <p className="metric-value" style={{ marginTop: 'var(--s-3)' }}>
-                  ~{assessment.effort.hours}h
+                  {assessment.effortKnown ? `~${assessment.effort.hours}h` : '—'}
                 </p>
-                <p className="metric-label">{assessment.effort.band} effort</p>
+                <p className="metric-label">
+                  {assessment.effortKnown
+                    ? `${assessment.effort.band} effort`
+                    : 'effort unknown'}
+                </p>
               </div>
             </div>
             <div className="card-foot">

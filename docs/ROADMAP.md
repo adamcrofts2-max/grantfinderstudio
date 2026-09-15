@@ -447,6 +447,31 @@ this cheque before", where no source answers "what is open".
       page is ~470 ms of database work (`searchAwards` 78 ms, `facetsFor` 251,
       `funderSummaries` 139), and the compacted corpus is 69 MB. Rig kept as
       `search-latency.probe.test.ts`, skipped unless pointed at a database
+- [x] **Give somebody a box to write the answer in** (`saveOwnAnswerAction`).
+      Found by walking the product: each question offered one action, "Draft
+      from my facts", so on a deployment with no Anthropic key — the default —
+      the central screen had nothing a person could do with a parsed form. The
+      copy promised otherwise on three screens, the tracker's whole effort
+      model assumes it, and `saveAnswer` was already in the data layer. Writing
+      your own words CLEARS the Writer's sentence tracing, because tracing
+      describes text the Writer produced and nothing else
+- [x] **A chosen filter always stays on screen**, whatever its count. It used
+      to erase itself: pick a band no matching grant falls in and the chip
+      vanished while the header went on saying "narrowed by 1 filter — tap a
+      filter again to remove it", over a row with nothing to tap. A control is
+      the only handle on the state it created
+- [x] **The opportunity card no longer claims an effort the fund's own page
+      refuses to give.** It said "£30,000 for about 1 hour of work · LOW
+      EFFORT" where the fund page said "an unknown amount of work — nobody has
+      seen this funder's form yet". Features and `featuresKnown` now come from
+      one call (`applicationFeaturesFor`) so they cannot drift again, the
+      figure and the badge both defer to it, and a verdict of unknown with no
+      criteria at all says so rather than reporting "0 open questions to settle"
+- [x] **Count a funder the walk cannot read** (`funders_failed`, migration
+      0018). The third and last uncounted way for the corpus to be short: a
+      failure wrote `last_error`, one slot the next success cleared, so three
+      publishers vanished behind a panel reading "42 of 42 — 100%, records cut
+      short 0". Counted, named, and shown beside the other two
 - [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
       the text predicate about ten times, one per facet option, which is 251 of
       the 470 ms. Not urgent — half a second is not a page anybody complains
@@ -456,6 +481,13 @@ this cheque before", where no source answers "what is open".
       that does nothing, which teaches people the counts are decoration
 - [ ] Re-fetch the funders whose records were cut short, once the first pass is
       done, so their figures stop being wrong
+- [ ] Re-fetch the funders in `failed_org_ids` too, for the same reason
+- [ ] **Allow a non-https base URL for a mirror**, or stop offering one.
+      `assertSameOrigin` demands https outright, so the console's own
+      "change it only to point at a mirror or a staging copy" breaks on any
+      non-https mirror at the second page of grants. Matching the base's
+      protocol keeps the security property (no downgrade, no other host) and
+      makes the documented setting usable
 - [ ] Decide how fresh is fresh enough. Visits advance the record whenever
       somebody is about, and a daily cron covers a quiet week; nobody knows yet
       how long a full pass takes because nobody knows how many funders there
@@ -765,3 +797,41 @@ position:
 Billing · push/email notifications (superseded in part: the tracker exports to the user's own
 calendar, which reminds them without us building a channel) · post-award reporting · human marketplace · predictive matching ·
 integrations · public API · white label · learned organisational voice · theory-of-change generation
+
+## Found by walking the site as a user (2026-09-15)
+
+Fifteen findings, four fixed in the same pass. The eleven below are friction
+rather than faults, kept here rather than in a document nobody opens again.
+
+- [ ] Finishing onboarding looks identical to not starting it: no tick on
+      either card, no "saved", no forward action. The only way on is the
+      collapsed "All sections" menu
+- [ ] Two different "of 5" counters within 40px — the header counts journey
+      steps, the button counts confirmed facts. One of them needs other words
+- [ ] The step counter advances on navigation: opening an application took it
+      from 3 of 5 to 4 of 5 with nothing answered
+- [ ] "Add one in Settings", on the Writer's no-key message, points the
+      APPLICANT at `/admin/settings`, which is the operator console. It should
+      name who can fix it instead
+- [ ] A fund typed in by hand is immediately flagged "last retrieved today and
+      due a re-check". Freshness starts at `unknown` and the warning fires on
+      that, so the newest record in the product is the one it doubts most
+- [ ] No second page of grants: "showing 120 of 284" and no way to the other
+      164. The 120 rendered are 33 phone screens; `/funders` is 23. The
+      compact by-funder view is 7 and is the one that works
+- [ ] The nav's first item is labelled "Opportunities" and goes to `/`, the
+      next-step dashboard. Ten flat entries also put "Search grants", "Who
+      funds this", "Add a fund" and "Opportunities" in one ungrouped list
+- [ ] Dates are formatted two ways: "2026-11-01" on the card and fund page,
+      "Sun, 1 Nov 2026 · in 47 days" on the tracker. The tracker's is the one
+      to keep
+- [ ] Repeated classification labels print twice — "Somerset · Children and
+      young people · Children and young people". De-duplicate the tags
+- [ ] The add-a-fund success is grey body text under the button with no link
+      to the fund, weaker treatment than a password-too-short error gets
+- [ ] The loading banner repeats the whole 360Giving explanation on every
+      search and still says "come back in a few minutes" at 95% loaded
+- [ ] "Most recent award 0 months ago" on the fund page, where "this month"
+      was meant; "Source: unknown" over figures from licensed grants; and the
+      funder's top areas listed without saying how many are in the applicant's
+      own area, which the shortlist two screens earlier does say

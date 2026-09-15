@@ -122,6 +122,16 @@ export interface CorpusStepResult {
   truncated: number;
   /** Grants fetched and dropped for falling outside the window. Never silent. */
   discarded: number;
+  /**
+   * Funders that threw, by org id. Never silent either.
+   *
+   * This was the last uncounted way for the corpus to be missing something.
+   * A failure set `error` — one slot, overwritten by the next failure and
+   * cleared by the next success — so a step could lose several publishers and
+   * report nothing. Walking the product found three of them missing behind a
+   * panel reading "42 of 42 — 100%".
+   */
+  failedOrgIds: string[];
   finished: boolean;
   error: string | null;
 }
@@ -171,6 +181,7 @@ export async function advanceCorpus(
   let unlicensed = 0;
   let truncated = 0;
   let discarded = 0;
+  const failedOrgIds: string[] = [];
   let walked = 0;
   let lastOrgId: string | null = null;
   let error: string | null = null;
@@ -186,6 +197,7 @@ export async function advanceCorpus(
         fundersUnlicensed: unlicensed,
         fundersTruncated: truncated,
         awardsDiscarded: discarded,
+        failedOrgIds,
         lastOrgId,
         finished,
         error,
@@ -198,6 +210,7 @@ export async function advanceCorpus(
       unlicensed,
       truncated,
       discarded,
+      failedOrgIds,
       finished,
       error,
     };
@@ -285,6 +298,11 @@ export async function advanceCorpus(
         // One publisher's bad data must not stop the corpus. Recorded, and the
         // cursor has already moved past them — a funder that throws every time
         // would otherwise block the load for ever.
+        //
+        // COUNTED as well as described. `error` holds one message and the next
+        // step clears it, so it was never a record of what the corpus is
+        // missing — only of what went wrong most recently.
+        failedOrgIds.push(funder.orgId);
         error =
           caught instanceof IngestionError || caught instanceof Error
             ? `${funder.orgId}: ${caught.message}`

@@ -302,13 +302,37 @@ export interface Facets {
 const FACET_WIDTH = 8;
 
 /**
- * An option that would leave nothing is not an option.
+ * The options worth offering, plus the ones already chosen.
  *
  * Dropping the zeroes is what keeps the row short and keeps every chip a real
- * move — the whole reason the counts are computed at all.
+ * move — an option that would leave nothing is not an option, and that is the
+ * whole reason the counts are computed at all.
+ *
+ * **A CHOSEN option is exempt, whatever its count.** It used not to be, and
+ * the result was a filter that was active and invisible at the same time:
+ * pick a band no matching grant falls in and its own count is zero, so the
+ * chip vanished while the header went on saying "narrowed by 1 filter — tap a
+ * filter again to remove it". There was nothing left to tap. The empty-result
+ * card then said "remove one and the counts will show you what is there", of
+ * a screen with no removable filter on it, and the only way out was Clear,
+ * which throws away every choice rather than the one that emptied the page.
+ *
+ * A control is the only handle on the state it created. It has to stay on the
+ * screen for as long as that state does, and reading zero is exactly the
+ * information the person needs.
+ *
+ * `chosen` values absent from `options` are appended rather than merely kept,
+ * because place and topic options come from a GROUP BY over the matching rows
+ * — a chosen place that matches nothing is not in the result at all, so there
+ * is no zero to preserve and one has to be supplied.
  */
-function keep(options: FacetOption[]): FacetOption[] {
-  return options.filter((option) => option.count > 0);
+function offer(options: FacetOption[], chosen: readonly string[]): FacetOption[] {
+  const kept = options.filter((option) => option.count > 0 || chosen.includes(option.value));
+  const present = new Set(kept.map((option) => option.value));
+  const missing = chosen
+    .filter((value) => !present.has(value))
+    .map((value) => ({ value, label: value, count: 0 }));
+  return [...kept, ...missing];
 }
 
 /**
@@ -404,29 +428,35 @@ export async function facetsFor(
     rows.find((row) => row.dim === dim && row.value === value)?.n ?? 0;
 
   return {
-    amount: keep(
+    // Amount and recency map over the domain's own lists, so a chosen option
+    // reading zero keeps its place in the scale rather than moving to the end.
+    amount: offer(
       AMOUNT_BANDS.map((band) => ({
         value: band.id,
         label: band.label,
         count: counted('amount', band.id),
       })),
+      filters.bands,
     ),
-    since: keep(
+    since: offer(
       RECENCY.map((option) => ({
         value: option.id,
         label: option.label,
         count: counted('since', option.id),
       })),
+      filters.since === null ? [] : [filters.since],
     ),
-    place: keep(
+    place: offer(
       rows
         .filter((row) => row.dim === 'place' && row.value !== null)
         .map((row) => ({ value: row.value as string, label: row.value as string, count: row.n })),
+      filters.places,
     ),
-    topic: keep(
+    topic: offer(
       rows
         .filter((row) => row.dim === 'topic' && row.value !== null)
         .map((row) => ({ value: row.value as string, label: row.value as string, count: row.n })),
+      filters.topics,
     ),
     total: rows.find((row) => row.dim === 'total')?.n ?? 0,
   };

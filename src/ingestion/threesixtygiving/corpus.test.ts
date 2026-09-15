@@ -383,6 +383,73 @@ describe('the lease that lets this run itself', () => {
   });
 });
 
+describe('a funder the walk cannot read', () => {
+  /**
+   * The third and last uncounted way for the corpus to be short, found by
+   * walking the product: three publishers failed mid-walk and the console
+   * reported "Funders read 42 of 42 — 100%", "Records cut short 0", state
+   * "finished", and no problem at all. `error` is one slot, overwritten by
+   * the next failure and cleared by the next success, so it was never a
+   * record of what is MISSING — only of what most recently went wrong.
+   */
+  it('counts the failure and names the funder', async () => {
+    const { http } = fakeApi({
+      funders: ['GB-CHC-1', 'GB-CHC-BAD', 'GB-CHC-2'],
+      broken: ['GB-CHC-BAD'],
+    });
+
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.failedOrgIds).toEqual(['GB-CHC-BAD']);
+    const progress = await runInTransaction((tx) => readCorpusProgress(tx));
+    expect(progress.fundersFailed).toBe(1);
+    expect(progress.failedOrgIds).toContain('GB-CHC-BAD');
+  });
+
+  it('keeps the count after a later step succeeds, unlike the error', async () => {
+    // This is the whole bug. A second successful step used to clear the only
+    // trace of the first step's failure.
+    const broken = fakeApi({ funders: ['GB-CHC-BAD'], broken: ['GB-CHC-BAD'] });
+    await advanceCorpus(broken.http, runInTransaction, { baseUrl: BASE, maxFunders: 1 });
+
+    const fine = fakeApi({ funders: ['GB-CHC-BAD', 'GB-CHC-2'] });
+    await advanceCorpus(fine.http, runInTransaction, { baseUrl: BASE });
+
+    const progress = await runInTransaction((tx) => readCorpusProgress(tx));
+    expect(progress.lastError, 'a success should clear the error').toBeNull();
+    expect(progress.fundersFailed, 'but not the count of what is missing').toBe(1);
+    expect(progress.failedOrgIds).toContain('GB-CHC-BAD');
+  });
+
+  it('counts each failing funder once per step, not once per walk', async () => {
+    const { http } = fakeApi({
+      funders: ['GB-CHC-A', 'GB-CHC-B', 'GB-CHC-3'],
+      broken: ['GB-CHC-A', 'GB-CHC-B'],
+    });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.failedOrgIds).toEqual(['GB-CHC-A', 'GB-CHC-B']);
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersFailed).toBe(2);
+  });
+
+  it('counts none when every funder was read', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-1', 'GB-CHC-2'] });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+    expect(result.failedOrgIds).toEqual([]);
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersFailed).toBe(0);
+  });
+
+  it('forgets the failures on a deliberate restart', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-BAD'], broken: ['GB-CHC-BAD'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+    await runInTransaction((tx) => startCorpusLoad(tx));
+
+    const progress = await runInTransaction((tx) => readCorpusProgress(tx));
+    expect(progress.fundersFailed).toBe(0);
+    expect(progress.failedOrgIds).toEqual([]);
+  });
+});
+
 describe('the three-year window', () => {
   /**
    * The corpus holds `RECENT_YEARS`, because all of 360Giving measured at

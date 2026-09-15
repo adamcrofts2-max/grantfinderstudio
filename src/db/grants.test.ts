@@ -52,6 +52,10 @@ afterEach(async () => {
 
 const ids = (awards: readonly { id: string }[]): string[] => awards.map((a) => a.id).toSorted();
 
+/** Where an amount band sits on the scale, for asserting the row's order. */
+const order = (bandId: string): number =>
+  ['under5k', '5k-25k', '25k-100k', '100k-500k', 'over500k'].indexOf(bandId);
+
 describe('searching what is held', () => {
   it('matches a word in the description', async () => {
     const { awards } = await searchAwards(tx(), ['training']);
@@ -343,6 +347,74 @@ describe('narrowing a search', () => {
 
   it('cannot be tricked by a wildcard in a place', async () => {
     expect((await searchAwards(tx(), ['somerset'], filters({ places: ['%'] }))).awards).toEqual([]);
+  });
+});
+
+describe('a filter that leaves nothing', () => {
+  /**
+   * The bug this pins: a chosen option counts zero, `keep` dropped every
+   * zero, and so a filter was ACTIVE AND INVISIBLE at the same time. The
+   * header went on saying "narrowed by 1 filter — tap a filter again to
+   * remove it" over a row with nothing in it to tap, and the empty-result
+   * card said "remove one and the counts will show you what is there".
+   * The only way out was Clear, which discards every choice rather than the
+   * one that emptied the page.
+   */
+  it('still offers the chosen amount band when it counts zero', async () => {
+    // Nothing in the fixture is over £500,000.
+    const chosenBand: GrantFilters = { ...NO_FILTERS, bands: ['over500k'] };
+    const facets = await facetsFor(tx(), ['youth'], chosenBand);
+
+    expect(facets.total).toBe(0);
+    const chosen = facets.amount.find((option) => option.value === 'over500k');
+    expect(chosen, 'the band the person picked vanished from the row').toBeDefined();
+    expect(chosen?.count).toBe(0);
+  });
+
+  it('keeps it in scale order rather than pushing it to the end', async () => {
+    // Amount bands read as a scale. A chosen zero belongs where it always was.
+    const facets = await facetsFor(tx(), ['youth'], {
+      ...NO_FILTERS,
+      bands: ['over500k'],
+    });
+    const shown = facets.amount.map((option) => option.value);
+    expect(shown).toEqual([...shown].toSorted((a, b) => order(a) - order(b)));
+  });
+
+  it('still offers a chosen PLACE that matches nothing', async () => {
+    // Harder than the bands: place options come from a GROUP BY over the
+    // matching rows, so a place matching nothing is not in the result at all.
+    // There is no zero to preserve — one has to be supplied.
+    const facets = await facetsFor(tx(), ['youth'], {
+      ...NO_FILTERS,
+      places: ['Orkney Islands'],
+    });
+
+    expect(facets.total).toBe(0);
+    expect(facets.place.map((option) => option.value)).toContain('Orkney Islands');
+  });
+
+  it('still offers a chosen TOPIC that matches nothing', async () => {
+    const facets = await facetsFor(tx(), ['youth'], {
+      ...NO_FILTERS,
+      topics: ['Deep sea exploration'],
+    });
+    expect(facets.topic.map((option) => option.value)).toContain('Deep sea exploration');
+  });
+
+  it('still offers the chosen recency when it counts zero', async () => {
+    // aw_1 is dated 2025-05-01 and the fixture clock is later, so "the last
+    // year" excludes it.
+    const facets = await facetsFor(tx(), ['chapel'], { ...NO_FILTERS, since: '1y' });
+    expect(facets.since.map((option) => option.value)).toContain('1y');
+  });
+
+  it('goes on hiding options nobody picked', async () => {
+    // The point of the counts. Exempting the chosen option must not turn into
+    // showing every dead end.
+    const facets = await facetsFor(tx(), ['chapel'], NO_FILTERS);
+    expect(facets.amount.every((option) => option.count > 0)).toBe(true);
+    expect(facets.place.every((option) => option.count > 0)).toBe(true);
   });
 });
 

@@ -70,6 +70,11 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
             {count(progress.fundersDone)}
             {progress.fundersTotal === null ? '' : ` of ${count(progress.fundersTotal)}`}
             {share === null ? '' : ` — ${Math.round(share * 100)}%`}
+            {/* "Read" counted a funder the walk merely reached. Saying so
+                keeps 100% from reading as "we have all of it". */}
+            {progress.fundersFailed === 0
+              ? ''
+              : `, ${count(progress.fundersFailed)} of which failed`}
           </dd>
         </div>
         <div>
@@ -84,6 +89,18 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
           <dd>
             {count(progress.fundersTruncated)}
             {progress.fundersTruncated === 0 ? '' : ' — more grants than we fetch per funder'}
+          </dd>
+        </div>
+        <div>
+          {/* The last uncounted way for the corpus to be short. A failure
+              wrote one error string that the next step cleared, so three
+              publishers could vanish behind "42 of 42 — 100%". */}
+          <dt>Could not be read</dt>
+          <dd>
+            {count(progress.fundersFailed)}
+            {progress.failedOrgIds.length === 0
+              ? ''
+              : ` — most recently ${progress.failedOrgIds.slice(0, 3).join(', ')}`}
           </dd>
         </div>
         <div>

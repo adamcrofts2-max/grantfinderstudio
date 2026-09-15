@@ -13,21 +13,11 @@ import {
 import { findApplicationForOpportunity } from '@/db/workspace';
 import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
-import { DEMO_APPLICATION_FEATURES } from '@/demo/seed';
+import { applicationFeaturesFor } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 import { Circled } from '@/app/marks';
 
 export const dynamic = 'force-dynamic';
-
-const NO_FEATURES = {
-  questionCount: 0,
-  totalWordBudget: 0,
-  requiredAttachments: 0,
-  requiresLatestAccounts: false,
-  requiredPolicies: [] as string[],
-  requiresMatchFunding: false,
-  requiresBudgetTemplate: false,
-};
 
 export default async function OpportunityPage({
   params,
@@ -64,10 +54,10 @@ export default async function OpportunityPage({
         opportunity,
         criteria,
         awards,
-        features: DEMO_APPLICATION_FEATURES[opportunity.id] ?? NO_FEATURES,
+        features: applicationFeaturesFor(opportunity.id).features,
         // A fund the applicant pasted in has no known form. Saying so beats an
         // estimate derived from an empty feature set.
-        featuresKnown: DEMO_APPLICATION_FEATURES[opportunity.id] !== undefined,
+        featuresKnown: applicationFeaturesFor(opportunity.id).known,
         drafting: drafting.mode,
         asOf,
       }),

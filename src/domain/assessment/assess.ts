@@ -208,6 +208,16 @@ function buildHeadline(
   }
   if (eligibility.verdict === 'unknown') {
     const count = eligibility.unknowns.length;
+    // Zero unresolved criteria and a verdict of "unknown" is not a tidy
+    // result — it means nobody has told us any criteria at all. Counting them
+    // put "with 0 open questions to settle first" directly above the card's
+    // own "some eligibility questions are unresolved", two sentences
+    // contradicting each other a line apart. There is a difference between
+    // nothing left to settle and nothing to settle it against, and only the
+    // second one is true of a fund somebody typed in.
+    if (count === 0) {
+      return `${money} for ${hours}. Nothing is published here about who can apply, so we cannot check whether you are eligible.`;
+    }
     return `${money} for ${hours}, with ${count} open ${count === 1 ? 'question' : 'questions'} to settle first.`;
   }
   return `${money} for ${hours}. You meet every criterion we can check.`;

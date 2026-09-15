@@ -5,6 +5,7 @@ import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
 import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
+import { MAX_ANSWER_LENGTH, countWords } from '@/domain/questions/words';
 import { draftSummary } from '@/domain/provenance/draft-summary';
 import { providerFromStore } from '@/ai/provider-from-store';
 import { runAgent } from '@/ai/run';
@@ -17,7 +18,15 @@ import {
   RED_TEAM,
 } from '@/ai/agents/critic';
 import { loadVerifiedCriteriaLabels } from '@/db/workspace';
-import { EMPTY_DRAFT, EMPTY_REVIEW, type AddState, type DraftState, type ReviewState } from './state';
+import {
+  EMPTY_DRAFT,
+  EMPTY_REVIEW,
+  EMPTY_WRITE,
+  type AddState,
+  type DraftState,
+  type ReviewState,
+  type WriteState,
+} from './state';
 
 /**
  * Draft one answer.
@@ -148,6 +157,95 @@ export async function draftAnswerAction(
     })),
     gaps: checked.gaps,
     wordCount: checked.wordCount,
+  };
+}
+
+/**
+ * Save an answer the applicant wrote themselves.
+ *
+ * ## Why this exists
+ *
+ * It did not, and the product promised it on three screens: "or write every
+ * answer yourself", "every answer stays yours to write from a blank box", and
+ * the tracker's whole effort model, which "assumes you write every answer
+ * yourself, at about 200 words an hour". The application screen offered one
+ * action per question — draft it — so on a deployment with no Anthropic key,
+ * which is the default, there was nothing a person could do with a parsed
+ * form at all.
+ *
+ * ## The provenance rule this has to respect
+ *
+ * `saveAnswer` replaces an answer's `answer_fact_refs` with whatever claims
+ * it is handed, so passing NONE deletes them — and that is exactly right.
+ * Sentence-by-sentence tracing describes text the Writer produced against the
+ * facts it was given; it says nothing true about text somebody typed
+ * afterwards. Keeping the old refs over edited prose would leave the screen
+ * highlighting sentences that are no longer there and crediting facts to
+ * words nobody checked, which is the fabrication this product exists to
+ * refuse. So writing your own answer clears the tracing, the card says so,
+ * and that is a smaller loss than a citation that has come loose.
+ */
+export async function saveOwnAnswerAction(
+  _previous: WriteState,
+  formData: FormData,
+): Promise<WriteState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
+  const questionId = String(formData.get('questionId') ?? '');
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const content = String(formData.get('content') ?? '');
+
+  if (questionId === '' || applicationId === '') {
+    return { ...EMPTY_WRITE, message: 'No question selected.' };
+  }
+  if (content.length > MAX_ANSWER_LENGTH) {
+    return {
+      ...EMPTY_WRITE,
+      questionId,
+      message: `That is longer than ${MAX_ANSWER_LENGTH.toLocaleString('en-GB')} characters, so it was not saved. Shorten it, or keep the rest somewhere else.`,
+    };
+  }
+
+  const database = await getDatabase();
+
+  // The question has to belong to this organisation's application. RLS would
+  // refuse a write across tenants anyway, but a missing question and somebody
+  // else's question should not read the same to whoever is looking.
+  const question = await database.withTenant(organisationId, async (tx) => {
+    const application = await loadApplication(tx, applicationId);
+    return application?.questions.find((q) => q.id === questionId) ?? null;
+  });
+  if (question === null) {
+    return { ...EMPTY_WRITE, questionId, message: 'That question no longer exists.' };
+  }
+
+  const wordCount = countWords(content);
+
+  await database.withTenant(organisationId, (tx) =>
+    saveAnswer(
+      tx,
+      organisationId,
+      // No claims: see the provenance rule above. This deletes the refs from
+      // any previous draft, which is the point rather than a side effect.
+      { questionId, content, wordCount, claims: [] },
+      userId,
+    ),
+  );
+
+  revalidatePath(`/applications/${applicationId}`);
+
+  const over =
+    question.word_limit !== null && wordCount > question.word_limit
+      ? ` That is over their limit of ${question.word_limit}.`
+      : '';
+  return {
+    questionId,
+    ok: true,
+    message:
+      wordCount === 0
+        ? 'Cleared. There is no answer saved for this question now.'
+        : `Saved ${wordCount} word${wordCount === 1 ? '' : 's'}, in your own words.${over}`,
+    wordCount,
   };
 }
 

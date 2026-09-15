@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,458 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (59 browser assertions) and `npm run walk`.
+**1,487 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a saved answer, ~70 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3380,3 +3380,141 @@ rather than re-argued.
 `src/db/search-latency.probe.test.ts` is the rig, skipped unless
 `PROBE_DATABASE_URL` is set. It exists so the next person to change the index
 or the window measures instead of guessing.
+
+## Walking the site as a user, and the four faults it found
+
+The whole journey, driven in Chromium against a fresh database and the
+production build: sign up, onboard as a Somerset CIC seeking £30,000, search
+the corpus, read the funder shortlist, add a fund, watch it appear on the
+tracker, start an application, paste five questions. 360Giving served by a stub
+shaped like the real thing — 42 funders with a deliberate long tail, 23 UK
+regions, real classification labels, amounts across every band, dates over four
+years so the window had something to discard, one publisher stating no licence.
+
+Fifteen findings. Eleven are friction and are on the roadmap. Four changed what
+somebody can do, and all four are fixed here.
+
+### 1. There was no way to write an answer
+
+Each question on the application offered exactly one action — **Draft from my
+facts** — and a word counter. No box. A drafted answer came back read-only with
+a copy button, so a draft could not be edited either. The page held one
+`<textarea>` and it belonged to "Add questions from the funder's form".
+
+With no Anthropic key — the default, and what `/admin` itself reports as
+*DRAFTING: No key* — every one of those buttons answers "No Anthropic key is
+set up yet." **So the central screen of the product had zero working actions:
+five questions, five dead buttons, no alternative.**
+
+Meanwhile the copy promises otherwise in three places — the landing page's "or
+write every answer yourself", the home card's "every answer stays yours to
+write from a blank box", and the tracker's entire effort model, which "assumes
+you write every answer yourself, at about 200 words an hour". And `saveAnswer`
+was already in the data layer, called from inside the draft action. *The
+storage was built; the form was missing.*
+
+`saveOwnAnswerAction` and a box per question. Two details worth keeping:
+
+- **Writing your own words clears the Writer's tracing**, because `saveAnswer`
+  replaces an answer's `answer_fact_refs` with whatever it is handed and being
+  handed none deletes them. That is right, not a shortcut. Sentence-by-sentence
+  tracing describes text the Writer produced against the facts it was given; it
+  says nothing true about text somebody typed afterwards. Keeping the old refs
+  over edited prose would leave the screen highlighting sentences that are no
+  longer there and crediting facts to words nobody checked — the fabrication
+  this product exists to refuse. The card says so under the draft button.
+- **`countWords` moved into `src/domain/questions/words.ts`** and the Writer
+  now imports it. The count lived privately inside `checkDraft`, so the number
+  under the box and the number the Writer checks its own draft against would
+  have been two implementations — and they would have differed first on an
+  answer with a paragraph break in it, which is every real answer.
+
+### 2. A filter could be active and invisible at the same time
+
+Pick an amount band no matching grant falls in and the chip you picked
+disappeared, while the header went on counting it:
+
+> **Narrowed by 2 filters** — tap a filter again to remove it
+> SIZE OF GRANT · Under £5,000 `7` · £5,000–£25,000 `6`
+> Clear 2 filters
+> **Nothing came back for that.** … Remove one and the counts will show you
+> what is there.
+
+Neither active filter was on the page. "Tap a filter again to remove it" could
+not be followed, "remove one" had nothing to remove, and the only exit was
+Clear, which throws away every choice rather than the one that emptied the
+screen. Reproduced at one filter and at two.
+
+`keep()` dropped every zero-count option, which is right for an option nobody
+picked — "an option that would leave nothing is not an option" — and wrong for
+the one they did. Now `offer(options, chosen)`: a chosen value is exempt
+whatever its count, and for place and topic it is **appended** rather than
+kept, because those options come from a GROUP BY over the matching rows, so a
+chosen place matching nothing is not in the result at all and there is no zero
+to preserve. Four of the five new tests fail with the fix removed.
+
+*A control is the only handle on the state it created. It has to stay on screen
+for as long as that state does, and reading zero is exactly the information the
+person needs.*
+
+### 3. The card asserted what the fund's own page refused to
+
+One fund, no questions pasted, two screens on the same day:
+
+| | |
+|---|---|
+| home card | "£30,000 for **about 1 hour** of work" · `~1h · LOW EFFORT` |
+| the fund's page | "£30,000 for **an unknown amount** of work. Nobody has seen this funder's form yet, so there is no honest way to weigh what it would cost you." |
+
+An hour is what `estimateEffort` charges for reading the guidance, so a
+spectacular value-per-hour was being derived entirely from ignorance — exactly
+what the comment on `effortKnown` in `assess.ts` was written to prevent. The
+fund page passed `featuresKnown`; the list did not pass it at all and defaulted
+to true over a zeroed feature set. Two copies of one fact, drifted.
+
+`applicationFeaturesFor` returns the features **and** whether anybody has seen
+the form, from one call, so a caller cannot take the numbers and leave the
+caveat behind. Both call sites use it, and both copies of `NO_FEATURES` are
+gone.
+
+Two more edges on the same card:
+
+- It read "with **0** open questions to settle first" directly above "some
+  eligibility questions are unresolved". A verdict of unknown with zero
+  unresolved criteria does not mean nothing is left to settle; it means there
+  is nothing to settle it against. It now says that.
+- The headline was fixed and the metric block beside it was not, so the first
+  pass produced "an unknown amount of work" next to `~1h · LOW EFFORT` — the
+  same contradiction moved four inches right. Caught by re-walking rather than
+  by re-reading, which is the whole argument for re-walking.
+
+### 4. A funder the walk could not read was counted nowhere
+
+Three publishers threw mid-walk — the three largest, about 900 grants between
+them — and the console reported the walk complete and clean: *Funders read 42
+of 42 — 100%. Records cut short 0. Skipped, no licence 1. State: finished.*
+
+A licence skip is counted (0013). A record cut short by the page cap is counted
+(0014), after it spent a session producing wrong medians in silence. A failure
+wrote `last_error` — one slot, overwritten by the next failure and cleared by
+the next success — so it was never a record of what the corpus is MISSING, only
+of what most recently went wrong. Third case of the same fault, and the last
+one open.
+
+Migration 0018 adds `funders_failed` and `failed_org_ids`; the panel shows the
+count with the most recent ids, and "42 of 42 — 100%" now reads "…, 3 of which
+failed" when any did. A count tells an operator something is wrong; the ids
+tell them what to re-fetch.
+
+### Where the harness misled, said plainly
+
+Two things in the walkthrough were my own stub's fault and no finding rests on
+them: every stub funder draws amounts from one scale, so the funder cards
+showed near-identical medians; and the failure that exposed fault 4 was
+`assertSameOrigin` refusing an `http` pagination link, which is correct against
+the live API. The counting gap it revealed does not depend on that cause.
+
+That check did turn up something real on its own, though, now on the roadmap:
+it demands https outright rather than matching the base's protocol, so the
+console's own "change it only to point at a mirror or a staging copy" breaks on
+any non-https mirror at the second page of grants.

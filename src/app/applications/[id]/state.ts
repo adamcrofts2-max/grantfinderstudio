@@ -25,6 +25,28 @@ export const EMPTY_DRAFT: DraftState = {
   wordCount: 0,
 };
 
+/**
+ * The result of saving an answer the applicant wrote themselves.
+ *
+ * Separate from `DraftState` because the two are not the same event and must
+ * not be able to borrow each other's words. A draft reports provenance — how
+ * many sentences traced to a confirmed fact. A saved answer has none to
+ * report, and saying nothing about it is the honest outcome, not a gap.
+ */
+export interface WriteState {
+  questionId: string | null;
+  ok: boolean;
+  message: string;
+  wordCount: number;
+}
+
+export const EMPTY_WRITE: WriteState = {
+  questionId: null,
+  ok: false,
+  message: '',
+  wordCount: 0,
+};
+
 export interface AddState {
   ok: boolean;
   message: string;

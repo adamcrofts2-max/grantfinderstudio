@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import type { ClaimStanding } from '@/domain/provenance/facts';
+import { countWords } from '@/domain/questions/words';
 
-import { draftAnswerAction } from './actions';
-import { EMPTY_DRAFT } from './state';
+import { draftAnswerAction, saveOwnAnswerAction } from './actions';
+import { EMPTY_DRAFT, EMPTY_WRITE } from './state';
 import { CopyButton } from './CopyButton';
 
 export interface QuestionView {
@@ -59,21 +60,45 @@ function Question({
   question: QuestionView;
 }) {
   const [state, draft, drafting] = useActionState(draftAnswerAction, EMPTY_DRAFT);
+  const [written, save, saving] = useActionState(saveOwnAnswerAction, EMPTY_WRITE);
   const result = state.questionId === question.id ? state : null;
+  const saved = written.questionId === question.id ? written : null;
+
+  /**
+   * What is in the box.
+   *
+   * Seeded from what is stored and then owned by the person typing, so the
+   * counter moves as they write rather than after a round trip. A draft
+   * arriving from the Writer replaces it — that is a new answer for this
+   * question, and leaving stale text in the box under a fresh draft is how
+   * somebody pastes the wrong one into a portal.
+   */
+  const [text, setText] = useState(question.answer ?? '');
+  const [draftShown, setDraftShown] = useState<string | null>(null);
+  const drafted = result?.ok === true ? result.claims.map((c) => c.text).join(' ') : null;
+  if (drafted !== null && drafted !== draftShown) {
+    setDraftShown(drafted);
+    setText(drafted);
+  }
 
   // Prefer the provenance from the draft just produced, falling back to what
-  // was stored the last time this question was answered.
+  // was stored the last time this question was answered. A saved answer of
+  // one's own has none, and clears what was there — see `saveOwnAnswerAction`.
   const claims =
-    result?.ok && result.claims.length > 0
-      ? result.claims
-      : question.claims.map((c) => ({ ...c, factLabel: null }));
+    saved?.ok === true
+      ? []
+      : result?.ok && result.claims.length > 0
+        ? result.claims
+        : question.claims.map((c) => ({ ...c, factLabel: null }));
 
-  const words = result?.ok ? result.wordCount : question.wordCount;
+  // The box is the truth about the answer's length once anybody has typed in
+  // it, and `countWords` is the same function the Writer checks its own draft
+  // against — so the number here and the number in its verdict cannot differ.
+  const words = countWords(text);
   const overLimit = question.wordLimit !== null && words > question.wordLimit;
 
   // What actually goes on the clipboard: the prose alone, no markers.
-  const answerText =
-    claims.length > 0 ? claims.map((c) => c.text).join(' ') : (question.answer ?? '');
+  const answerText = text;
   const unsupportedCount = claims.filter((c) => standingOf(c) === 'unsupported').length;
 
   return (
@@ -89,19 +114,63 @@ function Question({
         </p>
       ) : null}
 
-      <div className="row" style={{ marginTop: 'var(--s-3)', gap: 'var(--s-3)' }}>
+      <form action={save} style={{ marginTop: 'var(--s-4)' }}>
+        <input type="hidden" name="questionId" value={question.id} />
+        <input type="hidden" name="applicationId" value={applicationId} />
+        <div className="field">
+          <label className="label" htmlFor={`answer-${question.id}`}>
+            Your answer
+          </label>
+          <textarea
+            className="input"
+            id={`answer-${question.id}`}
+            name="content"
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Write it in your own words, or have it drafted below and edit what comes back."
+            rows={8}
+            value={text}
+          />
+          <div className="row" style={{ marginTop: 'var(--s-3)', gap: 'var(--s-3)' }}>
+            <button className="btn btn-primary" disabled={saving} type="submit">
+              {saving ? 'Saving…' : 'Save this answer'}
+            </button>
+            <span className={overLimit ? 'badge badge-negative' : 'badge badge-neutral'}>
+              {words}
+              {question.wordLimit === null ? ' words' : ` / ${question.wordLimit} words`}
+            </span>
+          </div>
+        </div>
+      </form>
+
+      <div aria-live="polite">
+        {saved?.message ? (
+          <p
+            className={`notice ${saved.ok ? 'notice-neutral' : 'notice-caution'}`}
+            style={{
+              marginTop: 'var(--s-3)',
+              color: saved.ok ? 'var(--positive)' : undefined,
+              fontWeight: 550,
+            }}
+          >
+            <span aria-hidden="true">{saved.ok ? '✓' : '⚠'}</span>
+            <span>{saved.message}</span>
+          </p>
+        ) : null}
+      </div>
+
+      <div className="row" style={{ marginTop: 'var(--s-4)', gap: 'var(--s-3)' }}>
         <form action={draft}>
           <input type="hidden" name="questionId" value={question.id} />
           <input type="hidden" name="applicationId" value={applicationId} />
-          <button className="btn btn-primary" type="submit" disabled={drafting}>
+          <button className="btn btn-secondary" type="submit" disabled={drafting}>
             {drafting ? 'Writing…' : question.answer ? 'Draft again' : 'Draft from my facts'}
           </button>
         </form>
-        {question.wordLimit === null ? null : (
-          <span className={overLimit ? 'badge badge-negative' : 'badge badge-neutral'}>
-            {words} / {question.wordLimit} words
-          </span>
-        )}
+        <span className="hint">
+          A draft lands in the box above for you to edit. Tracing each sentence to a
+          confirmed fact only describes what the Writer produced, so saving your own words
+          clears it.
+        </span>
       </div>
 
       <div aria-live="polite">
@@ -151,8 +220,6 @@ function Question({
             </span>
           ))}
         </div>
-      ) : question.answer ? (
-        <div className="answer">{question.answer}</div>
       ) : null}
 
       {unsupportedCount > 0 ? (
