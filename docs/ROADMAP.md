@@ -464,6 +464,16 @@ this cheque before", where no source answers "what is open".
       decision, not a bug — but it is the next big simplification
 - [ ] Sort the funder list by something the reader picks — most recent, biggest
       typical grant, most grants — rather than only by our own ranking
+- [x] Refuse a rolling deadline that carries a date. The tracker showed "Tue,
+      1 Dec 2026" beside "No deadline" on one row — found by walking the
+      product with contradictory input, which a real person will also do
+- [x] Walk the second half — fund, tracker, applications — in `npm run walk`.
+      Discovery had been polished; the half the product exists for had never
+      been exercised end to end
+- [ ] **Walk the WRITER with a real key.** Paste a funder's questions, draft,
+      critic pass, review panel, copy out. It is the point of the product and
+      has never been seen to run — only unit-tested. First thing to check
+      after a redeploy
 - [ ] Let a CIC not on Companies House reach `/funders` and `/tracker` sooner.
       Four pages silently redirect a half-set-up account to onboarding, which
       is right for tenant data and wrong for `/funders`, which is shared

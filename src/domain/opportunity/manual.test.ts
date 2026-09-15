@@ -95,3 +95,46 @@ describe('a fund entered by hand', () => {
     expect(fund?.summary).toBeNull();
   });
 });
+
+describe('a deadline that contradicts itself', () => {
+  /**
+   * Found by walking the product: a fund saved as rolling WITH a date made the
+   * tracker show "Tue, 1 Dec 2026" beside "No deadline" on one row. In a
+   * product whose claim is never stating more certainty than it has, a row
+   * contradicting itself is worse than a row missing something.
+   */
+  const base = {
+    funderName: 'The Wells Trust',
+    title: 'Small Grants Programme',
+    sourceUrl: '',
+    minAmountGbp: '',
+    maxAmountGbp: '',
+    deadlineKind: 'rolling',
+    deadline: '2026-12-01',
+    jurisdiction: '',
+    summary: '',
+  };
+
+  it('refuses a rolling deadline that carries a date', () => {
+    const result = readManualFund(base);
+    expect(result.fund).toBeNull();
+    expect(result.errors['deadline']).toMatch(/rolling/iu);
+    expect(result.errors['deadline']).toMatch(/clear the date/iu);
+  });
+
+  it('accepts rolling with no date', () => {
+    const result = readManualFund({ ...base, deadline: '' });
+    expect(result.errors).toEqual({});
+    expect(result.fund?.deadline).toBeNull();
+  });
+
+  it('accepts a date with a kind that admits one', () => {
+    expect(readManualFund({ ...base, deadlineKind: 'confirmed' }).errors).toEqual({});
+    expect(readManualFund({ ...base, deadlineKind: 'estimated' }).errors).toEqual({});
+  });
+
+  it('puts the message on the date, beside the box that caused it', () => {
+    // Silently discarding the date would leave somebody believing it saved.
+    expect(Object.keys(readManualFund(base).errors)).toEqual(['deadline']);
+  });
+});

@@ -2934,3 +2934,53 @@ submitting the profile it resolved early, so the next step found the project
 form collapsed inside a `<details>` — present in the DOM and unclickable. The
 walk and the e2e both poll for the STATE they are waiting for now. Networkidle
 is a network condition and this is a state machine.
+
+## Walking the second half — fund, tracker, application
+
+The discovery half had been walked and polished; the half the product exists
+FOR had never been exercised end to end. So the walk now covers it: add a fund
+by hand, then the tracker and the applications list.
+
+**It works, and it is the better half.** The tracker does not just show a
+deadline — it says *"77 days until the deadline. Paste the funder's questions
+in to see whether that is enough time"*, and the timings are worked back
+through the writing still to do at four hours a week. `/applications` says
+what to do next rather than being empty. Adding a fund by hand carries the
+honest caveat that a hand-typed fund has no eligibility rules, because we would
+be inventing them.
+
+### One contradiction, and a telling one
+
+A fund could be saved as **rolling** *and* carry a date. The tracker then
+showed, on one row:
+
+> Tue, 1 Dec 2026 · date not confirmed by the funder
+> Rolling deadline — no cliff edge, so this can wait…
+> · No deadline
+
+Nothing reconciled the kind with the date. In a product whose whole claim is
+never stating more certainty than it has, a row contradicting itself is worse
+than a row missing something.
+
+It is refused now, at the domain, with the message on the date field: *"You
+have said applications are rolling, which means there is no closing date. Clear
+the date, or choose the kind that matches it."* **Refused rather than silently
+dropped** — the date is something a person typed, and discarding it without
+saying so would leave them believing it saved. The mirror of the rule already
+there, which refuses a *confirmed* deadline with no date.
+
+Worth noting the walk found this by feeding the product contradictory input
+without meaning to. A real person will do the same.
+
+### What has still never run
+
+**The Writer.** It is the point of the product — draft an answer from confirmed
+facts, with a critic pass and a review panel showing which claims have no fact
+behind them — and I have never seen it execute. It needs an Anthropic key,
+which production has and this environment does not. The agents
+(`analyst`, `critic`, `writer`) have unit tests and live tests; what is
+untested is the whole path with a real key: paste a funder's questions, draft,
+review, copy out.
+
+That is the next thing worth doing, and the first thing to check after a
+redeploy.

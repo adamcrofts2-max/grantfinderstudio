@@ -122,6 +122,23 @@ export function readManualFund(input: ManualFundInput): ManualFundResult {
   if (deadlineKind === 'confirmed' && deadline === '') {
     errors['deadline'] = 'A confirmed deadline needs the date. Choose “not sure” if you do not have it.';
   }
+  /**
+   * And the mirror of it: "rolling" means there IS no closing date.
+   *
+   * Nothing reconciled the two, so a fund could be saved as rolling WITH a
+   * date — and the tracker then showed "Tue, 1 Dec 2026" beside "No deadline"
+   * on the same row. In a product whose whole claim is never stating more
+   * certainty than it has, a row contradicting itself is worse than a row
+   * missing something.
+   *
+   * Refused rather than silently dropped. The date is something a person
+   * typed; throwing it away without saying so is its own small dishonesty,
+   * and they may have meant to pick a different kind.
+   */
+  if (deadlineKind === 'rolling' && deadline !== '') {
+    errors['deadline'] =
+      'You have said applications are rolling, which means there is no closing date. Clear the date, or choose the kind that matches it.';
+  }
 
   const jurisdictionRaw = input.jurisdiction.trim();
   const jurisdiction: Jurisdiction | null =

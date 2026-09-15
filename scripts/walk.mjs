@@ -76,7 +76,42 @@ if (await page.locator('input[name="projectName"]').count()) {
   console.log('\\n!! no project form on /onboarding after the profile was saved');
 }
 
+// --- the half the product exists FOR: fund -> eligibility -> application ---
+//
+// Discovery has been walked and polished. This half has never been exercised
+// end to end, and it is where the value is: write the application.
+await page.goto(`${B}/opportunities/add`, { waitUntil: 'networkidle' });
+const byHand = page.locator('summary', { hasText: /Type in what the funder says/iu }).first();
+if (await byHand.count()) await byHand.click();
+if (await page.locator('input[name="funderName"]').count()) {
+  await page.fill('input[name="funderName"]', 'The Wells Trust');
+  await page.fill('input[name="title"]', 'Small Grants Programme');
+  await page.fill('input[name="minAmountGbp"]', '5000');
+  await page.fill('input[name="maxAmountGbp"]', '25000');
+  // A published date and the kind that matches it. The first version of this
+  // walk picked "rolling" AND typed a date — which the product accepted, and
+  // the tracker then showed "Tue, 1 Dec 2026" beside "No deadline" on one row.
+  // That is now refused, so the walk asks for something coherent.
+  const kind = page.locator('select[name="deadlineKind"]');
+  if (await kind.count()) await kind.selectOption('confirmed');
+  const deadline = page.locator('input[name="deadline"]');
+  if (await deadline.count()) await deadline.fill('2026-12-01');
+  await page.locator('form', { has: page.locator('input[name="funderName"]') })
+    .locator('button[type="submit"]').click();
+
+  let landed = '';
+  for (let i = 0; i < 12 && !/opportunities\/(?!add)/u.test(landed); i += 1) {
+    await page.waitForTimeout(1000);
+    landed = new URL(page.url()).pathname;
+  }
+  await look('after adding a fund by hand', '04-fund-added', 1400);
+} else {
+  console.log('\\n!! no manual fund form found on /opportunities/add');
+}
+
 for (const [label, path] of [
+  ['tracker, with a fund', '/tracker'],
+  ['applications', '/applications'],
   ['home, once set up', '/'],
   ['organisation / facts', '/organisation'],
   ['grants, with a profile', '/grants'],
