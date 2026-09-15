@@ -71,6 +71,50 @@ function constantTimeEqual(a: string, b: string): boolean {
   return differences === 0;
 }
 
+/**
+ * Ask ourselves for the next step, without waiting for it.
+ *
+ * ## Why chaining
+ *
+ * The first real run did 16 funders in four and a half hours — because the
+ * only things advancing it were a DAILY cron and whoever happened to open the
+ * grant search. At that rate 355 funders is four days, and an applicant who
+ * arrives on day one searches a twentieth of the record.
+ *
+ * A step that has more to do now asks for the next one. A daily cron becomes a
+ * continuous walk that stops itself when the list is finished — 355 funders in
+ * a couple of hours rather than most of a week.
+ *
+ * ## Why this cannot run away
+ *
+ * `claimCorpusStep` is a database lease: at most one step per interval for
+ * everybody, however many callers ask. Chaining does not raise the ceiling, it
+ * just stops the ceiling going unused. And a chain only happens when the walk
+ * is UNFINISHED and the step actually did work, so the last step is the last
+ * step.
+ *
+ * Fire and forget, deliberately: awaiting it would make one request hold open
+ * for the length of the entire remaining walk.
+ */
+function chain(request: Request): void {
+  const next = new URL(request.url);
+  void fetch(next.toString(), {
+    headers: {
+      // Carried through so the next step is recognised as the scheduler's and
+      // gets the long deadline rather than a visitor's short nudge.
+      ...(request.headers.get('x-vercel-cron') === null
+        ? {}
+        : { 'x-vercel-cron': request.headers.get('x-vercel-cron') as string }),
+      ...(request.headers.get('authorization') === null
+        ? {}
+        : { authorization: request.headers.get('authorization') as string }),
+    },
+  }).catch(() => {
+    // Nothing to do about it here. The cron and the next visitor are both
+    // still backstops, and the lease means a lost chain costs one interval.
+  });
+}
+
 export async function GET(request: Request): Promise<Response> {
   const env = readEnvironment();
   if (env.databaseUrl === null) {
@@ -86,14 +130,20 @@ export async function GET(request: Request): Promise<Response> {
     batch ? SCHEDULED_MIN_SECONDS : VISIT_MIN_SECONDS,
   );
 
+  // More to do, and we just did some: keep going.
+  const chained = result.ran && !result.finished && result.walked > 0;
+  if (chained) chain(request);
+
   return Response.json({
     ok: true,
     // False means somebody else had the lease, or the walk is finished. Not an
     // error: a scheduler calling into a busy minute should do nothing.
     ran: result.ran,
     scheduled: batch,
+    chained,
     walked: result.walked,
     awardsWritten: result.awardsWritten,
+    truncated: result.truncated,
     finished: result.finished,
     error: result.error,
   });

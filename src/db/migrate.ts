@@ -37,6 +37,7 @@ export const MIGRATIONS = [
   '0011_sandbox.sql',
   '0012_award_title.sql',
   '0013_corpus_load.sql',
+  '0014_corpus_truncated.sql',
 ] as const;
 
 /**

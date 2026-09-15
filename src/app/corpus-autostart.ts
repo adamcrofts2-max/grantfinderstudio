@@ -50,6 +50,7 @@ export interface CorpusNudge {
   ran: boolean;
   walked: number;
   awardsWritten: number;
+  truncated: number;
   finished: boolean;
   error: string | null;
 }
@@ -58,6 +59,7 @@ const IDLE: CorpusNudge = {
   ran: false,
   walked: 0,
   awardsWritten: 0,
+  truncated: 0,
   finished: false,
   error: null,
 };
@@ -95,6 +97,7 @@ export async function nudgeCorpus(
       ran: true,
       walked: result.walked,
       awardsWritten: result.awardsWritten,
+      truncated: result.truncated,
       finished: result.finished,
       error: result.error,
     };

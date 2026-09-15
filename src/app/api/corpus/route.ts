@@ -1,6 +1,6 @@
 import { withAdmin } from '@/db';
 import { readEnvironment } from '@/env';
-import { isLoading, loadFraction, readCorpusProgress } from '@/db/corpus';
+import { corpusBytes, isLoading, loadFraction, readCorpusProgress } from '@/db/corpus';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +18,18 @@ export async function GET(): Promise<Response> {
     return Response.json({ ok: false, error: 'No database is configured.' }, { status: 503 });
   }
   try {
-    const progress = await withAdmin((tx) => readCorpusProgress(tx));
+    const { progress, bytes } = await withAdmin(async (tx) => ({
+      progress: await readCorpusProgress(tx),
+      bytes: await corpusBytes(tx),
+    }));
     return Response.json({
       ok: true,
       loading: isLoading(progress),
       fraction: loadFraction(progress),
+      // Including indexes, so it answers the question it is here for: which
+      // database tier does holding this record actually need.
+      bytes,
+      megabytes: bytes === null ? null : Math.round((bytes / 1_048_576) * 10) / 10,
       progress,
     });
   } catch (error) {

@@ -78,6 +78,8 @@ const grantRow = (id: string, funderOrgId: string, over: Record<string, unknown>
 interface FakeOptions {
   /** Funder ids the list serves, in order. */
   funders: string[];
+  /** Funders who publish more grants than one step will fetch. */
+  enormous?: string[];
   /** Funders whose grants state no licence. */
   unlicensed?: string[];
   /** Funders whose grant fetch throws. */
@@ -113,6 +115,16 @@ function fakeApi(options: FakeOptions): { http: HttpClient; asked: string[] } {
         const row = options.unlicensed?.includes(orgId)
           ? grantRow(`${orgId}-1`, orgId, { data_license: null })
           : grantRow(`${orgId}-1`, orgId);
+        if (options.enormous?.includes(orgId)) {
+          // A `next` that never runs out, which is what a publisher with tens
+          // of thousands of grants looks like from here.
+          const page = Number(parsed.searchParams.get('offset') ?? '0');
+          return {
+            count: 999_999,
+            next: `${BASE}org/${encodeURIComponent(orgId)}/grants_made/?offset=${page + 1}`,
+            results: [grantRow(`${orgId}-${page}`, orgId)],
+          };
+        }
         return { count: 1, next: null, results: [row] };
       }
 
@@ -355,5 +367,64 @@ describe('the lease that lets this run itself', () => {
 
     await runInTransaction((tx) => startCorpusLoad(tx));
     expect(await runInTransaction((tx) => claimCorpusStep(tx, 0))).toBe(true);
+  });
+});
+
+describe('a funder with more grants than we fetch', () => {
+  /**
+   * The cap was 20 pages — two thousand grants — and the connector's
+   * `truncated` flag was returned and then dropped. So the biggest funders in
+   * the corpus, the ones that matter most, had their records silently cut
+   * short, and every figure drawn from them was wrong: the median, the
+   * quartiles, "6 grants like yours", the range.
+   *
+   * A cap still has to exist or one enormous publisher eats a whole step. What
+   * must never happen again is that it is invisible.
+   */
+  it('is COUNTED as cut short, not silently trimmed', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-BIG'], enormous: ['GB-CHC-BIG'] });
+    const result = await advanceCorpus(http, runInTransaction, {
+      baseUrl: BASE,
+      maxPagesPerFunder: 3,
+    });
+
+    expect(result.truncated).toBe(1);
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersTruncated).toBe(1);
+  });
+
+  it('still stores what it did get, rather than discarding the funder', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-BIG'], enormous: ['GB-CHC-BIG'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE, maxPagesPerFunder: 3 });
+    // Three pages of one grant each. An incomplete record beats none, so long
+    // as its incompleteness is on the record.
+    expect((await loaded()).awards).toBe(3);
+  });
+
+  it('counts nothing as cut short when nothing was', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-1', 'GB-CHC-2'] });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+    expect(result.truncated).toBe(0);
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersTruncated).toBe(0);
+  });
+
+  it('fetches far more per funder than it used to', async () => {
+    // 20 pages was 2,000 grants. The big UK funders publish tens of
+    // thousands, so the default was cutting exactly the funders an applicant
+    // most wants to understand.
+    const { http, asked } = fakeApi({ funders: ['GB-CHC-BIG'], enormous: ['GB-CHC-BIG'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE, deadlineMs: 60_000 });
+    const pages = asked.filter((url) => url.includes('/grants_made/')).length;
+    expect(pages).toBeGreaterThan(100);
+  });
+});
+
+describe('progress after a restart clears the counters it should', () => {
+  it('forgets how many records were cut short last time', async () => {
+    const { http } = fakeApi({ funders: ['GB-CHC-BIG'], enormous: ['GB-CHC-BIG'] });
+    await advanceCorpus(http, runInTransaction, { baseUrl: BASE, maxPagesPerFunder: 2 });
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersTruncated).toBe(1);
+
+    await runInTransaction((tx) => startCorpusLoad(tx));
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersTruncated).toBe(0);
   });
 });

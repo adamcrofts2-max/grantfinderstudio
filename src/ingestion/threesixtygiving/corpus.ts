@@ -70,7 +70,20 @@ export interface CorpusStepOptions {
   maxFunders?: number;
   /** How many funders to ask the list for at a time. */
   pageSize?: number;
-  /** Pages of grants per funder. The corpus is breadth first. */
+  /**
+   * Pages of grants per funder, at 100 grants a page.
+   *
+   * Was 20 — two thousand grants — and the connector's `truncated` flag was
+   * returned and then dropped. So the biggest funders in the corpus, the ones
+   * that matter most, had their records silently cut short, and every figure
+   * drawn from them was wrong: the median, the quartiles, "6 grants like
+   * yours", the range. Quietly wrong, which is the only kind that matters.
+   *
+   * 300 pages is 30,000 grants, which covers all but the very largest
+   * publishers, and 300 requests is well inside their 1,000-a-minute limit.
+   * A cap still has to exist or one enormous publisher eats a whole step —
+   * but it is COUNTED now, so it can never be silent again.
+   */
   maxPagesPerFunder?: number;
   baseUrl?: string;
   now?: () => Date;
@@ -84,6 +97,8 @@ export interface CorpusStepResult {
   walked: number;
   awardsWritten: number;
   unlicensed: number;
+  /** Funders whose record we know is incomplete. Never silent. */
+  truncated: number;
   finished: boolean;
   error: string | null;
 }
@@ -91,6 +106,7 @@ export interface CorpusStepResult {
 const DEFAULT_DEADLINE_MS = 210_000;
 const DEFAULT_MAX_FUNDERS = 400;
 const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_MAX_PAGES_PER_FUNDER = 300;
 
 /**
  * One step of the load. Fetches outside transactions, writes inside them.
@@ -117,7 +133,7 @@ export async function advanceCorpus(
   const elapsed = options.elapsed ?? (() => Date.now() - startedAt);
 
   const connector = new ThreeSixtyGivingConnector(http, {
-    maxPages: options.maxPagesPerFunder ?? 20,
+    maxPages: options.maxPagesPerFunder ?? DEFAULT_MAX_PAGES_PER_FUNDER,
     ...(options.baseUrl !== undefined && options.baseUrl !== ''
       ? { baseUrl: options.baseUrl }
       : {}),
@@ -129,6 +145,7 @@ export async function advanceCorpus(
   let fundersTotal = before.fundersTotal;
   let awardsWritten = 0;
   let unlicensed = 0;
+  let truncated = 0;
   let walked = 0;
   let lastOrgId: string | null = null;
   let error: string | null = null;
@@ -142,6 +159,7 @@ export async function advanceCorpus(
         fundersDone: walked,
         awardsWritten,
         fundersUnlicensed: unlicensed,
+        fundersTruncated: truncated,
         lastOrgId,
         finished,
         error,
@@ -152,6 +170,7 @@ export async function advanceCorpus(
       walked,
       awardsWritten,
       unlicensed,
+      truncated,
       finished,
       error,
     };
@@ -190,6 +209,10 @@ export async function advanceCorpus(
       try {
         // eslint-disable-next-line no-await-in-loop
         const fetched = await connector.fetchAwardsDiscoveringLicence(funder.orgId);
+
+        // Recorded BEFORE the licence check, because a funder can be both
+        // truncated and unlicensed and the record is incomplete either way.
+        if (fetched.truncated) truncated += 1;
 
         if (fetched.licence === null) {
           // No licence stated, so nothing is stored. Counted, not hidden: a

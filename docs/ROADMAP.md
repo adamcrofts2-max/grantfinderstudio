@@ -407,6 +407,22 @@ this cheque before", where no source answers "what is open".
 - [x] A restart is claimable at once — `startCorpusLoad` leaves `updated_at`
       NULL rather than `now()`, so somebody who asks for a re-read does not
       watch nothing happen for ninety seconds
+- [x] **Never truncate a funder's record silently.** The cap was 2,000 grants
+      and the `truncated` flag was dropped, so the biggest funders — the ones
+      that matter most — had their medians, quartiles and ranges computed from
+      a cut record. Cap raised to 30,000 and, more importantly, counted
+- [x] **Chain the steps.** The first real run did 16 funders in four and a half
+      hours, because only a daily cron and passing visitors advanced it — four
+      days for 355 funders. A step with more to do now asks for the next one,
+      under the same lease
+- [x] Report the corpus SIZE, with indexes, on `/api/corpus`. The number that
+      decides the database tier was never going to be estimated from a row
+      count
+- [ ] Watch the size as the walk completes. 355 funders at ~683 grants each is
+      about 240,000 rows with three GIN indexes, which will not fit a 0.5 GB
+      tier — decide the tier before it becomes a surprise
+- [ ] Re-fetch the funders whose records were cut short, once the first pass is
+      done, so their figures stop being wrong
 - [ ] Decide how fresh is fresh enough. Visits advance the record whenever
       somebody is about, and a daily cron covers a quiet week; nobody knows yet
       how long a full pass takes because nobody knows how many funders there

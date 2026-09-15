@@ -3114,3 +3114,79 @@ could not be read."* — the same sentence whether the database was absent or
 present-and-broken, which is useless to whoever pastes it. It distinguishes
 them now, the way `/api/health` always has. There was no reason for the one
 endpoint built for diagnosis to be the vaguest.
+
+---
+
+## The first real run, and what it said
+
+```json
+{ "loading": true, "fraction": 0.045,
+  "progress": { "cursor": 16, "fundersTotal": 355, "fundersDone": 16,
+                "awardsWritten": 10935, "fundersUnlicensed": 0,
+                "startedAt": "2026-09-15 09:09:02", "updatedAt": "2026-09-15 13:40:38",
+                "lastError": null, "lastOrgId": "GB-CHC-1017504" } }
+```
+
+**It works.** Real API, no errors, 10,935 grants written, and the licence rule
+declining nothing — every publisher so far states one. The route read out of
+their source is right, the walk is right, the writes are right.
+
+Three things the numbers said that nothing local could have.
+
+### 1. 355 funders, and 683 grants each
+
+Far fewer funders than feared, and far more grants apiece. Extrapolated that is
+about **240,000 grants** — which immediately mattered, see below.
+
+### 2. Sixteen funders in four and a half hours
+
+09:09 to 13:40. At that rate 355 funders is **four days**, and an applicant
+arriving on day one searches a twentieth of the record.
+
+The cause was in plain sight: the only things advancing the walk were a DAILY
+cron and whoever happened to open the grant search. A step is bounded at 210
+seconds and then just stops, and nothing asks for the next one.
+
+So a step that has more to do now **asks for the next one** — a fire-and-forget
+request to its own route. A daily cron becomes a continuous walk that stops
+itself when the list is finished. It cannot run away: `claimCorpusStep` is
+still the ceiling, at most one step per interval however many callers ask;
+chaining does not raise the ceiling, it stops the ceiling going unused. And a
+chain only happens when the walk is unfinished AND the step did work, so the
+last step is the last step.
+
+### 3. The biggest funders' records were being silently cut short
+
+`maxPages` was 20. At 100 grants a page that is **2,000 grants per funder**,
+and the connector's `truncated` flag was returned and then dropped on the
+floor.
+
+683 grants per funder on average means several of the first sixteen were
+already at the cap — and the funders who publish tens of thousands are exactly
+the ones an applicant most wants to understand. Every figure drawn from a cut
+record is wrong: the median, the quartiles, the range, "6 grants like yours".
+Wrong **quietly**, which is the only kind that matters.
+
+The cap is 300 pages now — 30,000 grants, and 300 requests is well inside
+their 1,000-a-minute limit — but the real fix is that it is **counted**.
+`funders_truncated` is on the progress endpoint and on the console panel
+("Records cut short"). A cap still has to exist, or one enormous publisher eats
+a whole step; what must never happen again is that it is invisible.
+
+## And the size, reported rather than guessed
+
+`/api/corpus` now carries `bytes` and `megabytes` for `funder_awards`,
+`funders` and `source_datasets` **including their indexes** — because the
+number that decides which database tier this needs was never going to be
+estimated correctly from a row count, and three trigram indexes are not free.
+
+At 16 of 355 funders the answer was 0.7 MB. The extrapolation to watch is that
+a quarter of a million grants with three GIN indexes will not fit a 0.5 GB
+tier; the endpoint will say so long before it becomes a surprise.
+
+## A fix proving itself
+
+While checking all this the local Postgres died again — and the running server
+**recovered on its own**, which it could not have done this morning. That is
+the rejected-promise cache fix from earlier in the day, observed working rather
+than merely tested.

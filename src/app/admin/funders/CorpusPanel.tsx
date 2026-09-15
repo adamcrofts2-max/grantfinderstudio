@@ -69,6 +69,16 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
           <dd>{count(progress.fundersUnlicensed)}</dd>
         </div>
         <div>
+          {/* Never silent again. A funder cut short by the page cap has a
+              record we KNOW is incomplete, and every figure drawn from it —
+              the median, the quartiles, the range — is wrong. */}
+          <dt>Records cut short</dt>
+          <dd>
+            {count(progress.fundersTruncated)}
+            {progress.fundersTruncated === 0 ? '' : ' — more grants than we fetch per funder'}
+          </dd>
+        </div>
+        <div>
           <dt>State</dt>
           <dd>
             {progress.startedAt === null
