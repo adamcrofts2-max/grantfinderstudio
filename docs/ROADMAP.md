@@ -470,10 +470,25 @@ this cheque before", where no source answers "what is open".
 - [x] Walk the second half — fund, tracker, applications — in `npm run walk`.
       Discovery had been polished; the half the product exists for had never
       been exercised end to end
-- [ ] **Walk the WRITER with a real key.** Paste a funder's questions, draft,
-      critic pass, review panel, copy out. It is the point of the product and
-      has never been seen to run — only unit-tested. First thing to check
-      after a redeploy
+- [x] **Walk the Writer**, against a stub that speaks the Anthropic wire
+      format and cites the fact ids out of the prompt. Paste, split, draft,
+      provenance, copy out — all of it now exercised outside production
+- [x] One definition of what a drafted sentence stands on (`claimStanding`,
+      three states). The workspace counted every uncited sentence as
+      unsupported while the action reported everything traced — one card said
+      both, and would have on nearly every real draft
+- [x] `draftSummary` as a pure function, so the sentence and the counts cannot
+      disagree — and so "every claim traced" is never said of a draft that
+      cited nothing
+- [x] **Stop caching a failed database handle.** A rejected promise was cached
+      for the life of the process, so one cold start against a sleeping
+      Postgres left an instance answering "the database is not available" for
+      ever. Found because the local database died mid-walk
+- [ ] Run the Writer against the REAL model and read what it produces. The
+      plumbing is proven; whether the prose is any good is a separate question
+      and only the real thing answers it
+- [ ] A critic pass and a review panel walk. `Review the application` was
+      never clicked — the agents exist and are unit-tested
 - [ ] Let a CIC not on Companies House reach `/funders` and `/tracker` sooner.
       Four pages silently redirect a half-set-up account to onboarding, which
       is right for tenant data and wrong for `/funders`, which is shared

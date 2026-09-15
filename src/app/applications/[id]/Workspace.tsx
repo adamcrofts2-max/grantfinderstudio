@@ -1,6 +1,8 @@
 'use client';
 
 import { useActionState } from 'react';
+import type { ClaimStanding } from '@/domain/provenance/facts';
+
 import { draftAnswerAction } from './actions';
 import { EMPTY_DRAFT } from './state';
 import { CopyButton } from './CopyButton';
@@ -13,11 +15,39 @@ export interface QuestionView {
   assesses: string | null;
   answer: string | null;
   wordCount: number;
-  /** Provenance from the last saved draft. */
-  claims: Array<{ text: string; factId: string | null }>;
+  /**
+   * Provenance from the last saved draft.
+   *
+   * `standing` is resolved against the fact base by the caller — the page or
+   * the draft action, both through `claimStanding` — so this component never
+   * decides for itself what counts as unsupported. It used to, from `factId
+   * === null` alone, and contradicted the action in the same card.
+   */
+  claims: Array<{ text: string; factId: string | null; standing?: ClaimStanding }>;
+}
+
+/**
+ * Only what is genuinely standing on nothing.
+ *
+ * This counted every `factId === null` — so a linking sentence, which the
+ * Writer is INSTRUCTED to leave uncited because it asserts nothing factual,
+ * was reported as unsupported, highlighted, and added to the copy button's
+ * count. Meanwhile `groundClaims` skipped those sentences, so the action
+ * said "every claim traced to a confirmed fact" in the same card. It would
+ * have happened on nearly every real draft, because prose has joins in it.
+ *
+ * `standing` is resolved against the fact base by whoever supplied these
+ * claims — the page or the draft action, both through `claimStanding`.
+ */
+function standingOf(claim: {
+  factId: string | null;
+  standing?: ClaimStanding;
+}): ClaimStanding {
+  return claim.standing ?? (claim.factId === null ? 'no_claim' : 'supported');
 }
 
 function readable(claim: string): string {
+
   return claim.replaceAll('_', ' ');
 }
 
@@ -44,7 +74,7 @@ function Question({
   // What actually goes on the clipboard: the prose alone, no markers.
   const answerText =
     claims.length > 0 ? claims.map((c) => c.text).join(' ') : (question.answer ?? '');
-  const unsupportedCount = claims.filter((c) => c.factId === null).length;
+  const unsupportedCount = claims.filter((c) => standingOf(c) === 'unsupported').length;
 
   return (
     <section className="card">
@@ -106,11 +136,15 @@ function Question({
           {claims.map((claim, index) => (
             <span
               key={`${question.id}-${index}`}
-              className={claim.factId === null ? 'claim claim-unsupported' : 'claim'}
+              className={standingOf(claim) === 'unsupported' ? 'claim claim-unsupported' : 'claim'}
               title={
-                claim.factId === null
+                standingOf(claim) === 'unsupported'
                   ? 'Nothing in your confirmed facts supports this'
-                  : `From: ${readable(('factLabel' in claim && claim.factLabel) || claim.factId)}`
+                  : standingOf(claim) === 'no_claim'
+                    ? 'No factual claim, so nothing to evidence'
+                    : `From: ${readable(
+                        ('factLabel' in claim && claim.factLabel) || claim.factId || 'a fact',
+                      )}`
               }
             >
               {claim.text}{' '}
@@ -121,7 +155,7 @@ function Question({
         <div className="answer">{question.answer}</div>
       ) : null}
 
-      {claims.some((c) => c.factId === null) ? (
+      {unsupportedCount > 0 ? (
         <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
           <span aria-hidden="true">⚠</span>
           <span>

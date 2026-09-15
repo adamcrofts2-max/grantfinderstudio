@@ -18,6 +18,28 @@ export const DEFAULT_MODEL = 'claude-opus-5';
 export interface AnthropicProviderOptions {
   apiKey?: string;
   model?: string;
+  /**
+   * Where to send the request. Defaults to Anthropic.
+   *
+   * ## Environment variable ONLY, never a console setting
+   *
+   * The same rule `src/settings/registry.ts` states for Companies House, and
+   * for the same reason: a request to this service carries the API key in a
+   * header. A console-editable base URL would make the key readable by
+   * redirect — point it at a host you control, wait for the next draft, and
+   * `x-api-key` arrives on your server. A key encrypted at rest and masked
+   * afterwards is write-only precisely so that cannot happen.
+   *
+   * An environment variable needs a redeploy and leaves a trace in the hosting
+   * platform, which is the level of friction this deserves.
+   *
+   * It exists so the whole Writer path — draft, critic pass, review panel,
+   * copy out — can be exercised against a stub that speaks the Anthropic wire
+   * format. Before this, everything between "paste the questions" and "here is
+   * your draft" was covered only by unit tests with a fake provider object,
+   * and the real SDK call was exercised by nothing but production.
+   */
+  baseUrl?: string;
 }
 
 export class AnthropicProvider implements AiProvider {
@@ -32,7 +54,8 @@ export class AnthropicProvider implements AiProvider {
         'No Anthropic API key is configured, so AI features are unavailable.',
       );
     }
-    this.client = new Anthropic({ apiKey });
+    const baseUrl = (options.baseUrl ?? process.env['ANTHROPIC_BASE_URL'] ?? '').trim();
+    this.client = new Anthropic(baseUrl === '' ? { apiKey } : { apiKey, baseURL: baseUrl });
     this.model = options.model ?? DEFAULT_MODEL;
   }
 

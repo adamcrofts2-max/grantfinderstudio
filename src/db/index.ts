@@ -39,7 +39,15 @@ interface Backend {
  * a real Postgres that only wastes connection pools; with the in-memory
  * development database it silently loses every write.
  */
-const HANDLE = Symbol.for('grantfinderstudio.database');
+/**
+ * Exported so a test can do what a fresh process does: forget the handle.
+ *
+ * `Symbol.for` already makes it reachable from anywhere — this only saves
+ * every caller re-deriving the same string, and makes the recovery test read
+ * as a test rather than as a trick.
+ */
+export const DATABASE_HANDLE = Symbol.for('grantfinderstudio.database');
+const HANDLE = DATABASE_HANDLE;
 
 interface GlobalWithDatabase {
   [HANDLE]?: Promise<Backend>;
@@ -49,8 +57,34 @@ function cached(): Promise<Backend> | undefined {
   return (globalThis as GlobalWithDatabase)[HANDLE];
 }
 
+/**
+ * Hold the handle — but NEVER hold a failure.
+ *
+ * The promise is cached so that one process builds one pool. The bug was that
+ * a REJECTED promise was cached just as happily, which made a single unlucky
+ * moment permanent: if the database was unreachable when an instance happened
+ * to initialise, every later request on that instance awaited the same
+ * rejected promise and answered "The database is not available" — while the
+ * database was perfectly healthy. Nothing recovered it but recycling the
+ * process.
+ *
+ * That is not a hypothetical on the hosting this runs on. A serverless
+ * function initialises its pool on its first request, and a Postgres that
+ * scales to zero takes a moment to wake; the first caller after an idle spell
+ * is exactly the caller most likely to fail. One cold start could leave an
+ * instance answering errors for the rest of its life.
+ *
+ * So a rejection clears the cache and the next caller builds again. The guard
+ * matters: by the time a rejection is seen, another caller may already have
+ * cached a working handle, and clearing THAT would throw away a live pool.
+ */
 function cache(value: Promise<Backend>): Promise<Backend> {
   (globalThis as GlobalWithDatabase)[HANDLE] = value;
+  value.catch(() => {
+    if ((globalThis as GlobalWithDatabase)[HANDLE] === value) {
+      delete (globalThis as GlobalWithDatabase)[HANDLE];
+    }
+  });
   return value;
 }
 

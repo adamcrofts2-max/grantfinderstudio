@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
-import { usableFacts } from '@/domain/provenance/facts';
+import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
+import { draftSummary } from '@/domain/provenance/draft-summary';
 import { providerFromStore } from '@/ai/provider-from-store';
 import { runAgent } from '@/ai/run';
 import { buildWriterPrompt, checkDraft, WRITER } from '@/ai/agents/writer';
@@ -115,6 +116,9 @@ export async function draftAnswerAction(
 
   revalidatePath(`/applications/${applicationId}`);
 
+  // Everything the summary needs, and nothing decided here: the sentence and
+  // the counts come out of one pure function so they cannot disagree. See
+  // `draftSummary` for the contradiction that made that necessary.
   const notes: string[] = [];
   const over = checked.issues.find((issue) => issue.kind === 'over_word_limit');
   if (over) notes.push(over.detail);
@@ -122,23 +126,25 @@ export async function draftAnswerAction(
   if (repeated.length > 0) {
     notes.push(`${repeated.length} fact${repeated.length === 1 ? ' is' : 's are'} stated more than once.`);
   }
-  if (checked.unsupported.length > 0) {
-    notes.push(
-      `${checked.unsupported.length} sentence${checked.unsupported.length === 1 ? '' : 's'} could not be supported and ${checked.unsupported.length === 1 ? 'is' : 'are'} marked below.`,
-    );
-  }
+
+  const standings = sentences.map((s) => claimStanding(s.factId, confirmed));
 
   return {
     questionId,
     ok: true,
-    message:
-      notes.length === 0
-        ? `Drafted ${checked.wordCount} words, every claim traced to a confirmed fact.`
-        : `Drafted ${checked.wordCount} words. ${notes.join(' ')}`,
-    claims: sentences.map((s) => ({
+    message: draftSummary({
+      wordCount: checked.wordCount,
+      traced: standings.filter((standing) => standing === 'supported').length,
+      unsupported: countUnsupported(standings),
+      notes,
+    }),
+    claims: sentences.map((s, index) => ({
       text: s.text,
       factId: s.factId,
       factLabel: s.factId === null ? null : (byId.get(s.factId)?.claim ?? null),
+      // The same function the page uses, so a draft just written and the same
+      // draft read back tomorrow cannot disagree about what is supported.
+      standing: standings[index] ?? claimStanding(s.factId, confirmed),
     })),
     gaps: checked.gaps,
     wordCount: checked.wordCount,

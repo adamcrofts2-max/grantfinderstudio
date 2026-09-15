@@ -2984,3 +2984,108 @@ review, copy out.
 
 That is the next thing worth doing, and the first thing to check after a
 redeploy.
+
+---
+
+## The Writer, walked at last — and the two faults it was hiding
+
+The point of the product had never been seen to run. The agents had unit tests
+holding a fake provider object; the real SDK call, the wire format, the parse
+and the rendering were exercised by nothing but production. So:
+
+`scripts/stub-anthropic.mjs` answers the Anthropic wire protocol from whatever
+JSON Schema it is asked for — generically, by walking the schema, so it keeps
+working when a schema changes. It reads the fact ids out of the prompt
+(`- id=<id> | <claim>: <value>`) and cites them, so a draft comes back
+*grounded* rather than hollow. `ANTHROPIC_BASE_URL` points the provider at it.
+
+**Environment variable only, never a console setting** — the same rule the
+settings registry states for Companies House, for the same reason: requests to
+this service carry the API key in a header, so a console-editable base URL
+would make the key readable by redirect.
+
+With that, the whole path runs: paste the funder's questions → split into two
+with the word limits lifted out of the parentheses → draft → provenance →
+copy out. And most of it is very good. "£18,000 for an unknown amount of work,
+with 0 open questions to settle first." "Nobody has seen this funder's form
+yet, so there is no honest way to weigh what it would cost you." "Readiness —
+50%: how complete this is, not how likely it is to win."
+
+### Fault 1: the card contradicted itself
+
+In one card, at the same time:
+
+> ✓ Drafted 20 words, **every claim traced to a confirmed fact.**
+> Copy answer **(2 unsupported)**
+> ⚠ Highlighted sentences have **nothing behind them.** Either evidence them or
+> take them out — an assessor will ask.
+
+The workspace counted every `factId === null` as unsupported — highlighted it,
+warned about it, put the number on the copy button. `groundClaims` *skipped*
+those sentences, so the action reported everything traced. Two definitions, two
+files, one card.
+
+And it would have shown on nearly every real draft, because prose has
+connecting sentences and the Writer is **instructed** to leave those uncited:
+*"A sentence that asserts nothing factual sets factId to null."*
+
+For a product whose entire claim is honest provenance there is no worse place
+for a contradiction.
+
+One definition now, in the domain — `claimStanding` — with three states rather
+than two:
+
+| | |
+| --- | --- |
+| `supported` | cites a fact that is confirmed, current and still there |
+| `unsupported` | cites a fact that does NOT resolve — the real case being a fact corrected or withdrawn after the answer was saved |
+| `no_claim` | cites nothing, because it asserts nothing factual |
+
+The page and the draft action both resolve standing through it, so a draft just
+written and the same draft read back tomorrow cannot disagree.
+
+### Fault 2: my own first fix, wearing different clothes
+
+With the contradiction gone, an uncited draft reported *"every claim traced to
+a confirmed fact"* — trivially true, since there were no claims, and reading as
+a clean bill of health on prose that states nothing. A true sentence about the
+wrong thing.
+
+So `draftSummary` is now a pure function that takes the figures and returns the
+sentence, and a test holds the two to each other: it never reassures and warns
+at once, never calls an uncited draft clean, and counts what it traced rather
+than asserting "every". The sentence and the numbers come from one place
+because they could not disagree in one place.
+
+## A production bug found by the database dying
+
+Postgres fell over mid-walk, came back, and the running server kept insisting
+it was unreachable. That was not the container being odd — it was real:
+
+`cache(build())` stored the **promise**, and a REJECTED promise was cached just
+as happily. One unlucky moment became permanent: every later request on that
+instance awaited the same rejection and answered "The database is not
+available" while the database was perfectly healthy. Only recycling the process
+recovered it.
+
+**Not hypothetical on this hosting.** A serverless function builds its pool on
+its first request, and a Postgres that scales to zero takes a moment to wake —
+so the first caller after an idle spell is the one most likely to fail. One
+cold start could leave an instance answering errors for the rest of its life.
+
+A rejection now clears the cache so the next caller builds again, guarded so a
+late rejection cannot discard a live pool another caller has since built.
+`src/db/recovery.test.ts` reproduces it — and was confirmed to FAIL with the
+fix removed, because a regression test that passes either way is decoration.
+
+## Harness lessons, again
+
+- **Locate a form by the field it holds, not by its wording.** Matching a
+  `<summary>` by text broke the moment an Anthropic key changed what else was
+  on the page: a different panel came first, the form stayed shut, and the
+  field was in the DOM and unfillable. `reachField(name)` opens whatever
+  `<details>` contains the field and polls for it.
+- **`pkill -f 'stub-anthropic'` matches the shell running that pkill.** Third
+  time. The bracket trick (`stub[-]anthropic`) is not a style choice.
+- **`nohup … &` in a chained command dies with the chain.** Start a server in
+  its own call, verify it, then use it.

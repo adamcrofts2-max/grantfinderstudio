@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
-import { usableFacts } from '@/domain/provenance/facts';
+import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 
 import { Workspace, type QuestionView } from './Workspace';
@@ -38,7 +38,20 @@ export default async function ApplicationPage({
         answer: answer?.content ?? null,
         wordCount: answer?.word_count ?? 0,
         claims: answer
-          ? (await loadClaimRefs(tx, q.id)).map((c) => ({ text: c.claimText, factId: c.factId }))
+          ? (await loadClaimRefs(tx, q.id)).map((c) => ({
+              text: c.claimText,
+              factId: c.factId,
+              /**
+               * Resolved HERE, where the fact base is.
+               *
+               * The workspace used to decide this itself, from `factId ===
+               * null` alone — so a linking sentence that asserts nothing
+               * factual was highlighted as "nothing behind it" while the
+               * action reported "every claim traced to a confirmed fact". One
+               * card said both. See `claimStanding`.
+               */
+              standing: claimStanding(c.factId, facts),
+            }))
           : [],
       });
     }
@@ -50,7 +63,9 @@ export default async function ApplicationPage({
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
-  const unsupported = questions.filter((q) => q.claims.some((c) => c.factId === null)).length;
+  const unsupported = questions.filter((q) =>
+    q.claims.some((claim) => claim.standing === 'unsupported'),
+  ).length;
   const overLimit = questions.filter(
     (q) => q.wordLimit !== null && q.wordCount > q.wordLimit,
   ).length;

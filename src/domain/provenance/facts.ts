@@ -137,3 +137,49 @@ export function groundClaims(
 
   return { supported, unsupported };
 }
+
+/**
+ * Where one drafted sentence stands against the fact base.
+ *
+ * Three states, not two, and conflating the middle one with the last is a bug
+ * this product had in front of a user:
+ *
+ *  - `supported` — cites a fact that is confirmed, current and still there.
+ *  - `unsupported` — cites a fact that does NOT resolve. A draft is refused
+ *    outright if the model cites something never supplied, so this is the
+ *    narrower case of a fact that has since been corrected or withdrawn,
+ *    leaving a saved answer standing on it.
+ *  - `no_claim` — cites nothing, because it asserts nothing factual. The
+ *    Writer's own instructions say so: "A sentence that asserts nothing
+ *    factual sets factId to null." Linking sentences are not a defect; prose
+ *    without them is a list.
+ *
+ * ## The bug this closes
+ *
+ * The workspace counted every `factId === null` as unsupported — highlighted
+ * it, warned that "an assessor will ask", and put the number on the copy
+ * button — while `groundClaims` skipped those sentences and the action
+ * therefore reported "every claim traced to a confirmed fact". One card said
+ * both things at once, which is the worst possible fault in a product whose
+ * entire claim is honest provenance. And it would have happened on nearly
+ * every real draft, because good prose has connecting sentences.
+ */
+export type ClaimStanding = 'supported' | 'unsupported' | 'no_claim';
+
+export function claimStanding(
+  factId: string | null,
+  facts: readonly Fact[],
+): ClaimStanding {
+  if (factId === null) return 'no_claim';
+  const available = usableFacts(facts);
+  return available.some((fact) => fact.id === factId || fact.claim === factId)
+    ? 'supported'
+    : 'unsupported';
+}
+
+/** How many sentences are standing on nothing. Never counts `no_claim`. */
+export function countUnsupported(
+  standings: readonly ClaimStanding[],
+): number {
+  return standings.filter((standing) => standing === 'unsupported').length;
+}

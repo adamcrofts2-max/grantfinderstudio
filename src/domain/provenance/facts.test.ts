@@ -9,6 +9,8 @@ import {
   supersede,
   usableFacts,
   type Fact,
+  claimStanding,
+  countUnsupported,
 } from './facts.js';
 
 function fact(overrides: Partial<Fact> = {}): Fact {
@@ -180,5 +182,69 @@ describe('groundClaims', () => {
     );
     expect(result.supported).toHaveLength(1);
     expect(result.unsupported).toHaveLength(1);
+  });
+});
+
+const standingFact = (over: Partial<Fact> = {}): Fact => ({
+  id: 'fact_mission',
+  organisationId: 'org_a',
+  claim: 'mission',
+  value: 'We train young people in Somerset.',
+  sourceType: 'user',
+  sourceRef: null,
+  sourceSpan: null,
+  retrievedAt: '2026-09-01T00:00:00.000Z',
+  confidence: 'high',
+  confirmedBy: 'user_a',
+  confirmedAt: '2026-09-01T00:00:00.000Z',
+  supersededBy: null,
+  ...over,
+});
+
+describe('where a drafted sentence stands', () => {
+  /**
+   * The bug this closes was visible in one card: "✓ every claim traced to a
+   * confirmed fact" printed directly above "Copy answer (2 unsupported)", with
+   * both sentences highlighted as having "nothing behind them". The workspace
+   * counted `factId === null` as unsupported; `groundClaims` skipped those
+   * sentences entirely. One definition now, in the domain.
+   */
+
+  it('calls a sentence that cites nothing "no claim", not unsupported', () => {
+    // The Writer's own instructions say a sentence asserting nothing factual
+    // sets factId to null. Linking sentences are not a defect; prose without
+    // them is a list.
+    expect(claimStanding(null, [standingFact()])).toBe('no_claim');
+  });
+
+  it('calls a resolved citation supported', () => {
+    expect(claimStanding('fact_mission', [standingFact()])).toBe('supported');
+    expect(claimStanding('mission', [standingFact()])).toBe('supported');
+  });
+
+  it('calls a citation that no longer resolves unsupported', () => {
+    // The real case: a fact confirmed yesterday, corrected today, leaving a
+    // saved answer standing on it.
+    expect(claimStanding('fact_mission', [])).toBe('unsupported');
+    expect(claimStanding('fact_gone', [standingFact()])).toBe('unsupported');
+  });
+
+  it('does not count an unconfirmed fact as support', () => {
+    // The whole architecture: only a fact somebody checked may hold a claim up.
+    const pending = standingFact({ confirmedBy: null, confirmedAt: null });
+    expect(claimStanding('fact_mission', [pending])).toBe('unsupported');
+  });
+
+  it('does not count a superseded fact as support', () => {
+    const old = standingFact({ supersededBy: 'fact_newer' });
+    expect(claimStanding('fact_mission', [old])).toBe('unsupported');
+  });
+
+  it('counts only the unsupported, never the no-claims', () => {
+    // THE property. A draft of two supported sentences and one linking
+    // sentence must report zero unsupported, or the summary and the
+    // highlighting contradict each other on screen.
+    expect(countUnsupported(['supported', 'no_claim', 'supported'])).toBe(0);
+    expect(countUnsupported(['supported', 'unsupported', 'no_claim'])).toBe(1);
   });
 });
