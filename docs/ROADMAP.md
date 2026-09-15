@@ -92,8 +92,15 @@ Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 - [x] Funder behaviour summaries (quartiles, recency, region and tag tallies)
 - [x] Refusal to ingest a dataset with no licence or attribution
 - [ ] Live verification against the real API (blocked: egress allowlist)
-- [ ] Persisting awards and licence to the database
-- [ ] Licence rendering in the UI and export gating
+- [x] Persisting awards and licence to the database — `replaceFunderAwards`
+      writes the awards, `source_datasets` carries each publisher's licence and
+      attribution, and the corpus load reads the licence from `data_license` on
+      their own grants rather than asking anybody to supply it
+- [x] Licence rendering in the UI — `/grants` and `/funders` both carry the
+      publisher's own licence line, and a funder with none is skipped, not stored
+- [ ] Export gating on licence. Nothing to gate yet: there is no DOCX/PDF
+      export (Phase 8), and "Copy all answers" copies the applicant's own prose
+      rather than any publisher's rows. Do it with the export, not before
 
 ## Phase 6 — Discovery
 - [x] Assessment composing the three signals, with no composite score
