@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { advanceCorpus } from './corpus.js';
 import type { HttpClient } from './connector.js';
-import { readCorpusProgress, startCorpusLoad } from '../../db/corpus.js';
+import { claimCorpusStep, readCorpusProgress, startCorpusLoad } from '../../db/corpus.js';
 import { searchAwards } from '../../db/grants.js';
 import { createTestDatabase, type TestDatabase } from '../../db/testing/harness.js';
 import type { Queryable } from '../../db/client.js';
@@ -295,5 +295,65 @@ describe('starting again', () => {
     const progress = await runInTransaction((tx) => readCorpusProgress(tx));
     expect(progress.cursor).toBe(0);
     expect(progress.awardsWritten).toBe(0);
+  });
+});
+
+describe('the lease that lets this run itself', () => {
+  /**
+   * The load is triggered by ordinary page visits and by a route that needs no
+   * secret, so this lease is the whole of the concurrency control AND the whole
+   * of the abuse control. Every property below is load-bearing.
+   */
+  it('starts the load without anybody starting it', async () => {
+    // The point of the whole change: a deployment nobody has configured, and
+    // nobody has pressed anything on, still fills its record.
+    await harness.db.exec('DELETE FROM corpus_load;');
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).startedAt).toBeNull();
+
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(true);
+    expect((await runInTransaction((tx) => readCorpusProgress(tx))).startedAt).not.toBeNull();
+  });
+
+  it('gives the lease to one caller and refuses the next', async () => {
+    await harness.db.exec('DELETE FROM corpus_load;');
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(true);
+    // A hundred visitors in a minute must produce one step, not a hundred.
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(false);
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(false);
+  });
+
+  it('grants it again once the interval has passed', async () => {
+    await harness.db.exec('DELETE FROM corpus_load;');
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(true);
+    await harness.db.exec("UPDATE corpus_load SET updated_at = now() - interval '2 minutes';");
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(true);
+  });
+
+  it('holds the interval off even when the step dies', async () => {
+    // `updated_at` is set BEFORE the work, not after. Otherwise a step that
+    // crashes leaves the lease free and a crash loop becomes a request loop
+    // against somebody else's API.
+    await harness.db.exec('DELETE FROM corpus_load;');
+    await runInTransaction((tx) => claimCorpusStep(tx, 60));
+    const claimed = await runInTransaction((tx) => readCorpusProgress(tx));
+    expect(claimed.updatedAt).not.toBeNull();
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 60))).toBe(false);
+  });
+
+  it('refuses once the walk is finished, so nothing runs for ever', async () => {
+    await harness.db.exec('DELETE FROM corpus_load;');
+    await runInTransaction((tx) => claimCorpusStep(tx, 0));
+    await harness.db.exec('UPDATE corpus_load SET finished_at = now();');
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 0))).toBe(false);
+  });
+
+  it('is claimable again after a restart', async () => {
+    await harness.db.exec('DELETE FROM corpus_load;');
+    await runInTransaction((tx) => claimCorpusStep(tx, 0));
+    await harness.db.exec('UPDATE corpus_load SET finished_at = now();');
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 0))).toBe(false);
+
+    await runInTransaction((tx) => startCorpusLoad(tx));
+    expect(await runInTransaction((tx) => claimCorpusStep(tx, 0))).toBe(true);
   });
 });

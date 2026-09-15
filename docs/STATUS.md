@@ -2563,3 +2563,92 @@ await Promise.all([page.waitForURL(predicate), button.click()]);
 
 Neither was a product bug. The sandbox works, and the organisation, membership
 and profile are all written as they always were.
+
+---
+
+## "The whole point is we don't want to have to load the grants from admin"
+
+Right, and I had solved the wrong half. Three rounds of rewriting that banner
+and every one of them still ended with *an applicant waiting on somebody's
+admin work.* The wording was never the problem.
+
+Two things were tangled together and only one of them is forced:
+
+- **Holding the grants locally is forced.** 360Giving publish no search across
+  all grants; their API answers for one named funder at a time and has no text
+  search on anything. There is nothing to query live.
+- **An operator filling the record was not forced.** That was a console, a
+  button, and a `CRON_SECRET` before the scheduler would even run — so a fresh
+  deployment sat empty until somebody configured it.
+
+### The record fills itself now
+
+`src/app/corpus-autostart.ts`. Arriving at `/grants` starts the walk and
+advances it. Nothing is configured and nothing is pressed.
+
+Safe to hang off a page view for four separate reasons, and it needs all four:
+
+- It runs in **`after()`**, so it cannot delay the response that triggered it.
+  Nobody is ever waiting on a fetch to 360Giving.
+- **`claimCorpusStep` is a database lease.** At most one step per interval for
+  everybody, whoever asked and however often — a hundred visitors in a minute
+  produce one step. It writes `updated_at` BEFORE the work, so a step that dies
+  still holds the interval off and a crash loop cannot become a request loop
+  against a charity's API.
+- A visit-triggered step gets a **short deadline** (20s). It is a nudge; the
+  long 210s batches belong to the scheduler.
+- It **never throws into the caller**. A page must not fail because background
+  work did.
+
+The scheduled job is now a backstop for a quiet week rather than the engine.
+
+### The step route needs no secret
+
+It used to refuse everything without one, which was the wrong trade twice over.
+It made the load require an environment variable before it would run at all,
+and it was guarding the wrong thing: this endpoint fetches **public** data and
+writes **shared reference** data. Nothing in it is anybody's to keep private.
+
+The only real cost of being poked is requests to 360Giving and time on this
+deployment's clock, and a secret bounds neither — the lease bounds both. So an
+unrecognised caller gets the same short nudge a page visit does, and the
+scheduler (which announces itself with `x-vercel-cron`, or carries `CRON_SECRET`
+if one happens to be set) gets the long batch. The header is trivially
+forgeable and that is fine: forging it buys a 210-second step instead of a
+20-second one, at most once every 30 seconds, doing work this deployment wants
+done.
+
+Verified against the production build with no secret set at all: a bare
+`GET /api/corpus/step` runs a step, the next one within the interval reports
+`ran: false`, and `x-vercel-cron: 1` is recognised.
+
+### The console is visibility, not a control
+
+The panel still shows how far the walk has got, how many funders were skipped
+for stating no licence, and what last went wrong — all worth seeing. "Start the
+walk" is gone; what is left is "Start again from the top" for a re-read and
+"Run one step now" for a bad day. Neither is on the normal path, and the panel
+says so.
+
+### One bug the lease tests found
+
+`startCorpusLoad` set `updated_at = now()`, so a restart could not be claimed
+until the interval had passed — somebody pressing "start again" watched nothing
+happen for ninety seconds. It leaves `updated_at` NULL now, which the lease
+reads as claimable immediately.
+
+### What the e2e asserts now
+
+```
+  ok — /grants renders on a first visit
+  ok — the first visit says the record is being built
+  ok — a page visit alone started and advanced the record
+  ok — the grant is searchable without anybody loading it
+  ok — the console says the load runs itself
+  ok — there is no "start the walk" task
+```
+
+No console, no button and no environment variable is touched before those
+first four. It also fails if any of the three superseded messages comes back:
+"no grants have been loaded yet", "has not been started here", or "start it
+under Funders".

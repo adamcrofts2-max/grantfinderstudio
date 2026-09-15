@@ -73,19 +73,28 @@ export async function readCorpusProgress(tx: Queryable): Promise<CorpusProgress>
   };
 }
 
-/** Begin, or begin again from the top. Counters reset; loaded grants do not. */
+/**
+ * Begin again from the top. Counters reset; loaded grants do not.
+ *
+ * `updated_at` is set to NULL rather than `now()`, which the lease reads as
+ * "claimable immediately". Setting it to now() made a restart wait out the
+ * whole interval before the first step could run — so somebody who had just
+ * asked for a re-read watched nothing happen for a minute and a half. A
+ * deliberate restart should take effect at once.
+ *
+ * Deliberately does NOT delete anything: the walk replaces each funder's
+ * awards as it reaches them, so the search keeps working all the way through
+ * rather than going blank while it refills.
+ */
 export async function startCorpusLoad(tx: Queryable): Promise<void> {
-  // Deliberately does NOT delete anything. A restart re-walks the funder list
-  // and replaces each funder's awards as it reaches them, so the corpus stays
-  // searchable throughout rather than emptying for an hour.
   await tx.query(
     `INSERT INTO corpus_load
        (id, cursor, funders_total, funders_done, awards_written, funders_unlicensed,
         started_at, updated_at, finished_at, last_error, last_org_id)
-     VALUES ($1, 0, NULL, 0, 0, 0, now(), now(), NULL, NULL, NULL)
+     VALUES ($1, 0, NULL, 0, 0, 0, now(), NULL, NULL, NULL, NULL)
      ON CONFLICT (id) DO UPDATE SET
        cursor = 0, funders_total = NULL, funders_done = 0, awards_written = 0,
-       funders_unlicensed = 0, started_at = now(), updated_at = now(),
+       funders_unlicensed = 0, started_at = now(), updated_at = NULL,
        finished_at = NULL, last_error = NULL, last_org_id = NULL`,
     [ID],
   );
@@ -129,6 +138,46 @@ export async function recordCorpusStep(tx: Queryable, step: CorpusStep): Promise
       step.error,
     ],
   );
+}
+
+/**
+ * Take the right to run a step, if nobody has run one recently.
+ *
+ * This is the whole of the concurrency control, and it is also the whole of
+ * the abuse control — which is why it is a database write rather than a flag
+ * in memory. Steps are triggered by ordinary page visits now, so on a busy
+ * minute a hundred people could each start one; and the route that runs them
+ * needs no secret, so anybody who finds it could poke it as often as they
+ * like. Both come to the same thing: at most one step per interval, decided by
+ * Postgres, for everyone.
+ *
+ * Returns true if this caller may work. It sets `updated_at` BEFORE the work
+ * rather than after, so a step that dies still holds the interval off and a
+ * crash loop cannot become a request loop.
+ *
+ * A row that does not exist yet is created and claimed, which is what makes
+ * the load start on its own: nobody has to press anything.
+ */
+export async function claimCorpusStep(
+  tx: Queryable,
+  minSeconds: number,
+): Promise<boolean> {
+  const { rows } = await tx.query<{ id: string }>(
+    `INSERT INTO corpus_load (id, cursor, funders_done, awards_written,
+                              funders_unlicensed, started_at, updated_at)
+     VALUES ($1, 0, 0, 0, 0, now(), now())
+     ON CONFLICT (id) DO UPDATE SET
+       -- Starting on its own, too: a row that exists but was never started
+       -- (created by a reset, say) gets its clock set here.
+       started_at = COALESCE(corpus_load.started_at, now()),
+       updated_at = now()
+     WHERE corpus_load.finished_at IS NULL
+       AND (corpus_load.updated_at IS NULL
+            OR corpus_load.updated_at < now() - make_interval(secs => $2::double precision))
+     RETURNING corpus_load.id`,
+    [ID, minSeconds],
+  );
+  return rows.length > 0;
 }
 
 /** True when a load has been started and has not finished. */

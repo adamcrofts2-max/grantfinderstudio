@@ -1,8 +1,11 @@
+import { after } from 'next/server';
+
 import { getDatabase } from '@/db';
 import { requireSession } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import { queryTerms, rankGrants } from '@/domain/grants/query';
 import { gbp } from '@/app/components';
+import { nudgeCorpusOnVisit } from '@/app/corpus-autostart';
 
 import { searchCorpus, type CorpusState, type FoundGrant } from './search';
 import { GrantSearchForm } from './GrantSearchForm';
@@ -16,62 +19,47 @@ const count = (n: number): string => n.toLocaleString('en-GB');
 /**
  * What the corpus is, in a sentence a person can act on.
  *
- * The screen this replaced said "no grants have been loaded yet. An operator
- * loads a funder's grants from the console." That was accurate and it was the
- * product telling on itself — it named somebody else's job as the reason your
- * search was empty.
+ * Three versions of this message have been wrong, each less wrong than the
+ * last, and the last one was still wrong in the way that matters:
  *
- * The first version of THIS was not much better. It explained, correctly, that
- * 360Giving publish no search across all grants and that the record therefore
- * has to be assembled, and then stopped — so it read as "there is no way to
- * search grants", which is the opposite of what is true. An empty state has to
- * say what happens next, not only why it is empty.
+ *  1. "No grants have been loaded yet. An operator loads a funder's grants
+ *     from the console." — named somebody else's job as the reason your search
+ *     was empty.
+ *  2. "…the record has to be assembled before it can be searched. That has not
+ *     been started here." — true, and it read as "there is no way to search
+ *     grants".
+ *  3. "Searching will work as soon as it has… start it under Funders." — still
+ *     waiting on an operator, just more politely. The point was never the
+ *     wording. It was that an applicant was blocked on admin work.
  *
- * An operator in their sandbox gets one more line, and only them: the console
- * is where the walk is started, and a link to it in front of an applicant
- * would be a door they cannot open.
+ * Nothing waits on a person now: arriving here starts the record and advances
+ * it. So the message is about what is happening, in the present tense, and
+ * there is no operator line at all — there is nothing for an operator to do
+ * that this page has not already done.
  */
-function CorpusNotice({ corpus, operator }: { corpus: CorpusState; operator: boolean }) {
+function CorpusNotice({ corpus }: { corpus: CorpusState }) {
   if (corpus.awards > 0 && !corpus.loading) return null;
 
-  if (corpus.loading) {
-    const through =
-      corpus.fraction === null
-        ? `${count(corpus.progress.fundersDone)} funders so far`
-        : `${Math.round(corpus.fraction * 100)}% through`;
-    return (
-      <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
-        <span aria-hidden="true">⏳</span>
-        <span>
-          <strong>The grant record is still arriving.</strong> We are reading every funder
-          that publishes to the 360Giving standard and keeping their awarded grants here, so
-          that searching them is instant — {through}, {count(corpus.awards)} grants from{' '}
-          {count(corpus.funders)} funders held so far.{' '}
-          <strong>Searching works now</strong>, and will find more each time you come back.
-        </span>
-      </div>
-    );
-  }
+  const held =
+    corpus.awards === 0
+      ? ''
+      : ` ${count(corpus.awards)} grants from ${count(corpus.funders)} funders so far, and searching them works now.`;
+
+  const through =
+    corpus.fraction === null
+      ? ''
+      : ` About ${Math.round(corpus.fraction * 100)}% of the funders have been read.`;
 
   return (
     <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
       <span aria-hidden="true">⏳</span>
       <span>
-        <strong>The grant record has not been assembled on this deployment yet.</strong>{' '}
-        Searching will work as soon as it has. 360Giving publish no search across all grants —
-        their API answers for one named funder at a time — so the record is built by reading
-        every publishing funder in turn, which is a job that runs in the background rather
-        than while you wait.
-        {operator ? (
-          <>
-            {' '}
-            You are signed in to the console:{' '}
-            <a href="/admin/funders">start it under Funders</a> — “Start the walk”, then “Run
-            one step now” to prove it before leaving the scheduled job to it.
-          </>
-        ) : (
-          ' Nothing here needs setting up by you.'
-        )}
+        <strong>We are building the grant record now.</strong> 360Giving publish no search
+        across all grants — their API answers for one named funder at a time — so we read
+        every funder that publishes and keep their awarded grants here. That started the
+        moment you arrived and continues in the background.
+        {held}
+        {through} Come back in a few minutes and there will be more.
       </span>
     </div>
   );
@@ -144,17 +132,7 @@ export default async function GrantsPage({
   const session = await requireSession();
   const params = await searchParams;
 
-  /**
-   * An operator looking at the product through their sandbox.
-   *
-   * NOT `readAdminSession()`, which was the first attempt and was dead code:
-   * the admin cookie is deliberately scoped to `/admin`, so a customer page
-   * never receives it — "a page that never receives it cannot leak it", and
-   * that property is worth more than a convenience link. `session.sandbox` is
-   * already on every session for free, and it identifies exactly the case
-   * that matters: somebody who can act on what the banner says.
-   */
-  const operator = session.sandbox;
+
 
   const context =
     session.organisationId === null
@@ -176,6 +154,19 @@ export default async function GrantsPage({
   const text = asked ? str(params['text']) : suggested;
 
   const result = await searchCorpus(text);
+
+  /**
+   * Arriving here is what fills the record.
+   *
+   * `after()` so it cannot delay this response, and a database lease inside so
+   * a hundred visitors in a minute produce one step rather than a hundred. The
+   * scheduled job is a backstop for a quiet week, not the engine.
+   */
+  if (result.state !== 'failed' && (result.corpus.loading || result.corpus.awards === 0)) {
+    after(async () => {
+      await nudgeCorpusOnVisit();
+    });
+  }
   const terms = queryTerms(text);
   const ranked =
     result.state === 'ok'
@@ -203,9 +194,7 @@ export default async function GrantsPage({
 
       <GrantSearchForm text={text} suggested={suggested} derived={!asked && text !== ''} />
 
-      {result.state === 'failed' ? null : (
-        <CorpusNotice corpus={result.corpus} operator={operator} />
-      )}
+      {result.state === 'failed' ? null : <CorpusNotice corpus={result.corpus} />}
 
       {result.state === 'failed' ? (
         <section className="card" style={{ marginTop: 'var(--s-5)' }}>
@@ -246,7 +235,7 @@ export default async function GrantsPage({
           <h2 className="card-title">Nothing came back for that</h2>
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
             {result.corpus.awards === 0
-              ? 'There are no grants here to search yet — see above.'
+              ? 'There are no grants here to search yet — the record is still being built, as above.'
               : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement".`}
           </p>
         </section>

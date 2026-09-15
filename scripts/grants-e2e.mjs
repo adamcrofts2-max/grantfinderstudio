@@ -105,38 +105,49 @@ try {
     fail(`sign-up did not go through — page says: ${(await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 400)}`);
   } else ok(`signed up, landed on ${landed}`);
 
-  // --- /grants before anything is searched ---------------------------------
+  // --- /grants fills the record BY ITSELF -----------------------------------
   //
-  // Written to hold whether or not the corpus is already loaded, because it
-  // is: a second run of this script finds the grants the first one wrote, and
-  // asserting the empty state unconditionally made the check fail on its own
-  // success.
+  // The point of the whole feature, and the thing three rounds of copy
+  // changes could not fix: an applicant must not be waiting on admin work.
+  // No console, no button, no environment variable is touched before this.
   await page.goto(`${B}/grants`, { waitUntil: 'networkidle' });
   const firstVisit = await page.locator('body').innerText();
   if (/Application error|server-side exception/i.test(firstVisit)) {
     fail('/grants threw on a first visit');
   } else ok('/grants renders on a first visit');
 
-  // The message this replaced. It named somebody else's job as the reason your
-  // search was empty, and it must never come back.
+  // Every message this replaced, and none of them may come back.
   if (/no grants have been loaded yet/i.test(firstVisit)) fail('still blames an operator');
+  if (/has not been started here/i.test(firstVisit)) fail('still says nothing is happening');
+  if (/start it under Funders/i.test(firstVisit)) fail('still asks somebody to press something');
 
-  if (/not been assembled|still arriving/i.test(firstVisit)) {
-    ok('the corpus is empty, and the page explains why');
-    // The fault the first version of this copy had: it explained why and
-    // stopped, so it read as "there is no way to search grants".
-    if (!/Searching will work|Searching works now/i.test(firstVisit)) {
-      fail('the empty state does not say that searching will work');
-    } else ok('the empty state says searching will work');
-    // A door an applicant cannot open must not be shown to one.
-    if (/\/admin\/funders/.test(firstVisit)) {
-      fail('the applicant is being pointed at the console');
-    } else ok('the applicant is not pointed at the console');
+  if (/building the grant record now/i.test(firstVisit)) {
+    ok('the first visit says the record is being built');
   } else if (/grants held/i.test(firstVisit)) {
-    ok('the corpus has grants, and the page says how many');
+    ok('the record is already built, so the notice is gone');
   } else {
-    fail(`neither an explained empty state nor a count: ${firstVisit.replace(/\s+/gu, ' ').slice(0, 300)}`);
+    fail(`neither building nor built: ${firstVisit.replace(/\s+/gu, ' ').slice(0, 300)}`);
   }
+
+  // `after()` runs the step once the response is out, so give it a moment and
+  // then read the progress endpoint — which is the only honest way to see that
+  // a page view really did cause work.
+  let progressed = false;
+  for (let attempt = 0; attempt < 12 && !progressed; attempt += 1) {
+    await page.waitForTimeout(2000);
+    const body = await (await fetch(`${B}/api/corpus`)).json();
+    progressed = Boolean(body.progress?.startedAt) && body.progress.fundersDone > 0;
+    if (!progressed) await page.goto(`${B}/grants`, { waitUntil: 'networkidle' });
+  }
+  if (progressed) ok('a page visit alone started and advanced the record');
+  else fail('a page visit did not cause the record to fill');
+
+  // --- and searching finds what the visit loaded ---------------------------
+  await page.goto(`${B}/grants?q=1&text=somerset`, { waitUntil: 'networkidle' });
+  const selfLoaded = await page.locator('body').innerText();
+  if (/Riverside youth skills programme/.test(selfLoaded)) {
+    ok('the grant is searchable without anybody loading it');
+  } else fail('the self-loaded grant is not searchable');
 
   // --- load the corpus, as an operator would -------------------------------
   const admin = await browser.newPage();
@@ -167,47 +178,15 @@ try {
     fail(`admin sign-in did not go through: ${(await admin.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 300)}`);
   } else ok(`admin landed on ${adminLanded}`);
 
-  // The other half of the empty state: an operator DOES get pointed at the
-  // console, on the same page where an applicant is not.
-  //
-  // Through the SANDBOX, which is the only way this can happen. Two earlier
-  // versions of this check were wrong in instructive ways: one visited
-  // /grants with the admin cookie alone and was bounced to /sign-in by
-  // `requireSession`; the next signed up a second customer account in the
-  // admin's browser, which gave a customer session with no operator standing.
-  // The admin cookie is deliberately scoped to `/admin` so customer pages
-  // never receive it, so `session.sandbox` is what identifies an operator
-  // here — and the sandbox is how one gets that session.
-  await admin.goto(`${B}/admin/sandbox`, { waitUntil: 'networkidle' });
-  const open = admin.getByRole('button', { name: /sandbox/i }).first();
-  if (!(await open.count())) fail('no way to open the sandbox');
-  else {
-    // WAIT FOR THE NAVIGATION, not for the network to fall quiet. A server
-    // action answers 303 with its Set-Cookie and the client then navigates;
-    // `waitForLoadState('networkidle')` can resolve before any of that, and
-    // reading the URL and cookies at that moment shows the OLD page with no
-    // session. That cost an hour of hunting a product bug that was not there.
-    await Promise.all([
-      admin.waitForURL((url) => !url.pathname.startsWith('/admin'), { timeout: 15_000 }),
-      open.click(),
-    ]);
-    await admin.goto(`${B}/grants`, { waitUntil: 'networkidle' });
-    const operatorView = await admin.locator('body').innerText();
-    if (/not been assembled/i.test(operatorView)) {
-      if (/start it under Funders/i.test(operatorView)) {
-        ok('an operator in the sandbox is pointed at the console');
-      } else fail('an operator in the sandbox is NOT pointed at the console');
-    } else {
-      fail(
-        `the operator view is neither the empty state nor loaded: ${operatorView.replace(/\s+/gu, ' ').slice(0, 200)}`,
-      );
-    }
-  }
-
   await admin.goto(`${B}/admin/funders`, { waitUntil: 'networkidle' });
   const panel = await admin.locator('body').innerText();
   if (!/grant record/i.test(panel)) fail('the corpus panel is not on /admin/funders');
   else ok('the corpus panel is there');
+  // It must read as visibility, not as a job somebody has to do.
+  if (!/runs itself/i.test(panel)) fail('the console does not say the load runs itself');
+  else ok('the console says the load runs itself');
+  if (/Start the walk/i.test(panel)) fail('the console still presents starting as a task');
+  else ok('there is no "start the walk" task');
 
   const step = admin.getByRole('button', { name: /Run one step now/i });
   if (!(await step.count())) fail('no "Run one step now" button');

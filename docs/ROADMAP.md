@@ -394,11 +394,26 @@ this cheque before", where no source answers "what is open".
       the whole list comes back. 100 requests/minute, 1000 a page
 - [ ] "Organisations like mine": match recipients by name from the same held
       list, then `grants_received/` to show who funded them
-- [ ] Decide how the corpus stays fresh. A daily cron and a 300s step walk a
-      few hundred funders a day, which is days for the whole list. Vercel's
-      Hobby plan restricts cron frequency, so the schedule is daily to keep the
-      deploy valid — hourly on a paid plan, and the console button drives it
-      faster by hand
+- [x] **Make the record fill ITSELF.** Holding the grants is forced — there is
+      no search to query — but an operator pressing buttons was not. Arriving
+      at `/grants` starts the walk and advances it, under a database lease, in
+      `after()` so nobody waits for it. No console, no button, no environment
+      variable
+- [x] Drop the secret from the step route. It made the load need configuring
+      before it would run at all, and it was guarding public data being written
+      to shared reference tables. The lease bounds cost and concurrency
+      properly; the scheduler is recognised by `x-vercel-cron` and gets the
+      long step
+- [x] A restart is claimable at once — `startCorpusLoad` leaves `updated_at`
+      NULL rather than `now()`, so somebody who asks for a re-read does not
+      watch nothing happen for ninety seconds
+- [ ] Decide how fresh is fresh enough. Visits advance the record whenever
+      somebody is about, and a daily cron covers a quiet week; nobody knows yet
+      how long a full pass takes because nobody knows how many funders there
+      are. Revisit once the first real pass reports a total
+- [ ] Re-read funders already loaded, on a rolling basis, so a grant added by a
+      publisher this month is found. Today a finished walk stays finished until
+      somebody restarts it
 - [ ] "Check if they're open" — fetch the funder's own page on demand for the
       person who asked, extract whether anything is open and by when, keep the
       extraction private to that tenant. One page because a human asked, never
