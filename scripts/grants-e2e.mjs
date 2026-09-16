@@ -378,8 +378,16 @@ try {
   const funderView = await page.locator('body').innerText();
   if (!/By funder/i.test(funderView)) fail('there is no by-funder view');
   else ok('the by-funder view is there');
-  if (!/funders? have given/i.test(funderView)) fail('the count does not describe funders');
+  // The count is deliberately about what the funders gave, not about how
+  // well the rows fit: a text search still matches a large slice of the
+  // corpus, so promising "grants like yours" of the whole number was a
+  // claim the ranking could not keep.
+  if (!/funders? between them gave/i.test(funderView))
+    fail('the count does not describe funders');
   else ok('the count describes funders, not rows');
+  if (/grants like yours\. The ones most likely/i.test(funderView))
+    fail('the count still claims every match is a close fit');
+  else ok('the count does not overclaim the fit of every match');
 
   // The line that says WHY a funder is on the list has to be made of the same
   // parts the ordering is, or the reader cannot check the ranking.

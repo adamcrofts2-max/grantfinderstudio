@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-16
 
 ## What exists
 
-**1,547 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 84 assertions) and `npm run walk`.
+**1,558 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 85 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,3 +3717,77 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## The search was not producing good results, and here is why
+
+Reported as feedback, reproduced by measurement before anything was changed.
+`src/db/search-quality.probe.test.ts` and `rank-why.probe.test.ts` are the rig,
+skipped unless pointed at a loaded corpus.
+
+Against 467 grants, searching **"youth skills somerset"**:
+
+```
+matched 284 of 467 grants = 61% of the corpus
+the page showed first:   Chapel roof repair  ×5
+the best matches were:   Youth skills programme  (49 exist, none near the top)
+```
+
+### The cause was two faults, compounding
+
+**The relevance score had three distinct values across 120 results — 5, 4, 2.**
+The winner:
+
+```
+ 5  Chapel roof repair       region=Somerset   terms in text: [youth]
+ 4  Youth skills programme
+```
+
+The chapel grant matched `youth` because its RECIPIENT is "Wells Youth
+Collective". Every field counted the same — two points wherever a term
+appeared — and the region bonus was three. So one incidental word in an
+organisation's name plus the right county beat two deliberate words in the
+title. Half the youth organisations in the country have "youth" in their name,
+and a grant to one of them for a roof is a roof grant.
+
+**The fetch was ordered by date, not relevance.** `ORDER BY awarded_on DESC …
+LIMIT 121` — so with 284 matches the ranker saw the NEWEST 120, an arbitrary
+sample with respect to how well any of them matched. Ten of the forty-nine
+grants actually titled "Youth skills programme" never reached the page at all.
+The page said "the closest to your work first" over a date-ordered slice.
+
+### One problem, fixed at three layers
+
+| where | what |
+|---|---|
+| migration 0020 | `setweight` on the vector — title `A`, tags `B`, description `C`, recipient and region `D`. Postgres's default weights make a title hit worth ten recipient hits to `ts_rank` |
+| `searchAwards` | `ORDER BY ts_rank(…) DESC, awarded_on DESC` — the 120 fetched are the 120 best, with recency as the tie-break |
+| `relevance()` | title 4, tag 3, description 2, recipient 1, each term scored ONCE at the best place it appears. Region stays 3 and no longer outranks a title word |
+
+Measured again on the same corpus:
+
+| | before | after |
+|---|---|---|
+| top result for "youth skills somerset" | Chapel roof repair | **Youth skills programme** |
+| youth-skills grants reaching the page | 39 of 49 | **49 of 49** |
+
+All five probe searches now lead with the right thing: food bank → Community
+food hub, chapel roof → Chapel roof repair, mental health young people → Young
+carers respite.
+
+### What is still not right, said plainly
+
+**A search still matches 54–61% of the corpus**, because it is ANY of your
+words — deliberately, so that "youth skills Somerset" still finds a grant
+described as "young people, employment training". The ordering now means the
+good ones are first, but the COUNT is breadth, and the funder view called it
+"284 grants like yours", which oversells it. The copy now says "gave 284
+grants mentioning your words. The closest fit first." A relevance threshold on
+the count is the real answer and is on the roadmap: it cannot be bolted on,
+because the count and the list must come from one predicate or the facet
+numbers start lying.
+
+**The scores still cluster** — 8, 4, 1 on this corpus. That is the stub's
+fault, not the product's: it draws from fifteen work descriptions, so most
+grants really are near-identical. Real 360Giving prose would spread much
+further. Worth saying rather than claiming resolution the measurement does not
+show.

@@ -318,7 +318,14 @@ export default async function GrantsPage({
         <>
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
             {view === 'funders'
-              ? `${count(funders.length)} funder${funders.length === 1 ? '' : 's'} have given ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} like yours. The ones most likely to fund you first.`
+              ? // "grants like yours" oversold the number. A search is ANY of
+                // your words — deliberately, so that "youth skills Somerset"
+                // still finds a grant described as "young people, employment
+                // training" — which means the total is every grant mentioning
+                // one of them, and measured on a real corpus that was 61% of
+                // everything held. The ordering is what makes the good ones
+                // first; the count is breadth, and now says so.
+                `${count(funders.length)} funder${funders.length === 1 ? '' : 's'} between them gave ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} mentioning your words. The closest fit first.`
               : result.facets.total > ranked.length
                 ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
                 : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}

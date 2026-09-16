@@ -499,6 +499,20 @@ this cheque before", where no source answers "what is open".
       failure wrote `last_error`, one slot the next success cleared, so three
       publishers vanished behind a panel reading "42 of 42 — 100%, records cut
       short 0". Counted, named, and shown beside the other two
+- [x] **Rank the search by relevance, not by date** (migration 0020). Measured:
+      "youth skills somerset" matched 61% of the corpus and showed five
+      "Chapel roof repair" grants first, because every field weighed the same
+      and the chapel grants went to "Wells Youth Collective". Weighted vector,
+      `ts_rank` ordering on the fetch, and field weights in `relevance`
+- [ ] Put a relevance threshold on the COUNT, not just the order. A search is
+      any of your words, so the total is every grant mentioning one of them —
+      54-61% of the corpus on the measured runs. The copy is honest about it
+      now ("gave N grants mentioning your words") but a count of CLOSE matches
+      is the real answer. It has to come from the same predicate as the list,
+      or the facet numbers start lying
+- [ ] Re-measure ranking against real 360Giving prose. The stub draws from
+      fifteen work descriptions, so scores cluster (8, 4, 1) in a way real
+      grant text would not
 - [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
       the text predicate about ten times, one per facet option, which is 251 of
       the 470 ms. Not urgent — half a second is not a page anybody complains

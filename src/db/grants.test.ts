@@ -52,6 +52,10 @@ afterEach(async () => {
 
 const ids = (awards: readonly { id: string }[]): string[] => awards.map((a) => a.id).toSorted();
 
+/** Result ids in the order returned, for asserting an order rather than a set. */
+const ids2 = (result: { awards: readonly { id: string }[] }): string[] =>
+  result.awards.map((a) => a.id);
+
 /** Where an amount band sits on the scale, for asserting the row's order. */
 const order = (bandId: string): number =>
   ['under5k', '5k-25k', '25k-100k', '100k-500k', 'over500k'].indexOf(bandId);
@@ -347,6 +351,68 @@ describe('narrowing a search', () => {
 
   it('cannot be tricked by a wildcard in a place', async () => {
     expect((await searchAwards(tx(), ['somerset'], filters({ places: ['%'] }))).awards).toEqual([]);
+  });
+});
+
+describe('which matches the page gets', () => {
+  /**
+   * This ordered by `awarded_on` alone, and the LIMIT is what made that a
+   * fault rather than a preference: a search matching 284 grants handed the
+   * ranker the NEWEST 120, an arbitrary sample with respect to how well any
+   * of them matched. Measured against a real corpus, ten of the forty-nine
+   * grants titled "Youth skills programme" never reached the page for a
+   * search for youth skills, while seven chapel-roof grants did.
+   */
+  beforeEach(async () => {
+    await harness.db.exec(`
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES
+        -- The best match, and the OLDEST row, so date ordering buries it.
+        ('aw_best', 'funder_360g_GB-CHC-1', 'Moorside CIC', 9000, '2023-10-01',
+         'Devon', ARRAY['Young people'], 'ds_x', 'Youth skills training',
+         'Practical skills training for young people'),
+        -- A recipient-name match only, and the NEWEST row.
+        ('aw_name', 'funder_360g_GB-CHC-1', 'Wells Youth Collective', 2500, '2026-06-01',
+         'Devon', ARRAY['Heritage'], 'ds_x', 'Chapel roof repair',
+         'Urgent repairs to a listed chapel roof');
+    `);
+  });
+
+  it('returns the best match first, not the newest', async () => {
+    const { awards } = await searchAwards(tx(), ['youth', 'skills']);
+    expect(awards[0]?.id).toBe('aw_best');
+  });
+
+  it('keeps the best match even when the page holds one row', async () => {
+    // The real shape of the bug: the limit decides what the ranker can see.
+    const { awards } = await searchAwards(tx(), ['youth', 'skills'], NO_FILTERS, 1);
+    expect(awards.map((a) => a.id)).toEqual(['aw_best']);
+  });
+
+  it('still prefers the recent one between equally good matches', async () => {
+    await harness.db.exec(`
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES ('aw_best2', 'funder_360g_GB-CHC-1', 'Moorside CIC', 9000, '2026-01-01',
+              'Devon', ARRAY['Young people'], 'ds_x', 'Youth skills training',
+              'Practical skills training for young people');
+    `);
+    const { awards } = await searchAwards(tx(), ['youth', 'skills'], NO_FILTERS, 2);
+    expect(awards[0]?.id).toBe('aw_best2');
+  });
+
+  it('weights a title above a recipient’s name', async () => {
+    // 0020 put `setweight` on the vector. Without it these two rank equally
+    // and the newest wins, which is how a roof grant led a youth search.
+    //
+    // Asserted as a relative order rather than first place: the shared
+    // fixture has its own title match, and the claim here is about these two
+    // rows, not about what else the corpus happens to hold.
+    const shown = ids2(await searchAwards(tx(), ['youth']));
+    expect(shown.indexOf('aw_best')).toBeLessThan(shown.indexOf('aw_name'));
   });
 });
 

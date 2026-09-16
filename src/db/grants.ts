@@ -170,6 +170,7 @@ function tsqueryFor(terms: readonly string[]): string | null {
   return lexemes.length === 0 ? null : lexemes.join(' | ');
 }
 
+
 /**
  * Awards matching ANY of the terms, newest first.
  *
@@ -271,12 +272,29 @@ export async function searchAwards(
   }
 
   const where = buildWhere(terms, filters);
+  // BY RELEVANCE, then by date.
+  //
+  // This ordered by `awarded_on` alone, and the limit below is what made that
+  // a fault rather than a preference: a search matching 284 grants handed the
+  // ranker the NEWEST 120 of them, which is an arbitrary sample with respect
+  // to how well any of them matched. Ten of the forty-nine grants actually
+  // titled "Youth skills programme" never reached the page for a search for
+  // youth skills, while seven chapel-roof grants did.
+  //
+  // `ts_rank` reads the weights 0020 put on the vector, so a title match
+  // counts for about ten times a recipient-name match. Date remains the
+  // tie-break, because among equally good matches the recent one is the
+  // better lead.
+  // The ranking needs the same query the predicate used. `buildWhere` has
+  // taken $1..$n, so the query is $n+1 and the limit $n+2.
+  const queryAt = where.values.length + 1;
   const { rows } = await tx.query<Row>(
     `${SELECT}
       WHERE ${where.sql}
-      ORDER BY a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
-      LIMIT $${where.values.length + 1}`,
-    [...where.values, limit + 1],
+      ORDER BY ts_rank(a.search_vector, to_tsquery('english', $${queryAt})) DESC,
+               a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
+      LIMIT $${queryAt + 1}`,
+    [...where.values, tsqueryFor(terms), limit + 1],
   );
 
   const capped = rows.length > limit;

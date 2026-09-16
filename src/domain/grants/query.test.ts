@@ -62,11 +62,16 @@ describe('ranking what comes back', () => {
     amountGbp: 24_000,
   };
 
-  it('scores a term appearing in the text', () => {
-    expect(relevance(grant, { terms: ['skills'], region: null, amountSoughtGbp: null })).toBe(2);
+  it('scores a term in the title highest, being the strongest statement of purpose', () => {
+    expect(relevance(grant, { terms: ['skills'], region: null, amountSoughtGbp: null })).toBe(4);
   });
 
-  it('scores the applicant’s own area highest, being the strongest signal', () => {
+  it('scores the applicant’s own area, but below a word in the title', () => {
+    // This comment used to say the area was "the strongest signal", and the
+    // numbers agreed: region 3 against 2 for any term anywhere. Measured
+    // against a real corpus that put five "Chapel roof repair" grants above
+    // thirty-nine titled "Youth skills programme", because the chapel grants
+    // went to Wells Youth Collective in Somerset.
     expect(relevance(grant, { terms: [], region: 'Somerset', amountSoughtGbp: null })).toBe(3);
   });
 
@@ -129,8 +134,9 @@ describe('ranking a row the database matched by its stem', () => {
   });
 
   it('already scored the singular term against plural text', () => {
-    // Free, and always was: "skills" contains "skill".
-    expect(score(['skill'])).toBe(2);
+    // Free, and always was: "skills" contains "skill". Four rather than two
+    // because it is in the title.
+    expect(score(['skill'])).toBe(4);
   });
 
   it('does not match a different word that merely ends in s', () => {
@@ -141,5 +147,94 @@ describe('ranking a row the database matched by its stem', () => {
 
   it('still scores an unrelated term zero', () => {
     expect(score(['heritages'])).toBe(0);
+  });
+});
+
+const context = (terms: string[]) => ({ terms, region: null, amountSoughtGbp: null });
+
+describe('where a term was found decides what it is worth', () => {
+  /**
+   * The search that forced this. "youth skills somerset", measured against a
+   * loaded corpus, returned five **Chapel roof repair** grants above all
+   * thirty-nine grants titled "Youth skills programme" — because the chapel
+   * grants went to "Wells Youth Collective" in Somerset, so one incidental
+   * word in a recipient's NAME plus the right county beat two deliberate
+   * words in a TITLE. The whole page of 120 results held three scores.
+   */
+  const bare = { region: null, amountGbp: 0 };
+
+  it('is worth most in the title', () => {
+    const grant = { ...bare, title: 'Youth skills programme', description: null, recipientName: null };
+    expect(relevance(grant, context(['youth']))).toBe(4);
+  });
+
+  it('then in the publisher’s own classification', () => {
+    const grant = {
+      ...bare,
+      title: 'Programme',
+      description: null,
+      recipientName: null,
+      tags: ['Children and young people'],
+    };
+    expect(relevance(grant, context(['young']))).toBe(3);
+  });
+
+  it('then in the description', () => {
+    const grant = { ...bare, title: 'Programme', description: 'For young people', recipientName: null };
+    expect(relevance(grant, context(['young']))).toBe(2);
+  });
+
+  it('and least in the recipient’s name, which is not what the money bought', () => {
+    const grant = { ...bare, title: 'Chapel roof repair', description: null, recipientName: 'Wells Youth Collective' };
+    expect(relevance(grant, context(['youth']))).toBe(1);
+  });
+
+  it('puts the youth-skills grant above the chapel roof, which is the whole point', () => {
+    const terms = ['youth', 'skills', 'somerset'];
+    const ctx = { terms, region: 'Somerset', amountSoughtGbp: 30_000 };
+    const chapel = {
+      title: 'Chapel roof repair',
+      description: 'Urgent repairs to the roof of a listed chapel.',
+      recipientName: 'Wells Youth Collective',
+      region: 'Somerset',
+      amountGbp: 2536,
+    };
+    const youth = {
+      title: 'Youth skills programme',
+      description: 'Practical training for young people.',
+      recipientName: 'Moorside CIC',
+      region: 'Devon',
+      amountGbp: 18_000,
+    };
+    expect(relevance(youth, ctx)).toBeGreaterThan(relevance(chapel, ctx));
+  });
+
+  it('scores a term once, at the best place it appears', () => {
+    // A word in both the title and the description is one piece of evidence
+    // stated twice. Adding both would reward a publisher for repeating
+    // themselves.
+    const grant = {
+      ...bare,
+      title: 'Youth work',
+      description: 'Youth work for youth groups, run by youth workers',
+      recipientName: 'Youth Trust',
+    };
+    expect(relevance(grant, context(['youth']))).toBe(4);
+  });
+
+  it('has room to tell results apart', () => {
+    // The measured page held three distinct scores across 120 results, so the
+    // order inside each band was whatever SQL happened to return.
+    const terms = ['youth', 'skills', 'training'];
+    const ctx = { terms, region: 'Somerset', amountSoughtGbp: 30_000 };
+    const scores = new Set(
+      [
+        { title: 'Youth skills training', description: null, recipientName: null, region: 'Somerset', amountGbp: 30_000 },
+        { title: 'Youth skills', description: 'training', recipientName: null, region: 'Somerset', amountGbp: 30_000 },
+        { title: 'Youth', description: 'skills and training', recipientName: null, region: 'Devon', amountGbp: 30_000 },
+        { title: 'Roof repair', description: null, recipientName: 'Youth Trust', region: 'Devon', amountGbp: 900 },
+      ].map((g) => relevance(g, ctx)),
+    );
+    expect(scores.size).toBe(4);
   });
 });

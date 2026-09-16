@@ -74,6 +74,8 @@ export interface Rankable {
   description: string | null;
   recipientName: string | null;
   region: string | null;
+  /** The publisher's classification labels, which say what it was FOR. */
+  tags?: readonly string[];
   amountGbp: number;
 }
 
@@ -105,33 +107,79 @@ function matches(haystack: string, term: string): boolean {
 }
 
 /**
+ * What a term match is worth, by where it was found.
+ *
+ * ## The search that forced these numbers
+ *
+ * Every field used to count the same, at two points a term, and the region
+ * bonus was three. Measured against a real corpus, "youth skills somerset"
+ * put five **Chapel roof repair** grants above all thirty-nine grants titled
+ * "Youth skills programme" — because the chapel grants went to "Wells Youth
+ * Collective" in Somerset, so one incidental word in a RECIPIENT'S NAME plus
+ * the right county (2 + 3 = 5) beat two deliberate words in a TITLE (2 + 2 =
+ * 4). The whole page of 120 results held three distinct scores.
+ *
+ * A recipient's name is not what the money paid for. Half the youth
+ * organisations in the country have "youth" in their name, and a grant to one
+ * of them for a roof is a roof grant.
+ *
+ * Still small integers, and every point still corresponds to something the
+ * screen can state in a sentence — that rule was never the problem. What was
+ * missing is that the sentences are not equally strong.
+ */
+const WEIGHT = {
+  /** The publisher's own summary of what the grant was for. */
+  title: 4,
+  /** Chosen from a list rather than written, so deliberate but coarse. */
+  tag: 3,
+  /** Where the detail is, and also where incidental words are. */
+  description: 2,
+  /** Who got it. A real signal, and weak evidence of what it funded. */
+  recipient: 1,
+} as const;
+
+const lower = (text: string | null | undefined): string => (text ?? '').toLowerCase();
+
+/** Their area, which is often the difference between eligible and not. */
+const REGION_BONUS = 3;
+/** A size they actually give at. */
+const AMOUNT_BONUS = 2;
+
+/**
  * How well one grant answers the search, 0 upwards.
  *
  * Deliberately a small integer built from countable things rather than a
  * weighted float: every point corresponds to something the screen can state
  * in a sentence, so an applicant can see why a row is where it is. A score
  * nobody can check is worse than no ordering at all.
+ *
+ * A term is scored ONCE, at the best place it was found — a word in both the
+ * title and the description is one piece of evidence stated twice, and adding
+ * the two would reward a publisher for repeating themselves.
  */
 export function relevance(grant: Rankable, context: RankContext): number {
-  const haystack = [grant.title, grant.description, grant.recipientName]
-    .filter((part): part is string => part !== null)
-    .join(' ')
-    .toLowerCase();
+  const title = lower(grant.title);
+  const tags = lower((grant.tags ?? []).join(' '));
+  const description = lower(grant.description);
+  const recipient = lower(grant.recipientName);
 
   let score = 0;
   for (const term of context.terms) {
-    if (matches(haystack, term)) score += 2;
+    if (matches(title, term)) score += WEIGHT.title;
+    else if (matches(tags, term)) score += WEIGHT.tag;
+    else if (matches(description, term)) score += WEIGHT.description;
+    else if (matches(recipient, term)) score += WEIGHT.recipient;
   }
 
   const region = context.region?.trim().toLowerCase();
   if (region !== undefined && region !== '' && grant.region !== null) {
-    if (grant.region.toLowerCase().includes(region)) score += 3;
+    if (grant.region.toLowerCase().includes(region)) score += REGION_BONUS;
   }
 
   const ask = context.amountSoughtGbp;
   if (ask !== null && ask > 0) {
     const ratio = grant.amountGbp / ask;
-    if (ratio >= 0.5 && ratio <= 2) score += 2;
+    if (ratio >= 0.5 && ratio <= 2) score += AMOUNT_BONUS;
   }
 
   return score;
