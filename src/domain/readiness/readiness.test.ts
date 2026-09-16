@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { assessReadiness, type ReadinessInput } from './readiness.js';
 
+/** Eligibility decided, against rules the funder actually publishes. */
+const decided = { verdict: 'eligible' as const, checked: 5, undecided: 0, applicantKnown: true };
+
 const complete: ReadinessInput = {
-  eligibilityVerdict: 'eligible',
+  eligibility: decided,
   questionsTotal: 8,
   questionsAnswered: 8,
   answersWithUnsupportedClaims: 0,
@@ -26,7 +29,7 @@ describe('assessReadiness', () => {
   it('reports an empty application as not ready', () => {
     const r = assessReadiness({
       ...complete,
-      eligibilityVerdict: 'unknown',
+      eligibility: { ...decided, verdict: 'unknown', undecided: 5 },
       questionsAnswered: 0,
       evidenceProvided: 0,
       budgetSubmittable: false,
@@ -46,14 +49,104 @@ describe('assessReadiness', () => {
   });
 
   it('blocks an ineligible application outright', () => {
-    const r = assessReadiness({ ...complete, eligibilityVerdict: 'ineligible' });
+    const r = assessReadiness({ ...complete, eligibility: { ...decided, verdict: 'ineligible' } });
     expect(r.blockers).toContain('You are not eligible for this fund.');
     expect(r.components.find((c) => c.id === 'eligibility')?.score).toBe(0);
   });
 
-  it('scores unresolved eligibility as half', () => {
-    const r = assessReadiness({ ...complete, eligibilityVerdict: 'unknown' });
-    expect(r.components.find((c) => c.id === 'eligibility')?.score).toBe(0.5);
+  it('scores unresolved eligibility as half — when there is something to resolve', () => {
+    const r = assessReadiness({
+      ...complete,
+      eligibility: { ...decided, verdict: 'unknown', undecided: 2 },
+    });
+    const eligibility = r.components.find((c) => c.id === 'eligibility');
+    expect(eligibility?.score).toBe(0.5);
+    expect(eligibility?.detail).toBe(
+      '2 of 5 criteria cannot be decided from what we know about you.',
+    );
+  });
+
+  /**
+   * THE TWO UNKNOWNS THAT ARE NOT ABOUT THIS APPLICATION.
+   *
+   * A bare verdict made these indistinguishable from an unknown with criteria
+   * behind it, so the card said "Some eligibility questions are unresolved"
+   * when there was no question to resolve — and scored it half marks, putting
+   * a number on the screen that no amount of work could move.
+   */
+  it('does not score eligibility at all when the funder publishes no rules', () => {
+    const r = assessReadiness({
+      ...complete,
+      eligibility: { verdict: 'unknown', checked: 0, undecided: 0, applicantKnown: true },
+    });
+    const eligibility = r.components.find((c) => c.id === 'eligibility');
+    expect(eligibility?.score).toBeNull();
+    expect(eligibility?.detail).toContain('Nothing is published here about who can apply');
+    // Excluded from the average rather than dragging it to the middle.
+    expect(r.counted).toBe(r.components.filter((c) => c.score !== null).length);
+    expect(r.percent).toBe(100);
+  });
+
+  it('does not score eligibility at all before the applicant’s own details are in', () => {
+    const r = assessReadiness({
+      ...complete,
+      eligibility: { verdict: 'unknown', checked: 0, undecided: 0, applicantKnown: false },
+    });
+    const eligibility = r.components.find((c) => c.id === 'eligibility');
+    expect(eligibility?.score).toBeNull();
+    expect(eligibility?.detail).toContain('Your own details are not in yet');
+  });
+
+  it('says how many criteria it met, rather than "every criterion we can check"', () => {
+    expect(
+      assessReadiness(complete).components.find((c) => c.id === 'eligibility')?.detail,
+    ).toBe('You meet all 5 criteria this funder publishes.');
+    expect(
+      assessReadiness({ ...complete, eligibility: { ...decided, checked: 1 } }).components.find(
+        (c) => c.id === 'eligibility',
+      )?.detail,
+    ).toBe('You meet the one criterion this funder publishes.');
+  });
+
+  /**
+   * The breakdown is only readable if the caption can name the set the
+   * average came from, and counting the components again at the call site is
+   * how that caption drifts from the rule the engine follows.
+   */
+  it('reports how many components the percentage averages', () => {
+    const r = assessReadiness(complete);
+    expect(r.counted).toBe(r.components.filter((c) => c.score !== null).length);
+    const mean =
+      r.components
+        .filter((c): c is typeof c & { score: number } => c.score !== null)
+        .reduce((sum, c) => sum + c.score, 0) / r.counted;
+    expect(r.percent).toBe(Math.round(mean * 100));
+  });
+
+  /**
+   * Eligibility used to be the guarantee that the average had something to
+   * average. It can be null now, so the guarantee has to come from elsewhere:
+   * questions, budget and outcomes always carry a number, even when it is
+   * zero.
+   */
+  it('still has something to average for an application with nothing in it', () => {
+    const r = assessReadiness({
+      eligibility: { verdict: 'unknown', checked: 0, undecided: 0, applicantKnown: false },
+      questionsTotal: 0,
+      questionsAnswered: 0,
+      answersWithUnsupportedClaims: 0,
+      evidenceNeeded: 0,
+      evidenceProvided: 0,
+      budgetSubmittable: false,
+      budgetHasLines: false,
+      outcomesDefined: 0,
+      attachmentsRequired: 0,
+      attachmentsProvided: 0,
+      answersOverWordLimit: 0,
+    });
+    expect(r.counted).toBeGreaterThan(0);
+    expect(r.percent).toBe(0);
+    expect(Number.isNaN(r.percent)).toBe(false);
   });
 
   it('does not penalise an application with no required attachments', () => {
@@ -159,6 +252,16 @@ describe('assessReadiness', () => {
     expect(r.percent).toBe(100);
   });
 
+  it('does not call a part-written application compliant outright', () => {
+    const half = assessReadiness({ ...complete, questionsAnswered: 4 });
+    expect(half.components.find((c) => c.id === 'compliance')?.detail).toBe(
+      'Every answer so far is within its word limit.',
+    );
+    expect(assessReadiness(complete).components.find((c) => c.id === 'compliance')?.detail).toBe(
+      'Every answer is within its word limit.',
+    );
+  });
+
   it('gives every component a detail line', () => {
     for (const c of assessReadiness(complete).components) {
       expect(c.detail.length).toBeGreaterThan(0);
@@ -168,7 +271,7 @@ describe('assessReadiness', () => {
   it('scores zero when every applicable component is empty', () => {
     const r = assessReadiness({
       ...complete,
-      eligibilityVerdict: 'ineligible',
+      eligibility: { ...decided, verdict: 'ineligible' },
       questionsTotal: 0,
       questionsAnswered: 0,
       evidenceNeeded: 0,

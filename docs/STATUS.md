@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,563 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 92 assertions) and `npm run walk`.
+**1,569 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 100 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,152 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## The readiness card shows its parts, and eligibility is evaluated at last
+
+Phase 9 Step 1's last unchecked item. `assessReadiness` has always returned
+seven components, each with its own score and its own sentence about what to do
+next — and the card rendered the average and nothing else. So the number moved
+and there was nothing on the screen saying what had moved it, and the blockers
+list (which by design carries only what would stop submission) was left doing
+the explaining for parts that are merely incomplete.
+
+```
+  Readiness — 33%                                             33%
+  How complete this is, not how likely it is to win.
+
+  Eligibility    NOT COUNTED
+                 Nothing is published here about who can apply, so there is
+                 nothing to check.
+  Questions      ████████░░░░░░░░░░░░░░░░░░░                  33%
+                 1 of 3 answered.
+  Evidence       NOT COUNTED
+                 No evidence gaps identified.
+  Budget         ░░░░░░░░░░░░░░░░░░░░░░░░░░░ (pink track)      0%
+                 No budget has been built yet.
+  Outcomes       ░░░░░░░░░░░░░░░░░░░░░░░░░░░ (pink track)      0%
+                 No outcomes defined yet.
+  Attachments    NOT COUNTED
+                 No attachments required.
+  Word limits    ███████████████████████████                 100%
+                 Every answer so far is within its word limit.
+
+  Averaged over the 4 of 7 parts that apply to this application.
+
+  WHAT WOULD STOP YOU SUBMITTING
+    2 questions still to answer.
+    No budget has been built.
+    No outcomes have been defined.
+```
+
+### Eligibility was hardcoded, and now is not
+
+`'eligible'` first — so the card claimed "you meet every criterion we can
+check" on every application ever opened, whatever the engine thought, and
+scored it full marks for saying so. Then `'unknown'`, which was honest and told
+nobody anything. The engine has been here since Phase 1; what was missing was
+the applicant profile and the project, which the application query now loads
+through `loadOrganisation` and `loadProject`.
+
+**The amount checked is the APPLICATION'S, not the project's.**
+`amountRequestedGbp` is what is being asked of this funder, and an amount-limit
+criterion is a rule about that number. The project's own figure is the fallback
+for an application that has not named one.
+
+### A bare verdict could not phrase its own row
+
+`ReadinessInput.eligibilityVerdict` was `'eligible' | 'ineligible' |
+'unknown'`, and the card said "Some eligibility questions are unresolved" for
+every unknown — including the two cases where there is no question to resolve.
+A funder who publishes no rules we hold, and an applicant whose own details are
+not in yet, are both `unknown`, and neither has anything in it to resolve.
+
+So `EligibilityReadiness` carries the counts with the verdict, and the three
+unknowns are three different rows:
+
+| | score | row says |
+|---|---|---|
+| no profile yet | **null** | Your own details are not in yet, so there is nothing to check against. |
+| no verified criteria | **null** | Nothing is published here about who can apply, so there is nothing to check. |
+| criteria undecided | 0.5 | 2 of 5 criteria cannot be decided from what we know about you. |
+| eligible | 1 | You meet all 5 criteria this funder publishes. |
+| ineligible | 0 | You do not meet this funder's criteria. + a blocker |
+
+**Null, not half marks**, for the two that are not about this application: a
+score of 50% on something unmeasured puts a number on the screen that no amount
+of work can move. Unmeasured components are excluded from the average, the way
+an application needing no attachments is not penalised for having none — which
+is also why `ReadinessResult` now reports `counted`, so the caption can name
+the set the percentage came from instead of counting the components again at
+the call site and drifting from the rule.
+
+Eligibility used to be the guarantee that the average had something to average.
+It can be null now, so the guarantee moved to questions, budget and outcomes,
+which always carry a number even when that number is zero. There is a test
+named for it.
+
+The e2e readiness figures moved from 40% → 80% to **38% → 88%**, because the
+average is now over six parts rather than seven.
+
+### THREE FAULTS THE SCREENSHOT FOUND AND THE TESTS DID NOT
+
+All three shipped past a clean suite, a clean lint and a clean build, and all
+three were obvious the moment the card was on screen.
+
+**An uncounted part drew an empty bar.** A grey track beside the words "not
+counted" reads as nought per cent — the exact distinction the breakdown exists
+to make. Uncounted parts draw no bar at all now, and the e2e counts
+`.part:has(.part-skip) .part-meter` rather than reading text, because the text
+is identical either way.
+
+**A zero score drew nothing either**, so "Budget — 0%" was an empty grey track
+indistinguishable from an uncounted row's. `.part-none` was a class that could
+never render. The track itself carries it now: `--negative-bg` with a
+`--negative-line` inset, so a gap reads as a gap.
+
+**The bars were ragged.** Each row is its own CSS grid, so `minmax(5.5rem,
+auto)` sized the first column to that row's own label — and "Attachments" is
+the one label wider than 5.5rem, so its bar and score sat a few pixels right of
+every other row's. Invisible in the DOM, invisible in the text, and visible
+only with every part on screen at once. Fixed with a fixed `7rem`, and the e2e
+now compares `getBoundingClientRect().left` across every bar: geometry is the
+only thing that sees it, the way computed styles were the only thing that saw
+the black-on-black tab.
+
+Two smaller ones from the same screenshot: the blockers were three sentences
+floating under the parts, repeating what the parts already said, so they have a
+heading that makes them a different claim; and the card's big number duplicated
+the one in its own heading, invisible at desktop where they sit side by side
+and obvious at 390px where the row wraps and shows 33% twice.
+
+And one honesty fix in the domain: "Every answer is within its word limit" beside
+a full green bar, on an application with one answer of three, reads as a
+compliant application. It says "Every answer **so far**" until they are all in.
+
+### The React #418, narrowed but not closed
+
+Recorded last entry as seen once and probably corpus churn. It has now been
+seen three times — twice alternating the two grant views, once inside the e2e —
+and a controlled comparison says the same thing the circumstance did:
+
+- Every sighting was while the corpus was being written to by a chained load step.
+- 54 navigations across six pages, including client-side link clicks, on a
+  settled corpus: zero. Three runs of the same alternating loop: zero.
+
+That fits a hydration mismatch from the row count moving between the server
+render and the navigation's payload, and the cost is a client re-render rather
+than anything a user would see fail. Not closed, because a mechanism consistent
+with the evidence is not a proven one — and the e2e now reports the URL with
+the error, so the next sighting will say which page rather than costing a whole
+run to narrow. Which is how the first one was diagnosed: a bare "client
+exception: Minified React error #418" names none of forty pages.
+
+One check of the rig itself is worth writing down. The first attempt to
+reproduce this reused a saved session against a database that had since been
+recreated, so all forty-two navigations bounced off `/sign-in` and the run
+reported zero problems. It proved nothing and looked like proof. Confirming the
+walk was signed in before believing its result is the same lesson as the
+degenerate stub corpus, two entries down, one week apart.
 
 ## Checking the search in a browser found the floor had made a county inert
 

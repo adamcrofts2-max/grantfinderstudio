@@ -192,7 +192,13 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [x] Findings quoting words the application does not contain are discarded
 - [x] The Critic never rewrites, never scores, and never repeats a check the
       deterministic `checkDraft` already makes exactly
-- [ ] Readiness breakdown (completeness, never a success probability)
+- [x] **Readiness breakdown** (completeness, never a success probability). The
+      engine always returned seven components with a score and a sentence
+      each; the card showed the average alone, so a number moved with nothing
+      on screen saying what moved it. Each part now shows its own bar, its own
+      percentage and its own next step, with a caption naming which of them
+      the average covers — a part that cannot be measured is marked uncounted
+      rather than scored zero
 
 **Step 2 — a human of the applicant's choosing (free, no supply side needed)**
 - [ ] Share an application read-only for review: answers, the evidence behind
@@ -223,9 +229,15 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Carry a cost-category exclusion and an overhead cap as criterion kinds,
       so `validateBudget`'s last two checks can fire. Until then they never
       do, and the budget card says so
-- [ ] Wire `eligibilityVerdict` into readiness for real. It was hardcoded
-      `'eligible'`, is now honestly `'unknown'`, and running the engine needs
-      the applicant profile and project the application query does not load
+- [x] **Wire eligibility into readiness for real.** It was hardcoded
+      `'eligible'` — so the card claimed "you meet every criterion we can
+      check" on every application ever opened — and then `'unknown'`, which
+      was honest and said nothing. The application query loads the profile and
+      the project now and runs the engine, against THIS application's
+      requested amount rather than the project's. `EligibilityReadiness`
+      carries the counts with the verdict so the row can phrase itself: the
+      three kinds of unknown are three different sentences, and the two that
+      are not about this application score null rather than half marks
 - [x] **Store reviews against the application** (migration 0019). The last of
       the four tables 0001 created with no writer. A review cost a model call
       and then lived in `useActionState`, so it was gone on navigation and
@@ -532,6 +544,12 @@ this cheque before", where no source answers "what is open".
       it cut "youth skills somerset" from 284 to 49 and left "mental health
       young people" at 252, because on this corpus those 252 really do all
       mention one of those words
+- [ ] Find the React #418. Seen three times, always while the corpus was being
+      written to by a chained load step; never in 54 navigations on a settled
+      one. Consistent with the row count moving between the server render and
+      the navigation's payload, which costs a client re-render and nothing a
+      user sees fail. The e2e reports the URL with the error now, so the next
+      sighting names its page
 - [ ] Give `relevance` a weight for the REGION field. The SQL vector has it at
       D and the in-memory ranker has no weight for it at all, so a typed county
       earns rank in the fetch and nothing in the final ordering — only the

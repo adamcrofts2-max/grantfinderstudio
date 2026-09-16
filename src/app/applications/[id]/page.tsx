@@ -5,7 +5,8 @@ import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
 import { loadBudgetLines } from '@/db/budget';
 import { loadOutcomes } from '@/db/outcomes';
 import { answersEditedSince, loadLatestReview } from '@/db/reviews';
-import { loadCriteria } from '@/db/queries';
+import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
+import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { validateBudget } from '@/domain/budget/validate';
@@ -52,6 +53,13 @@ export default async function ApplicationPage({
         ? []
         : (await loadCriteria(tx, application.opportunityId)).criteria;
 
+    // The applicant's own details and their project, which the eligibility
+    // engine needs and this query did not load — the reason the verdict was
+    // hardcoded. Either can be null on an account that has not finished
+    // onboarding, and null means no verdict rather than a default of "fine".
+    const organisation = await loadOrganisation(tx);
+    const project = await loadProject(tx);
+
     const questions: QuestionView[] = [];
     for (const q of application.questions) {
       const answer = application.answers.get(q.id) ?? null;
@@ -81,12 +89,17 @@ export default async function ApplicationPage({
           : [],
       });
     }
-    return { application, facts, questions, budgetLines, outcomes, criteria, review, answersEdited };
+    return {
+      application, facts, questions, budgetLines, outcomes, criteria, review,
+      answersEdited, organisation, project,
+    };
   });
 
   if (!page) notFound();
-  const { application, facts, questions, budgetLines, outcomes, criteria, review, answersEdited } =
-    page;
+  const {
+    application, facts, questions, budgetLines, outcomes, criteria, review,
+    answersEdited, organisation, project,
+  } = page;
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
@@ -118,15 +131,42 @@ export default async function ApplicationPage({
     application.amountRequestedGbp,
   );
 
+  /**
+   * Eligibility, evaluated rather than assumed.
+   *
+   * This was hardcoded — `'eligible'` first, so the card claimed "you meet
+   * every criterion we can check" on every application ever opened whatever
+   * the engine thought, and then `'unknown'`, which was honest and told
+   * nobody anything. The engine has been here all along; what was missing was
+   * the applicant profile and the project, which this query now loads.
+   *
+   * THE AMOUNT CHECKED IS THIS APPLICATION'S, not the project's.
+   * `amountRequestedGbp` is what is being asked of THIS funder, and an
+   * amount-limit criterion is a rule about that number. The project's own
+   * figure is the fallback for an application that has not named one yet.
+   */
+  const applicantKnown = organisation !== null && project !== null;
+  const eligibility =
+    organisation === null || project === null
+      ? { verdict: 'unknown' as const, checked: 0, undecided: 0, applicantKnown }
+      : (() => {
+          const asked = application.amountRequestedGbp ?? project.amountSoughtGbp;
+          const verdict = evaluateEligibility(
+            organisation.profile,
+            { ...project, amountSoughtGbp: asked },
+            criteria,
+            { asOf: new Date().toISOString().slice(0, 10) },
+          );
+          return {
+            verdict: verdict.verdict,
+            checked: verdict.results.length,
+            undecided: verdict.unknowns.length,
+            applicantKnown,
+          };
+        })();
+
   const readiness = assessReadiness({
-    // UNKNOWN, because nothing here has evaluated it. This said 'eligible' —
-    // so the card claimed "you meet every criterion we can check" on every
-    // application ever opened, whatever the eligibility engine thought, and
-    // scored it full marks for doing so. Running the engine properly needs
-    // the applicant profile and project this query does not load; until it
-    // does, "we have not checked" is the true answer and 'unknown' is how
-    // this domain says it. On the roadmap to wire for real.
-    eligibilityVerdict: 'unknown',
+    eligibility,
     questionsTotal: questions.length,
     questionsAnswered: answered,
     answersWithUnsupportedClaims: unsupported,
@@ -187,12 +227,72 @@ export default async function ApplicationPage({
           </div>
           <span className="metric-value">{readiness.percent}%</span>
         </div>
+
+        {/* THE BREAKDOWN.
+            The engine has always returned seven components, each with its own
+            score and its own sentence about what to do next, and the card
+            showed the average and nothing else. So a number moved and there
+            was no way to see what had moved it, and the blockers list — which
+            only carries the things that would stop submission — was doing the
+            explaining for parts that are merely incomplete.
+
+            The score is text as well as a bar, so the bar is decorative. */}
+        <ul className="parts">
+          {readiness.components.map((part) => {
+            const pct = part.score === null ? null : Math.round(part.score * 100);
+            return (
+              <li className="part" key={part.id}>
+                <span className="part-label">{part.label}</span>
+                {/* NO BAR AT ALL for a part that is not counted.
+                    There was one, drawn empty, and the first screenshot showed
+                    why that is wrong: an empty track beside the words "not
+                    counted" reads as nought per cent, which is the exact
+                    distinction this card exists to make. A part nobody can
+                    measure and a part with nothing in it are different
+                    things. */}
+                {pct === null ? null : (
+                  <span
+                    aria-hidden="true"
+                    className={pct === 0 ? 'part-meter part-empty' : 'part-meter'}
+                  >
+                    <span
+                      className={pct === 100 ? 'part-fill part-done' : 'part-fill part-part'}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </span>
+                )}
+                <span className={pct === null ? 'part-score part-skip' : 'part-score'}>
+                  {pct === null ? 'Not counted' : `${pct}%`}
+                </span>
+                <span className="part-detail">{part.detail}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+          {/* Which parts the number came from. A component that does not apply
+              is left out of the average rather than scored zero — an
+              application needing no attachments is not behind for having
+              none — and a percentage that quietly averages a different set
+              each time needs to say so. */}
+          Averaged over the {readiness.counted} of {readiness.components.length} parts that
+          apply to this application.
+        </p>
+
         {readiness.blockers.length > 0 ? (
-          <ul className="blockers">
-            {readiness.blockers.map((blocker) => (
-              <li key={blocker}>{blocker}</li>
-            ))}
-          </ul>
+          <>
+            {/* A HEADING, because the breakdown above says several of these
+                things already. Three sentences floating under the parts read
+                as the same facts twice; under a heading they are a different
+                claim — the parts say how far along each one is, this says
+                which of them would stop the application being sent. */}
+            <h3 className="part-head">What would stop you submitting</h3>
+            <ul className="blockers">
+              {readiness.blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          </>
         ) : null}
       </section>
 

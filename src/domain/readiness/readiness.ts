@@ -25,8 +25,30 @@ export interface ReadinessComponent {
   detail: string;
 }
 
+/**
+ * What the eligibility engine actually found, rather than just its verdict.
+ *
+ * This was a bare `'eligible' | 'ineligible' | 'unknown'`, and the readiness
+ * card said "Some eligibility questions are unresolved" for every unknown —
+ * including the two cases where there was no question to resolve. A funder who
+ * publishes no rules we hold and an applicant whose own details are not in yet
+ * are both `unknown`, and neither of them has an unresolved question in it.
+ *
+ * A breakdown that names the row has to make the row's sentence true, so the
+ * counts come with the verdict.
+ */
+export interface EligibilityReadiness {
+  verdict: 'eligible' | 'ineligible' | 'unknown';
+  /** Verified criteria evaluated. Zero means we hold no rules for this fund. */
+  checked: number;
+  /** Of those, how many could not be decided from what we know. */
+  undecided: number;
+  /** False when the organisation's own details or the project are not in yet. */
+  applicantKnown: boolean;
+}
+
 export interface ReadinessInput {
-  eligibilityVerdict: 'eligible' | 'ineligible' | 'unknown';
+  eligibility: EligibilityReadiness;
   questionsTotal: number;
   questionsAnswered: number;
   /** Answers that contain at least one claim with no confirmed fact behind it. */
@@ -46,6 +68,15 @@ export interface ReadinessResult {
   /** 0–100, rounded. Completeness, not probability of success. */
   percent: number;
   components: ReadinessComponent[];
+  /**
+   * How many components the percentage is the average of.
+   *
+   * Reported rather than left to be counted again by whoever shows the
+   * breakdown: a screen that names the parts has to be able to say which of
+   * them the number came from, and deriving that separately is how a caption
+   * ends up describing a rule the engine no longer follows.
+   */
+  counted: number;
   /** Things that would stop submission outright. */
   blockers: string[];
 }
@@ -55,30 +86,55 @@ function ratio(done: number, total: number): number | null {
   return Math.min(1, Math.max(0, done / total));
 }
 
+function eligibilityScore(eligibility: EligibilityReadiness): number | null {
+  if (eligibility.verdict === 'eligible') return 1;
+  if (eligibility.verdict === 'ineligible') return 0;
+  if (!eligibility.applicantKnown || eligibility.checked === 0) return null;
+  return 0.5;
+}
+
+function eligibilityDetail(eligibility: EligibilityReadiness): string {
+  const { verdict, checked, undecided, applicantKnown } = eligibility;
+  if (verdict === 'ineligible') return 'You do not meet this funder’s criteria.';
+  if (verdict === 'eligible') {
+    return checked === 1
+      ? 'You meet the one criterion this funder publishes.'
+      : `You meet all ${checked} criteria this funder publishes.`;
+  }
+  if (!applicantKnown) {
+    return 'Your own details are not in yet, so there is nothing to check against.';
+  }
+  if (checked === 0) {
+    return 'Nothing is published here about who can apply, so there is nothing to check.';
+  }
+  return undecided === 1
+    ? `1 of ${checked} criteria cannot be decided from what we know about you.`
+    : `${undecided} of ${checked} criteria cannot be decided from what we know about you.`;
+}
+
 export function assessReadiness(input: ReadinessInput): ReadinessResult {
   const components: ReadinessComponent[] = [];
   const blockers: string[] = [];
 
   // Eligibility is binary and dominant: an ineligible application is not
   // "nearly ready", it is not submittable at all.
-  const eligibilityScore =
-    input.eligibilityVerdict === 'eligible'
-      ? 1
-      : input.eligibilityVerdict === 'unknown'
-        ? 0.5
-        : 0;
+  //
+  // NULL, not a half mark, for the two unknowns that are not about this
+  // application at all. A funder publishing no rules we hold, and an
+  // organisation whose own details are not in yet, are both unmeasured — and
+  // scoring an unmeasured thing 50% puts a number on the screen that no work
+  // can move. Unmeasured components are excluded from the average, the way an
+  // application with no required attachments is not penalised for having none.
+  //
+  // An unknown with criteria behind it is different: there IS something to
+  // resolve, and half marks say so.
   components.push({
     id: 'eligibility',
     label: 'Eligibility',
-    score: eligibilityScore,
-    detail:
-      input.eligibilityVerdict === 'eligible'
-        ? 'You meet every criterion we can check.'
-        : input.eligibilityVerdict === 'unknown'
-          ? 'Some eligibility questions are unresolved.'
-          : 'You do not meet this funder’s criteria.',
+    score: eligibilityScore(input.eligibility),
+    detail: eligibilityDetail(input.eligibility),
   });
-  if (input.eligibilityVerdict === 'ineligible') {
+  if (input.eligibility.verdict === 'ineligible') {
     blockers.push('You are not eligible for this fund.');
   }
 
@@ -186,7 +242,14 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
       input.questionsAnswered === 0
         ? 'Nothing written yet, so there is nothing to measure.'
         : compliant
-          ? 'Every answer is within its word limit.'
+          // "Every answer is within its word limit" beside a full green bar,
+          // on an application with one answer out of three, reads as a
+          // compliant application. It is only a claim about what has been
+          // written so far, and the breakdown puts it next to a 33% on
+          // Questions where the difference matters.
+          ? input.questionsAnswered < input.questionsTotal
+            ? 'Every answer so far is within its word limit.'
+            : 'Every answer is within its word limit.'
           : `${input.answersOverWordLimit} answers exceed their word limit.`,
   });
   if (!compliant) {
@@ -199,7 +262,12 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
 
   // Components that do not apply are excluded rather than counted as zero, so
   // an application with no required attachments is not penalised for it.
-  // Eligibility always carries a score, so this is never empty.
+  //
+  // Never empty: questions, budget and outcomes always carry a number, even
+  // when that number is zero. Eligibility used to be the guarantee and no
+  // longer is — it can now be unmeasured — so the guarantee is written down
+  // here rather than assumed, and `src/domain/readiness/readiness.test.ts`
+  // asserts it for an application with nothing in it at all.
   const applicable = components.filter(
     (c): c is ReadinessComponent & { score: number } => c.score !== null,
   );
@@ -207,5 +275,5 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
     (applicable.reduce((sum, c) => sum + c.score, 0) / applicable.length) * 100,
   );
 
-  return { percent, components, blockers };
+  return { percent, components, counted: applicable.length, blockers };
 }

@@ -227,7 +227,11 @@ const ok = (m) => { passed += 1; console.log('  ok —', m); };
 try {
   // --- the applicant --------------------------------------------------------
   const page = await browser.newPage();
-  page.on('pageerror', (e) => fail(`client exception: ${e.message}`));
+  // WITH THE URL. A bare message cost a whole run: a React hydration error
+  // came back as eleven words about a minified error code with no way to tell
+  // which of forty pages it was on, and the only way to narrow it was to run
+  // the walk again and watch.
+  page.on('pageerror', (e) => fail(`client exception at ${page.url()}: ${e.message}`));
 
   const email = `e2e-${Date.now()}@example.org`;
   const password = 'a-long-enough-passphrase-9';
@@ -301,7 +305,7 @@ try {
 
   // --- load the corpus, as an operator would -------------------------------
   const admin = await browser.newPage();
-  admin.on('pageerror', (e) => fail(`admin client exception: ${e.message}`));
+  admin.on('pageerror', (e) => fail(`admin client exception at ${admin.url()}: ${e.message}`));
   await admin.goto(`${B}/admin/sign-in`, { waitUntil: 'domcontentloaded' });
   const secret = process.env.ADMIN_CLAIM_SECRET ?? '';
   if (secret === '') {
@@ -957,6 +961,82 @@ try {
       if (after === 100) {
         fail('an application with no questions answered reports 100% ready');
       } else ok('and does not claim 100% with the questions still empty');
+
+      // --- the breakdown, which is what makes the number readable ----------
+      //
+      // The engine has always returned seven components, each with a score and
+      // a sentence, and the card showed the average and nothing else: the
+      // number moved and there was nothing on the screen saying what moved it.
+      const parts = await page.locator('.part').all();
+      if (parts.length < 7) {
+        fail(`the readiness breakdown is not on the page (${parts.length} parts)`);
+      } else ok(`readiness is broken down into its ${parts.length} parts`);
+      const labels = await page.locator('.part-label').allTextContents();
+      const wanted = ['Eligibility', 'Questions', 'Budget', 'Outcomes', 'Word limits'];
+      const missing = wanted.filter(
+        (w) => !labels.some((l) => l.toLowerCase().includes(w.toLowerCase())),
+      );
+      if (missing.length > 0) fail(`the breakdown does not name ${missing.join(', ')}`);
+      else ok('and names each part, so a score can be traced to a part');
+      // The caption has to say which parts the average came from, because a
+      // part that does not apply is left out rather than scored zero.
+      if (!/Averaged over the \d+ of \d+ parts/iu.test(body)) {
+        fail('the breakdown never says which parts the percentage averages');
+      } else ok('and says which of them the percentage averages');
+
+      // ELIGIBILITY IS EVALUATED NOW, NOT ASSUMED.
+      //
+      // It was hardcoded: 'eligible' first, so the card claimed "you meet
+      // every criterion we can check" on every application ever opened, and
+      // then 'unknown', which was honest and said nothing. The stub funder
+      // publishes no verified criteria, so the true answer here is that there
+      // is nothing to check — and the row has to say THAT rather than imply a
+      // question the applicant could go and resolve.
+      if (/you meet every criterion we can check/iu.test(body)) {
+        fail('the eligibility row still claims a check nobody ran');
+      } else ok('eligibility no longer claims a check nobody ran');
+      if (!/Nothing is published here about who can apply/iu.test(body)) {
+        fail(`the eligibility row does not say why it cannot tell: ${
+          /Eligibility[\s\S]{0,140}/iu.exec(body)?.[0]?.replace(/\n+/gu, ' | ') ?? '(no row)'
+        }`);
+      } else ok('and says why it cannot tell, rather than scoring half marks');
+      if (!/Not counted/iu.test(body)) {
+        fail('a part that does not apply is not marked as uncounted');
+      } else ok('a part that cannot be measured is marked uncounted, not zero');
+
+      /**
+       * AND IT DRAWS NO BAR, because an empty bar reads as nought per cent.
+       *
+       * The first screenshot of this card had one: a grey track beside the
+       * words "not counted", which is the exact distinction the breakdown
+       * exists to make. Counted from the DOM rather than the text, because
+       * the text is identical either way.
+       */
+      const uncounted = await page.locator('.part:has(.part-skip)').count();
+      const barsInUncounted = await page.locator('.part:has(.part-skip) .part-meter').count();
+      if (uncounted === 0) fail('expected at least one uncounted part to check');
+      else if (barsInUncounted > 0) {
+        fail(`${barsInUncounted} uncounted parts still draw an empty bar`);
+      } else ok(`and draws no bar for any of the ${uncounted} of them`);
+
+      /**
+       * The bars line up.
+       *
+       * Each row is its own CSS grid, so an `auto` first column sizes to that
+       * row's own label — and "Attachments" is the one label wider than the
+       * others, so its bar and score sat a few pixels right of every other
+       * row. Invisible in the DOM, invisible in the text, and obvious in a
+       * screenshot once every part is on screen at once. Geometry is the only
+       * thing that sees it, the way computed styles were the only thing that
+       * saw the black-on-black tab.
+       */
+      const lefts = await page.locator('.part-meter').evaluateAll((els) =>
+        els.map((el) => Math.round(el.getBoundingClientRect().left)),
+      );
+      const spread = lefts.length === 0 ? 0 : Math.max(...lefts) - Math.min(...lefts);
+      if (lefts.length < 2) fail('not enough bars to check their alignment');
+      else if (spread > 1) fail(`the readiness bars are ragged by ${spread}px`);
+      else ok(`the ${lefts.length} bars start on the same pixel`);
     }
   }
 } finally {

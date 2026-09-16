@@ -763,6 +763,75 @@ details[open] > .funder-summary .chev-toggle::after { content: 'Close'; }
 }
 .blockers li { margin-bottom: var(--s-1); }
 
+/* ---------- Readiness, part by part -------------------------------------
+   The card showed one average and nothing else, so a number moved and there
+   was no way to see what had moved it. Four cells per row: the part's name,
+   a bar, its score as text, and the sentence saying what to do next. The
+   detail spans the full width so it wraps under the row at phone widths
+   rather than squeezing the bar to nothing. */
+
+.parts { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
+.part {
+  display: grid;
+  /* A FIXED first column, not `minmax(5.5rem, auto)`.
+     Each row is its own grid, so an `auto` column sizes to that row's own
+     label — and "Attachments" is the one label wider than 5.5rem, so its bar
+     and its score sat a few pixels right of every other row's. Only a
+     screenshot shows that, and only once every part is on the screen at
+     the same time. 7rem clears the longest label here and matches `.kv`. */
+  grid-template-columns: 7rem 1fr 3.5rem;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+}
+.part:first-child { border-top: 0; padding-top: 0; }
+.part-label { font-size: var(--t-sm); font-weight: 620; }
+.part-meter {
+  height: 6px; border-radius: 999px; background: var(--line);
+  overflow: hidden; min-width: 3rem;
+}
+.part-fill { display: block; height: 100%; border-radius: 999px; }
+.part-done { background: var(--positive); }
+.part-part { background: var(--caution); }
+/* A score of nought draws no fill, so the track itself has to carry it —
+   otherwise a part with nothing in it looks exactly like a part that is not
+   counted, which is the distinction this card exists to make. */
+.part-empty { background: var(--negative-bg); box-shadow: inset 0 0 0 1px var(--negative-line); }
+.part-score {
+  font-size: var(--t-sm); font-weight: 620; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* "Not counted" is three words in a cell sized for "100%", so it drops to the
+   faint weight and its own line rather than forcing the grid wider. */
+.part-skip {
+  grid-column: 2 / -1; text-align: left;
+  font-weight: 400; font-size: var(--t-xs);
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint);
+}
+.part-detail {
+  grid-column: 1 / -1;
+  font-size: var(--t-sm); color: var(--ink-soft);
+}
+/* An uncounted part has no bar, so its label would otherwise sit alone in a
+   5.5rem column with the words three cells away. */
+.part:has(.part-skip) { grid-template-columns: 7rem 1fr; }
+
+/* The card's big number duplicates the one in its own heading, which is
+   invisible at desktop — they sit side by side — and obvious at phone width,
+   where the row wraps and shows 33% twice, one line apart. The heading keeps
+   it, since that is the line a reader scans to. */
+@media (max-width: 560px) {
+  .card .parts ~ .part-head { margin-top: var(--s-4); }
+  .card:has(.parts) .metric-value { display: none; }
+}
+
+.part-head {
+  margin: var(--s-5) 0 0;
+  font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+
 /* ---------- Paste in, copy out ------------------------------------------- */
 
 .paste { padding: 0; }
