@@ -33,6 +33,7 @@ import {
   type Dimension,
   type GrantFilters,
 } from '../domain/grants/facets.js';
+import { RELEVANCE_FLOOR } from '../domain/grants/query.js';
 
 export interface AwardResult {
   id: string;
@@ -170,6 +171,45 @@ function tsqueryFor(terms: readonly string[]): string | null {
   return lexemes.length === 0 ? null : lexemes.join(' | ');
 }
 
+/**
+ * `$1` is the tsquery, in every statement that searches.
+ *
+ * A convention rather than a bind, because the floor below and the predicate
+ * and the ORDER BY all need the same query, and binding it three times leaves
+ * three chances for one of them to get a different one. `buildWhere` numbers
+ * its filter binds from $2 for the same reason.
+ */
+const TSQUERY = '$1';
+
+/**
+ * The relevance floor, computed once per statement.
+ *
+ * ## Why this is a CTE and not a number from Node
+ *
+ * The floor depends on the best match in the corpus for these words, so
+ * somebody has to compute it. Doing that in Node means an extra round trip and
+ * a value threaded through `searchAwards`, `facetsFor`, `funderSummaries` and
+ * `funderExamples` — four places that must agree, where the only thing
+ * stopping them diverging is that nobody forgot. This is one string, used by
+ * every statement, so they cannot.
+ *
+ * MATERIALIZED because `facetsFor` references it a dozen times, once per facet
+ * option. Postgres would otherwise be free to inline it and aggregate over the
+ * matched set a dozen times.
+ *
+ * ## Why the floor ignores the filters
+ *
+ * Deliberately: it is computed over everything matching the TEXT, whatever is
+ * filtered. So narrowing to one county cannot lower the bar and let weaker
+ * matches in, and every number on the page — the total, each facet count, each
+ * funder's tally — is measured against the same line.
+ */
+const FLOOR_CTE = `search_floor AS MATERIALIZED (
+       SELECT coalesce(max(ts_rank(b.search_vector, to_tsquery('english', ${TSQUERY}))), 0)
+                * ${RELEVANCE_FLOOR} AS rank
+         FROM funder_awards b
+        WHERE b.search_vector @@ to_tsquery('english', ${TSQUERY}))`;
+
 
 /**
  * Awards matching ANY of the terms, newest first.
@@ -192,22 +232,26 @@ function tsqueryFor(terms: readonly string[]): string | null {
  * quietly showing a slice.
  */
 /**
- * The WHERE clause for a search, assembled from terms and filters.
+ * The WHERE clause for a search, assembled from the filters.
  *
  * Built here rather than inlined so that the page query and every facet count
  * are provably the same predicate. They have to be: a count that came from a
  * different WHERE than the list is a lie with a number on it.
  *
+ * The text part takes no argument: the query is `$1` by convention and the
+ * floor comes out of the `search_floor` CTE, so every statement that carries
+ * `FLOOR_CTE` and calls this asks the same question. `startAt` is where this
+ * clause's own binds begin, which is after the tsquery and after anything an
+ * enclosing statement has already bound.
+ *
  * Returns SQL with `$n` placeholders and the values to bind, so nothing a
  * person typed is ever concatenated into the statement.
  */
 function buildWhere(
-  terms: readonly string[],
   filters: GrantFilters,
-  startAt = 0,
+  startAt = 1,
 ): { sql: string; values: unknown[] } {
   const values: unknown[] = [];
-  const clauses: string[] = [];
   const bind = (value: unknown): string => {
     values.push(value);
     return `$${startAt + values.length}`;
@@ -216,10 +260,17 @@ function buildWhere(
   // One indexed column covers what four ILIKEs and an unnest used to: the
   // trigger in 0015 keeps `search_vector` over title, description, recipient,
   // region and tags together.
-  const tsquery = tsqueryFor(terms);
-  if (tsquery !== null) {
-    clauses.push(`a.search_vector @@ to_tsquery('english', ${bind(tsquery)})`);
-  }
+  //
+  // Two clauses, not one. The first is the index scan — every grant mentioning
+  // any of the words. The second is the floor: close enough to the best match
+  // for these words to be worth counting. Both are here rather than in the one
+  // query that lists grants, because a count that came from a looser predicate
+  // than the list is a lie with a number on it.
+  const clauses: string[] = [
+    `a.search_vector @@ to_tsquery('english', ${TSQUERY})`,
+    `ts_rank(a.search_vector, to_tsquery('english', ${TSQUERY}))`
+      + ` >= (SELECT rank FROM search_floor)`,
+  ];
 
   const bands = filters.bands
     .map(bandById)
@@ -258,7 +309,11 @@ function buildWhere(
     clauses.push(`a.tags && ${bind(filters.topics)}::text[]`);
   }
 
-  return { sql: clauses.length === 0 ? 'TRUE' : clauses.join(' AND '), values };
+  // No `TRUE` fallback. There used to be one, for the case where no clause
+  // applied, and a search for `%` reached it and returned the entire corpus as
+  // a result. The text clauses above are unconditional now, so the case cannot
+  // arise — and if it ever could, an empty result is the honest answer.
+  return { sql: clauses.join(' AND '), values };
 }
 
 export async function searchAwards(
@@ -271,7 +326,7 @@ export async function searchAwards(
     return { awards: [], capped: false };
   }
 
-  const where = buildWhere(terms, filters);
+  const where = buildWhere(filters);
   // BY RELEVANCE, then by date.
   //
   // This ordered by `awarded_on` alone, and the limit below is what made that
@@ -285,16 +340,15 @@ export async function searchAwards(
   // counts for about ten times a recipient-name match. Date remains the
   // tie-break, because among equally good matches the recent one is the
   // better lead.
-  // The ranking needs the same query the predicate used. `buildWhere` has
-  // taken $1..$n, so the query is $n+1 and the limit $n+2.
-  const queryAt = where.values.length + 1;
+  const values = [tsqueryFor(terms), ...where.values, limit + 1];
   const { rows } = await tx.query<Row>(
-    `${SELECT}
+    `WITH ${FLOOR_CTE}
+     ${SELECT}
       WHERE ${where.sql}
-      ORDER BY ts_rank(a.search_vector, to_tsquery('english', $${queryAt})) DESC,
+      ORDER BY ts_rank(a.search_vector, to_tsquery('english', ${TSQUERY})) DESC,
                a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
-      LIMIT $${queryAt + 1}`,
-    [...where.values, tsqueryFor(terms), limit + 1],
+      LIMIT $${values.length}`,
+    values,
   );
 
   const capped = rows.length > limit;
@@ -312,7 +366,12 @@ export interface Facets {
   since: FacetOption[];
   place: FacetOption[];
   topic: FacetOption[];
-  /** Grants matching the text and every active filter. */
+  /**
+   * Grants close enough to the text to count, and matching every active
+   * filter. Not every grant that mentions one of the words: that number was
+   * 61% of the corpus and described breadth rather than fit. See
+   * `RELEVANCE_FLOOR`.
+   */
   total: number;
 }
 
@@ -374,11 +433,12 @@ export async function facetsFor(
     return { amount: [], since: [], place: [], topic: [], total: 0 };
   }
 
-  const values: unknown[] = [];
+  // $1, by the convention `TSQUERY` names. Every predicate below reads it and
+  // so does the floor.
+  const values: unknown[] = [tsqueryFor(terms)];
   /** One dimension's predicate, with its placeholders numbered for the whole query. */
   const predicate = (dimension: Dimension | null): string => {
     const where = buildWhere(
-      terms,
       dimension === null ? filters : without(filters, dimension),
       values.length,
     );
@@ -433,7 +493,7 @@ export async function facetsFor(
   );
 
   const { rows } = await tx.query<{ dim: string; value: string | null; n: number }>(
-    `WITH ${parts.join(', ')}
+    `WITH ${FLOOR_CTE}, ${parts.join(', ')}
      SELECT 'amount' AS dim, value, n FROM amount
      UNION ALL SELECT 'since', value, n FROM since
      UNION ALL SELECT 'place', value, n FROM place
@@ -495,7 +555,12 @@ export interface FunderSummary {
   funderId: string;
   funderName: string;
   funderWebsite: string | null;
-  /** Grants of theirs matching the search and filters — not their whole history. */
+  /**
+   * Grants of theirs close to the search and matching the filters — not their
+   * whole history, and not every grant of theirs that mentions one of the
+   * words. The same predicate as the list and the total, which is the only way
+   * these three numbers can be read against each other.
+   */
   matching: number;
   amounts: { min: number; lowerQuartile: number; median: number; upperQuartile: number; max: number };
   firstAwardedOn: string | null;
@@ -550,8 +615,8 @@ export async function funderSummaries(
 
   const limit = options.limit ?? FUNDER_LIMIT;
   const region = options.region?.trim() ?? '';
-  const where = buildWhere(terms, filters);
-  const values = [...where.values];
+  const where = buildWhere(filters);
+  const values: unknown[] = [tsqueryFor(terms), ...where.values];
   const bind = (value: unknown): string => {
     values.push(value);
     return `$${values.length}`;
@@ -577,7 +642,8 @@ export async function funderSummaries(
     in_region: number;
     common_tag: string | null;
   }>(
-    `SELECT a.funder_id,
+    `WITH ${FLOOR_CTE}
+     SELECT a.funder_id,
             f.name    AS funder_name,
             f.website AS funder_website,
             count(*)::int                                                    AS matching,
@@ -647,8 +713,8 @@ async function funderExamples(
   filters: GrantFilters,
   funderIds: readonly string[],
 ): Promise<Map<string, FunderExample[]>> {
-  const where = buildWhere(terms, filters);
-  const values = [...where.values, funderIds, EXAMPLES_PER_FUNDER];
+  const where = buildWhere(filters);
+  const values = [tsqueryFor(terms), ...where.values, funderIds, EXAMPLES_PER_FUNDER];
   const idsAt = `$${values.length - 1}`;
   const perFunderAt = `$${values.length}`;
 
@@ -662,7 +728,7 @@ async function funderExamples(
     awarded_on: string | null;
     region: string | null;
   }>(
-    `WITH ranked AS (
+    `WITH ${FLOOR_CTE}, ranked AS (
        SELECT a.id, a.funder_id, a.title, a.description, a.recipient_name,
               a.amount_gbp::text AS amount_gbp, a.awarded_on::text AS awarded_on, a.region,
               row_number() OVER (

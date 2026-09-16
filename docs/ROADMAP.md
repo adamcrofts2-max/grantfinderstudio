@@ -504,15 +504,30 @@ this cheque before", where no source answers "what is open".
       "Chapel roof repair" grants first, because every field weighed the same
       and the chapel grants went to "Wells Youth Collective". Weighted vector,
       `ts_rank` ordering on the fetch, and field weights in `relevance`
-- [ ] Put a relevance threshold on the COUNT, not just the order. A search is
-      any of your words, so the total is every grant mentioning one of them —
-      54-61% of the corpus on the measured runs. The copy is honest about it
-      now ("gave N grants mentioning your words") but a count of CLOSE matches
-      is the real answer. It has to come from the same predicate as the list,
-      or the facet numbers start lying
+- [x] **Put a relevance threshold on the COUNT, not just the order**
+      (`RELEVANCE_FLOOR`, one tenth of the best match for the same words — the
+      same ratio Postgres gives a D-weight hit against an A-weight one). It
+      lives in `buildWhere` beside the text predicate, so the list, the total,
+      every facet count, each funder's tally and each funder's examples all
+      carry it. Measured: "youth skills somerset" 284 matches → 49, 61% of the
+      corpus → 10%. "somerset" alone keeps all 13, which is why the floor is a
+      fraction of the best match and not a fixed rank
+- [x] **Drop `funder_awards_text_idx`** (migration 0021). 0015 replaced the
+      ILIKE search with a tsvector and dropped its own three trigram indexes,
+      but missed this one from 0012. Measured: 0 scans ever, and 24 MB of an
+      86 MB table at 59,776 grants — nearly three times the tsvector index
+      doing the actual work. 86 MB → 63 MB
+- [ ] Give the floor a way to say it acted. A grant that mentions one of your
+      words in passing is now absent with no explanation, and the only person
+      who would notice is the one looking for that grant. Knowing how many
+      were left out costs a second count, which is the query this phase is
+      already trying to run once
 - [ ] Re-measure ranking against real 360Giving prose. The stub draws from
       fifteen work descriptions, so scores cluster (8, 4, 1) in a way real
-      grant text would not
+      grant text would not — and the floor's effect depends on that spread:
+      it cut "youth skills somerset" from 284 to 49 and left "mental health
+      young people" at 252, because on this corpus those 252 really do all
+      mention one of those words
 - [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
       the text predicate about ten times, one per facet option, which is 251 of
       the 470 ms. Not urgent — half a second is not a page anybody complains

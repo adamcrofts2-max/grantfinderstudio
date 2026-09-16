@@ -1,0 +1,26 @@
+-- The index the tsvector replaced, which nobody dropped.
+--
+-- 0012 built `funder_awards_text_idx`, a trigram GIN over
+-- `title || description || recipient_name`, because the search was then four
+-- `ILIKE '%term%'` clauses and a tsvector cannot serve those. 0015 replaced
+-- that search with one `tsvector` column and dropped the three per-column
+-- trigram indexes it had added itself — and missed this one, which belongs to
+-- an earlier migration.
+--
+-- So it has been maintained on every insert since, and read by nothing. The
+-- only remaining `ILIKE` in the product is on `region`, which this index does
+-- not cover. Measured on a loaded corpus, with the planner's own counters:
+--
+--     indexrelname                    size      idx_scan
+--     funder_awards_text_idx        1456 kB            0
+--     funder_awards_search_idx       264 kB            9
+--
+-- And at 59,776 grants it is 24 MB of an 86 MB table — 28% of the footprint,
+-- and nearly three times the 8.4 MB tsvector index that does the work. That is
+-- the same figure 0015 and 0016 were about: whether holding a national grant
+-- record fits the storage a small deployment can afford.
+--
+-- `IF EXISTS` because 0012 only created it where `pg_trgm` was available, so
+-- on PGlite and on any host that restricts extensions there is nothing here to
+-- drop.
+DROP INDEX IF EXISTS funder_awards_text_idx;

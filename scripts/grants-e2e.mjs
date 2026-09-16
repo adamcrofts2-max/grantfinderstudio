@@ -130,6 +130,34 @@ const grant = (id, org) => ({
   funders: [{ org_id: org }],
 });
 
+/**
+ * A grant whose only tie to the word "youth" is the recipient's name.
+ *
+ * Every other stub grant is about youth skills in Somerset, which makes them
+ * useless for testing the relevance floor — nothing can be closer or further
+ * than anything else. This one is a roof, in Devon, given to an organisation
+ * called Wells Youth Collective. So a search for "youth" matches it, at the
+ * weight 0020 gives a recipient name, and the floor should drop it: a grant to
+ * a youth organisation for a roof is a roof grant, and that exact confusion is
+ * what a real corpus put at the top of a youth search.
+ *
+ * Its region and its label are its own, so if the floor ever stops working
+ * this grant leaks a "Devon" place chip and a "Community buildings" topic chip
+ * into the options for a youth search, and the narrowing checks below see it.
+ */
+const NOISE = {
+  ...grant('GB-CHC-STUB-1-noise', 'GB-CHC-STUB-1'),
+};
+NOISE.data = {
+  ...NOISE.data,
+  title: 'Chapel roof repair',
+  description: 'Urgent repairs to the roof of a grade II listed chapel',
+  amountAwarded: 4100,
+  awardDate: '2025-03-04',
+  beneficiaryLocation: [{ name: 'Devon' }, { name: 'England' }],
+  classifications: [{ title: 'Community buildings' }],
+};
+
 /** How many grants each stub funder published, so grouping has something to group. */
 const GRANTS_PER_FUNDER = {
   'GB-CHC-STUB-1': 6,
@@ -170,7 +198,8 @@ const api = createServer((req, res) => {
       row.data.amountAwarded = (SHAPES[org]?.amount ?? 17500) + i * 1000;
       return row;
     });
-    res.end(JSON.stringify({ count: n, next: null, results }));
+    if (org === 'GB-CHC-STUB-1') results.push(NOISE);
+    res.end(JSON.stringify({ count: results.length, next: null, results }));
     return;
   }
   res.statusCode = 404;
@@ -453,8 +482,33 @@ try {
   if (!page.url().includes('view=grants')) fail('the view is not in the URL');
   else ok('the view choice is in the URL');
   const grantView = await page.locator('body').innerText();
-  if (!/matching grant/i.test(grantView)) fail('the grant list did not come back');
+  if (!/grants? close to your search/i.test(grantView)) fail('the grant list did not come back');
   else ok('every grant is still one tap away');
+
+  // --- the relevance floor, in a browser ------------------------------------
+  //
+  // The count used to be every grant mentioning any of your words, which on a
+  // real corpus was 61% of everything held — "284 grants" over a page whose
+  // first five rows were chapel roofs. The floor is what makes the number and
+  // the page the same set. `NOISE` above is the one stub grant that matches
+  // "youth" only through its recipient's name.
+  await page.goto(`${B}/grants?q=1&text=youth&view=grants`, { waitUntil: 'networkidle' });
+  const floored = await page.locator('body').innerText();
+  if (/Application error|server-side exception/i.test(floored)) {
+    fail('the floor query threw on a real Postgres');
+  } else ok('the floored search runs on a real Postgres');
+  if (!/Riverside youth skills programme/.test(floored)) {
+    fail('the floor dropped the grants the search was for');
+  } else ok('grants whose title is about youth are still there');
+  if (/Chapel roof repair/.test(floored)) {
+    fail('a grant matching only the recipient’s name is still counted as a match');
+  } else ok('a match that is only the recipient’s name is dropped');
+  // And the number over the page is the same set, not the wider one. Six
+  // Riverside grants from Stub Trust 1 plus one each from 2 and 3; the noise
+  // grant and the 2019 grant are both out, for different reasons.
+  if (!/\b8 grants close to your search/i.test(floored)) {
+    fail(`the count is not the floored set: ${/[0-9]+ grants? close to your search/i.exec(floored)?.[0] ?? 'no count found'}`);
+  } else ok('the count over the page is the floored set, not the wider one');
 
   // --- narrowing ------------------------------------------------------------
   await page.goto(`${B}/grants?q=1&text=youth&view=grants`, { waitUntil: 'networkidle' });

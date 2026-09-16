@@ -44,6 +44,7 @@ export const MIGRATIONS = [
   '0018_corpus_failed.sql',
   '0019_review_detail.sql',
   '0020_weight_search_fields.sql',
+  '0021_drop_dead_trigram_index.sql',
 ] as const;
 
 /**

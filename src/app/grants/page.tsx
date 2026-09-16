@@ -318,17 +318,21 @@ export default async function GrantsPage({
         <>
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
             {view === 'funders'
-              ? // "grants like yours" oversold the number. A search is ANY of
-                // your words — deliberately, so that "youth skills Somerset"
-                // still finds a grant described as "young people, employment
-                // training" — which means the total is every grant mentioning
-                // one of them, and measured on a real corpus that was 61% of
-                // everything held. The ordering is what makes the good ones
-                // first; the count is breadth, and now says so.
-                `${count(funders.length)} funder${funders.length === 1 ? '' : 's'} between them gave ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} mentioning your words. The closest fit first.`
+              ? // "grants like yours" oversold the number, and then "grants
+                // mentioning your words" undersold what the search now does.
+                // A search is ANY of your words — deliberately, so that "youth
+                // skills Somerset" still finds a grant described as "young
+                // people, employment training" — and that made the total
+                // breadth rather than fit: 61% of everything held, on a
+                // measured corpus. The relevance floor is what changed it. The
+                // count is now the grants close enough to the best match for
+                // the same words to be worth a number, which on that corpus
+                // was 49 rather than 284, so "close to your search" is a claim
+                // the query can keep.
+                `${count(funders.length)} funder${funders.length === 1 ? '' : 's'} between them gave ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} close to your search. The closest fit first.`
               : result.facets.total > ranked.length
-                ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} matching grants, the closest to your work first.`
-                : `${count(ranked.length)} matching grant${ranked.length === 1 ? '' : 's'}, the closest to your work first.`}
+                ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} grants close to your search, the closest to your work first.`
+                : `${count(ranked.length)} grant${ranked.length === 1 ? '' : 's'} close to your search, the closest to your work first.`}
             {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}
             {/* Said on the results themselves, not only on the empty state. A
                 funder who last gave in 2019 is simply absent here, and there

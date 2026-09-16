@@ -69,6 +69,61 @@ export function searchPattern(text: string): string | null {
   return terms.join('|');
 }
 
+/**
+ * How close a grant has to be to count as a match, as a fraction of the best
+ * match for the same words.
+ *
+ * ## Why the count needed a floor at all
+ *
+ * The search is ANY of your words, deliberately — see the note on
+ * `searchAwards`. Ranking fixed the ORDER, so the good matches come first, but
+ * it left the COUNT describing breadth: "youth skills somerset" matched 284 of
+ * 467 grants, 61% of the corpus, and the funder view said so. 284 is not a
+ * number anybody can act on, and it was not far off "we hold 467 grants".
+ *
+ * ## Why a fraction of the best rather than a fixed rank
+ *
+ * `ts_rank` is not on a scale anybody can name a constant on: it depends on
+ * how many of your words matched, at which weights, in a document of some
+ * length. A fixed floor tuned to one corpus is a number that silently means
+ * something else on the next one.
+ *
+ * A fraction of the BEST match for the same query is self-calibrating, and it
+ * is what makes a place search survive. Measured on a 467-grant corpus:
+ *
+ * ```
+ *                            matched   at this floor
+ *   youth skills somerset      284          49
+ *   youth                      278          49
+ *   somerset                    13          13
+ *   chapel roof repair          18          18
+ * ```
+ *
+ * "youth" matched 278 grants because a quarter of the recipients are called
+ * something like "Lantern Youth Project" — and it keeps 49, the ones actually
+ * about youth work. But "somerset" keeps all 13: a county only ever appears in
+ * the region field, so when nothing matches better, the best match IS a region
+ * match and everything sits at the top of its own scale. A structural rule —
+ * "ignore matches that are only in the name or the county" — would have
+ * emptied that search completely.
+ *
+ * ## Why a tenth
+ *
+ * Because that is Postgres's own D weight. The default `ts_rank` weights are
+ * `{D,C,B,A} = {0.1, 0.2, 0.4, 1.0}`, and migration 0020 puts the recipient
+ * name and the region at D and the title at A. So a grant matched only through
+ * a name scores about a tenth of one matched through its title, and a tenth is
+ * exactly the line between them. It is one constant, and it is the same
+ * constant the ranking already uses.
+ *
+ * Measured at other values on the same corpus: a fifth also drops description
+ * matches on one of three words — "community use" in a chapel grant's own
+ * description, for a search for "community allotment growing" — which is a
+ * real if weak match and the reason ANY-of-your-words exists. A twentieth
+ * drops nothing at all.
+ */
+export const RELEVANCE_FLOOR = 0.1;
+
 export interface Rankable {
   title: string | null;
   description: string | null;

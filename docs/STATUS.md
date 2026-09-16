@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,558 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 85 assertions) and `npm run walk`.
+**1,561 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 89 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,145 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## The count is now close matches, not every mention
+
+The floor the last entry said was the real answer. `RELEVANCE_FLOOR` in
+`src/domain/grants/query.ts`, applied in `buildWhere` in `src/db/grants.ts`.
+
+### The number it replaced
+
+Ranking fixed the ORDER. It left the COUNT saying how many grants mention any
+of your words, which is a different and much larger thing: 284 of 467, and the
+funder view printed it. A screen cannot say "the closest fit first" over a
+number that means "a word of yours appears somewhere in here".
+
+### What it is
+
+A grant counts as a match when its `ts_rank` reaches **a tenth of the best
+rank any grant in the corpus gets for the same words**.
+
+Both halves of that matter.
+
+**A fraction, not a fixed rank.** `ts_rank` is not on a nameable scale — it
+depends on how many of your words matched, at which weights, in a document of
+some length. The best match for "youth skills somerset" scores 0.4104 and the
+best for "chapel roof repair" scores 0.6383 on the same corpus. A constant
+tuned against one of those means something else against the other.
+
+**A tenth, because that is Postgres's own D weight.** The default `ts_rank`
+weights are `{D,C,B,A} = {0.1, 0.2, 0.4, 1.0}`, and 0020 put the recipient name
+and the region at D and the title at A. So a grant matched only through a name
+scores about a tenth of one matched through its title, and a tenth is exactly
+the line between them. The floor is the same constant the ranking already uses,
+not a new one.
+
+### Measured, on the 467-grant corpus
+
+```
+                              matched   kept   of corpus
+  youth skills somerset          284      49    61% -> 10%
+  youth                          278      49    60% -> 10%
+  community allotment growing    119     108    25% -> 23%
+  food bank leeds                102     102    22%
+  chapel roof repair              18      18     4%
+  somerset                        13      13     3%
+```
+
+The 229 grants "youth" loses are grants to organisations called things like
+Lantern Youth Project, for a roof or a minibus. The 49 it keeps are the ones
+about youth work.
+
+**"somerset" keeps all 13, and that is the case that chose the design.** A
+county appears in the region field and nowhere else, so every match for it is a
+D match — and when nothing matched better, the best match IS a D match and
+everything sits at the top of its own scale. The obvious structural rule,
+"ignore a match that is only in the name or the county", would have returned
+nothing at all for a place search. Being relative is what saves it, and there
+is a test named for that.
+
+### Where it lives, and why there and nowhere else
+
+In `buildWhere`, next to the text predicate. So the page of results, the total,
+every facet chip count, each funder's tally and each funder's example grants
+all carry it, because they are all that one function. A floor applied to the
+list alone would have left the header saying 284 over a page of 49 — the exact
+fault this entry is about, moved four inches up.
+
+`FLOOR_CTE` is one string, prepended to all four statements, and `$1` is the
+tsquery by convention in every one of them. The alternative — compute the floor
+in Node, thread it through `searchAwards`, `facetsFor`, `funderSummaries` and
+`funderExamples` — is four places that must agree, where the only thing
+stopping them from diverging is that nobody forgot. `MATERIALIZED` because
+`facetsFor` references it a dozen times, once per facet option, and Postgres
+would otherwise be free to inline it and aggregate the matched set a dozen
+times.
+
+The floor ignores the FILTERS deliberately: it is computed over everything
+matching the text, whatever is filtered. So narrowing to one county cannot
+lower the bar and admit weaker matches, and every number on the page is
+measured against the same line.
+
+### What it cost
+
+Timed at 59,776 grants (the 467 duplicated seven times, so the text
+distribution and every rank ratio is unchanged and only the size moves):
+
+| | before | after |
+|---|---|---|
+| `searchAwards` | 33.6 ms | 62.0 ms |
+| `facetsFor` | 157.9 ms | 205.5 ms |
+| `funderSummaries` | 207.2 ms | 186.9 ms |
+| the three a page runs | 399 ms | 454 ms |
+
+`funderSummaries` got FASTER, which is the floor paying for itself: it now
+groups 6,272 rows instead of 36,352. The other two pay for one extra aggregate
+over the matched set. 55 ms for a count that means something is worth it.
+
+### What is still not right
+
+**"mental health young people" still matches 252 of 467 — 54% — and the floor
+changed nothing for it.** That is correct behaviour and not a shortfall of the
+floor: on this corpus those 252 grants really do all mention "health", "young"
+or "people", because the stub draws its prose from fifteen work descriptions.
+The floor removes noise where there is noise; it does not and should not shrink
+a query that is genuinely broad. Real 360Giving prose is the measurement that
+would tell us, and it is on the roadmap.
+
+**A dropped grant is silent.** Somebody searching for a grant that mentions one
+of their words in passing now cannot find it and is told nothing. Saying "and
+N more mentioned one of your words" needs a second count, which is a second
+pass over the matched set — and the roadmap already wants that pass done once
+rather than eleven times.
+
+## A 24 MB index that nothing had read since March
+
+Found while measuring the floor, by asking Postgres which indexes it actually
+uses:
+
+```
+  indexrelname                    size      idx_scan
+  funder_awards_text_idx        1456 kB            0
+  funder_awards_search_idx       264 kB            9
+```
+
+0012 built `funder_awards_text_idx`, a trigram GIN over
+`title || description || recipient_name`, because the search was then four
+`ILIKE '%term%'` clauses and a tsvector cannot serve those. 0015 replaced that
+search and dropped the three per-column trigram indexes it had added itself —
+and missed this one, which belonged to an earlier migration. It has been
+maintained on every insert since and read by nothing. The only `ILIKE` left in
+the product is on `region`, which this index does not cover.
+
+At 59,776 grants it was 24 MB of an 86 MB table: 28% of the footprint, and
+nearly three times the 8.4 MB tsvector index doing the actual work. Migration
+0021 drops it; the table is 63 MB. Latency is unchanged to within noise, which
+is what an index with zero scans should cost to remove.
+
+This is the same figure 0015 and 0016 were about — whether holding a national
+grant record fits the storage a small deployment can afford — so it was being
+measured in the wrong place for a month. `pg_stat_user_indexes.idx_scan` is one
+query and would have said so at any point.
 
 ## The search was not producing good results, and here is why
 

@@ -404,15 +404,61 @@ describe('which matches the page gets', () => {
     expect(awards[0]?.id).toBe('aw_best2');
   });
 
-  it('weights a title above a recipient’s name', async () => {
+  it('weights a title above a recipient’s name — and then drops the name', async () => {
     // 0020 put `setweight` on the vector. Without it these two rank equally
     // and the newest wins, which is how a roof grant led a youth search.
     //
-    // Asserted as a relative order rather than first place: the shared
-    // fixture has its own title match, and the claim here is about these two
-    // rows, not about what else the corpus happens to hold.
+    // The floor takes it further than the order: a grant whose only tie to
+    // "youth" is that the recipient is called a Youth something is not a
+    // match, once anything matched the word properly. `aw_name` is exactly
+    // that row, and it is not on the page at all.
     const shown = ids2(await searchAwards(tx(), ['youth']));
-    expect(shown.indexOf('aw_best')).toBeLessThan(shown.indexOf('aw_name'));
+    expect(shown).toContain('aw_best');
+    expect(shown).not.toContain('aw_name');
+  });
+
+  /**
+   * THE COUNT AND THE LIST HAVE TO BE THE SAME QUESTION.
+   *
+   * The floor is the reason this is worth asserting and not just obviously
+   * true. It lives in `buildWhere` alongside the text predicate, so the page
+   * query, every facet count, the total and each funder's tally all carry it.
+   * Putting it anywhere else — a filter applied to the list after the fact,
+   * say — would leave the header saying 284 over a page of 49.
+   */
+  it('counts what the list shows, everywhere the number appears', async () => {
+    const listed = ids2(await searchAwards(tx(), ['youth']));
+    const facets = await facetsFor(tx(), ['youth'], NO_FILTERS);
+    const funders = await funderSummaries(tx(), ['youth'], NO_FILTERS);
+
+    expect(facets.total).toBe(listed.length);
+    expect(funders.reduce((sum, funder) => sum + funder.matching, 0)).toBe(listed.length);
+    // And the excluded row is excluded from the funder's examples too, which
+    // is the one place a dropped grant could still surface.
+    const examples = funders.flatMap((funder) => funder.examples.map((award) => award.id));
+    expect(examples).not.toContain('aw_name');
+  });
+
+  it('never drops the best match, whatever the floor works out to', async () => {
+    // A floor expressed as a fraction of the best match cannot exclude the
+    // best match. Worth pinning: a floor that could empty a search which had
+    // results would be worse than no floor.
+    for (const term of ['youth', 'chapel', 'devon', 'skills', 'roof']) {
+      const { awards } = await searchAwards(tx(), [term]);
+      expect(awards.length, `"${term}" matched nothing`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps a match that is only a region, when nothing beat it', async () => {
+    // The case a structural rule would have broken. "Devon" appears in no
+    // title and no description — only in the region, which 0020 weights at D
+    // alongside the recipient's name. If the floor were a fixed rank, or a
+    // rule against counting D matches, this search would return nothing.
+    //
+    // It is relative to the BEST match for the same words, so when every
+    // match is a region match the best one is too and they all clear it.
+    const { awards } = await searchAwards(tx(), ['devon']);
+    expect(ids(awards)).toEqual(['aw_3', 'aw_best', 'aw_name']);
   });
 });
 
