@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,561 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 89 assertions) and `npm run walk`.
+**1,563 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 92 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,142 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## Checking the search in a browser found the floor had made a county inert
+
+The last two entries were measured with probes and unit tests. Asked to check
+the search actually works, I signed up as a Somerset CIC asking £30,000 for
+youth skills work and used it, against a 468-grant corpus. Nine searches, both
+views, screenshots. Everything led with the right grant. One thing was badly
+wrong, and no probe would have shown it.
+
+### The fault
+
+The floor was ONE floor for the whole query — a tenth of the best rank any
+grant reached for all the words together. A county appears in the region field
+and nowhere else, so 0020 weights it D; a work word reaches A in a title. So
+the bar for "youth skills somerset" was set by the best youth-skills TITLE, and
+every Somerset grant fell a long way under it:
+
+```
+  "youth skills"            30 grants   place chips: Fife 4, Birmingham 2, …
+  "youth skills somerset"   30 grants   place chips: Fife 4, Birmingham 2, …
+  "somerset"                20 grants   place chip:  Somerset 20
+```
+
+**The first two are the same thirty rows.** The word "somerset" did nothing at
+all — and there was no Somerset chip to reach for either, because the chip
+counts come from the same predicate, which is the property the last entry was
+pleased about. A local CIC typing their own county got an answer with nothing
+from their county in it and no route back to one. For a product whose whole
+pitch is "who like you has been funded", that is close to the worst place to
+lose a signal.
+
+### The fix: a floor per term, not per query
+
+`textSearch` in `src/db/grants.ts` now emits one floor row per word, each
+against the best match for THAT word, and a grant counts when it clears any one
+of them. So "somerset" grants are the best there is for "somerset" and clear
+their own bar; a grant whose only tie to "youth" is a recipient called a Youth
+something still loses on the word "youth", which is the noise the floor is for.
+
+This is also what the design said all along — ANY of your words, because "young
+people, employment training" is what somebody meant by "youth skills". The
+floor belongs inside each word rather than across them.
+
+```
+  "youth skills"            90 grants   place chips: Fife 8, Derry 6, …
+  "youth skills somerset"  109 grants   place chips: Somerset 20, Fife 8, …
+  "somerset"                20 grants   place chip:  Somerset 20
+```
+
+109 = 90 + 20 − 1 overlap. Adding a county adds the county, and the Somerset
+chip is now the first one offered.
+
+### What the browser walk showed, after
+
+Signed in, 468 grants, the applicant in Somerset:
+
+| search | count | of corpus | leads with |
+|---|---|---|---|
+| youth skills somerset | 109 | 23% | Youth skills programme |
+| youth | 90 | 19% | Youth skills programme |
+| somerset | 20 | 4% | Somerset grants |
+| chapel roof repair | 29 | 6% | Chapel roof repair |
+| food bank leeds | 104 | 22% | Community food hub |
+| mental health young people | 241 | 52% | Young carers respite |
+| somer | 20 | — | same as "somerset" — the prefix match works |
+| skills youths | 90 | — | same as "youth" — the stemming works |
+| offshore wind turbine decommissioning | — | — | the empty card, naming the window |
+
+The grants view and the funder view agree on the total for every search, on
+three consecutive runs, including the capped case where the page shows 120 of
+241. No page errors.
+
+The top ten for "youth skills somerset" are all youth-skills grants and none is
+in Somerset — which is right: this corpus holds no Somerset youth-skills grant
+at all, and `relevance` puts work before place. The twenty Somerset grants are
+in the 109 and one chip away.
+
+### What it cost
+
+Same corpus, same terms, only the floor changed. 59,904 grants:
+
+| | one floor | per term |
+|---|---|---|
+| `searchAwards` | 64.8 ms | 46.2 ms |
+| `facetsFor` | 196.5 ms | 163.4 ms |
+| `funderSummaries` | 153.0 ms | 243.1 ms |
+| the three a page runs | 414 ms | 453 ms |
+
+Two got cheaper and one got dearer, for the same reason: there are 3.6× more
+matching rows to group now, and fewer rows to sort in the other two.
+
+**The worst case is worth knowing: eight terms costs 1,118 ms** (102 + 616 +
+400). `MAX_TERMS` is 8, so somebody pasting a sentence gets all eight, and
+`facetsFor` is 616 ms of it because it evaluates the predicate a dozen times,
+once per facet option, and each evaluation now ranks against eight floors. The
+roadmap item about materialising the matched set once was worth doing before;
+it is the answer to this. The probe times an eight-term query now so the number
+cannot drift unnoticed.
+
+### Two faults in the MEASURING RIG, which is worse than it sounds
+
+Both were distorting every number in the two entries below.
+
+**The stub seeded every funder identically.** `const seed = funder.orgId.length
+* 31 + n * 17` — and every orgId in it is 13 characters, so the seed depended
+on `n` alone. Every funder's grant #4 was the same title, the same £2,845, the
+same date, the same recipient. A corpus of 471 grants held fifteen distinct
+ones, and a search led with six identical rows from six different trusts. The
+ranking looked right because there was nothing for it to get wrong.
+
+**`pick(a, i * k)` cannot reach most of `a` when `k` shares a factor with
+`a.length`.** `pick(RECIPIENTS, seed * 5)` over fifteen names reached three of
+them; `pick(scale, seed * 3)` over nine amount bands reached three. Measured: 3
+distinct recipients in 464 grants. Fixed by adding an offset instead of
+multiplying — 15 recipients, 382 amounts, 23 regions.
+
+The lesson is not about the stub. It is that **a rig nobody checks becomes a rig
+that agrees with you**: a degenerate corpus makes any ranking look correct,
+because every candidate row is the same row. The two entries below were measured
+on it, and the numbers there are honest for that corpus and weaker evidence
+than they read as. The place-name fault survived both of them and a browser
+walk found it in ten minutes.
+
+### One thing observed and not fixed
+
+A React #418 hydration mismatch appeared once on `/grants?text=youth&view=funders`,
+while the corpus was still being written to by a chained load step — the row
+count moved between the server render and the navigation. It did not recur on a
+settled corpus across three runs of the same loop, nor on any fresh load of six
+URLs. Recorded rather than chased: the mechanism fits what was happening and
+the evidence is circumstantial, not proven.
+
+And `relevance` weighs title, tag, description and recipient but NOT region, so
+a typed county earns rank in the SQL fetch and nothing in the final ordering —
+only the applicant's own region earns a bonus. Ties keep the SQL order, so
+nothing is visibly wrong today; it is on the roadmap.
 
 ## The count is now close matches, not every mention
 

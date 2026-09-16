@@ -505,13 +505,17 @@ this cheque before", where no source answers "what is open".
       and the chapel grants went to "Wells Youth Collective". Weighted vector,
       `ts_rank` ordering on the fetch, and field weights in `relevance`
 - [x] **Put a relevance threshold on the COUNT, not just the order**
-      (`RELEVANCE_FLOOR`, one tenth of the best match for the same words — the
-      same ratio Postgres gives a D-weight hit against an A-weight one). It
-      lives in `buildWhere` beside the text predicate, so the list, the total,
-      every facet count, each funder's tally and each funder's examples all
-      carry it. Measured: "youth skills somerset" 284 matches → 49, 61% of the
-      corpus → 10%. "somerset" alone keeps all 13, which is why the floor is a
-      fraction of the best match and not a fixed rank
+      (`RELEVANCE_FLOOR`, one tenth of the best match — the same ratio Postgres
+      gives a D-weight hit against an A-weight one). It lives in `buildWhere`
+      beside the text predicate, so the list, the total, every facet count,
+      each funder's tally and each funder's examples all carry it. Measured:
+      "youth skills somerset" 284 matches → 49, 61% of the corpus → 10%
+- [x] **One floor PER TERM, not one for the query.** A browser walk found the
+      single floor had made a place name inert: "youth skills" and "youth
+      skills somerset" returned the same thirty rows and offered no Somerset
+      chip, because the bar came from the best title match and a region is
+      weight D. Now 90 and 109, with Somerset the first chip offered. Costs
+      414 → 453 ms at 59,904 grants for three terms
 - [x] **Drop `funder_awards_text_idx`** (migration 0021). 0015 replaced the
       ILIKE search with a tsvector and dropped its own three trigram indexes,
       but missed this one from 0012. Measured: 0 scans ever, and 24 MB of an
@@ -528,9 +532,24 @@ this cheque before", where no source answers "what is open".
       it cut "youth skills somerset" from 284 to 49 and left "mental health
       young people" at 252, because on this corpus those 252 really do all
       mention one of those words
+- [ ] Give `relevance` a weight for the REGION field. The SQL vector has it at
+      D and the in-memory ranker has no weight for it at all, so a typed county
+      earns rank in the fetch and nothing in the final ordering — only the
+      applicant's OWN region earns a bonus. Ties keep the SQL order so nothing
+      is visibly wrong today, but "dorset youth" cannot put a Dorset grant
+      above a youth-titled one anywhere else
+- [ ] Move the realistic 360Giving stub into the repo. It lives in a scratchpad
+      and gets rebuilt from memory every session, and twice now it has been
+      quietly degenerate: a seed keyed on `orgId.length` (constant across every
+      funder) gave 471 grants holding fifteen distinct ones, and `pick(a, i*k)`
+      with `k` sharing a factor with `a.length` reached 3 of 15 recipients and
+      3 of 9 amount bands. A ranking measured on a degenerate corpus always
+      looks correct
 - [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
       the text predicate about ten times, one per facet option, which is 251 of
-      the 470 ms. Not urgent — half a second is not a page anybody complains
+      the 470 ms — and now that each term carries its own floor, an eight-term
+      query spends 616 ms of its 1,118 ms there. Not urgent for the one-to-three
+      words people actually type. Half a second is not a page anybody complains
       about — and it touches the counts, so it needs its own careful pass
 - [x] Recency chips narrowed to 1 and 2 years, both inside the window. A
       five-year chip would have selected the whole corpus and read as a filter

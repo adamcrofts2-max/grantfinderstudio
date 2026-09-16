@@ -376,7 +376,13 @@ describe('which matches the page gets', () => {
         -- A recipient-name match only, and the NEWEST row.
         ('aw_name', 'funder_360g_GB-CHC-1', 'Wells Youth Collective', 2500, '2026-06-01',
          'Devon', ARRAY['Heritage'], 'ds_x', 'Chapel roof repair',
-         'Urgent repairs to a listed chapel roof');
+         'Urgent repairs to a listed chapel roof'),
+        -- In the applicant's county and about nothing they do. A PLACE match
+        -- and nothing else, which is the only way to tell whether typing a
+        -- county still reaches the county.
+        ('aw_place', 'funder_360g_GB-CHC-1', 'St Michael’s PCC', 6500, '2025-02-02',
+         'Somerset', ARRAY['Heritage'], 'ds_x', 'Bell tower repair',
+         'Repointing and repairs to a bell tower');
     `);
   });
 
@@ -447,6 +453,47 @@ describe('which matches the page gets', () => {
       const { awards } = await searchAwards(tx(), [term]);
       expect(awards.length, `"${term}" matched nothing`).toBeGreaterThan(0);
     }
+  });
+
+  /**
+   * A PLACE NAME HAS TO REACH THE PLACE.
+   *
+   * The floor was one floor for the whole query, and this is what that cost.
+   * A county appears in the region field and nowhere else, so 0020 weights it
+   * D; a work word reaches A in a title. One floor for "youth skills
+   * somerset" was therefore set by the best youth-skills title, and every
+   * Somerset grant fell under it.
+   *
+   * Measured on a 468-grant corpus before this was fixed: "youth skills" and
+   * "youth skills somerset" returned the SAME thirty rows, and the place chips
+   * offered Fife and Birmingham and no Somerset — because the chip counts come
+   * from the same predicate. A Somerset CIC typing their own county got an
+   * answer with nothing from their county in it and no route back to one.
+   *
+   * Each term has its own floor now, and a grant counts when it clears any one
+   * of them.
+   */
+  it('reaches the county when a county is one of the words', async () => {
+    const withPlace = ids((await searchAwards(tx(), ['youth', 'somerset'])).awards);
+    const without = ids((await searchAwards(tx(), ['youth'])).awards);
+    // The bell tower is in Somerset and about nothing else in the query.
+    expect(without).not.toContain('aw_place');
+    expect(withPlace).toContain('aw_place');
+    // And adding the county did not cost us the youth grants.
+    expect(withPlace).toContain('aw_best');
+    // The recipient-name-only match stays out: it is not in Somerset and it
+    // still loses on the word "youth".
+    expect(withPlace).not.toContain('aw_name');
+  });
+
+  it('counts the county grants too, everywhere the number appears', async () => {
+    const listed = ids2(await searchAwards(tx(), ['youth', 'somerset']));
+    const facets = await facetsFor(tx(), ['youth', 'somerset'], NO_FILTERS);
+    const funders = await funderSummaries(tx(), ['youth', 'somerset'], NO_FILTERS);
+    expect(facets.total).toBe(listed.length);
+    expect(funders.reduce((sum, funder) => sum + funder.matching, 0)).toBe(listed.length);
+    // The chip a person would reach for is offered, which it was not before.
+    expect(facets.place.map((option) => option.value)).toContain('Somerset');
   });
 
   it('keeps a match that is only a region, when nothing beat it', async () => {

@@ -69,6 +69,17 @@ describe.skipIf(PROBE_URL === '')('search latency at corpus scale', () => {
       funderSummaries(tx, terms, NO_FILTERS, { region: 'Somerset' }),
     );
 
+    // The worst case the tokeniser allows. Each term carries its own floor
+    // (see `textSearch`), so the cost of a long query is the thing to watch:
+    // MAX_TERMS is 8 and somebody pasting a sentence gets all eight.
+    const many = ['youth', 'skills', 'somerset', 'training', 'volunteering',
+      'placements', 'wells', 'employment'];
+    await time(`searchAwards (${many.length} terms)`, () => searchAwards(tx, many));
+    await time(`facetsFor (${many.length} terms)`, () => facetsFor(tx, many, NO_FILTERS));
+    await time(`funderSummaries (${many.length} terms)`, () =>
+      funderSummaries(tx, many, NO_FILTERS, { region: 'Somerset' }),
+    );
+
     await client.end();
     expect(true).toBe(true);
   }, 120_000);

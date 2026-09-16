@@ -166,71 +166,92 @@ function searchable(terms: readonly string[]): string[] {
     .filter((term) => term !== '');
 }
 
-function tsqueryFor(terms: readonly string[]): string | null {
-  const lexemes = searchable(terms).map((term) => `${term}:*`);
-  return lexemes.length === 0 ? null : lexemes.join(' | ');
+/** Where a term's lexeme is bound in a search statement. `$1` is the whole query. */
+const at = (index: number): string => `$${index + 2}`;
+
+interface TextSearch {
+  /**
+   * The values bound before anything else: the whole query at `$1`, then one
+   * lexeme per term at `$2` onwards. Every statement binds these first, so a
+   * clause can name a placeholder without being handed it.
+   */
+  values: string[];
+  /** `search_floor`, one row per term. Goes at the head of every statement. */
+  cte: string;
+  /** Matches the query, and is a close match on at least one of its words. */
+  where: string;
 }
 
 /**
- * `$1` is the tsquery, in every statement that searches.
+ * The text half of a search: the query, the floor under it, and the predicate.
  *
- * A convention rather than a bind, because the floor below and the predicate
- * and the ORDER BY all need the same query, and binding it three times leaves
- * three chances for one of them to get a different one. `buildWhere` numbers
- * its filter binds from $2 for the same reason.
+ * ## Why the floor is PER TERM
+ *
+ * It was one floor for the whole query — a tenth of the best rank any grant
+ * reached for all the words together — and that made a place name inert. A
+ * county appears in the region field and nowhere else, so 0020 weights it D;
+ * a work word appears in titles, so it reaches A. Searching "youth skills
+ * somerset" set the bar from the best youth-skills TITLE match, which every
+ * Somerset grant fell a long way under.
+ *
+ * Measured, on a 468-grant corpus, with one floor for the query:
+ *
+ * ```
+ *   "youth skills"            30 grants, place chips: Fife, Birmingham, …
+ *   "youth skills somerset"   30 grants, place chips: Fife, Birmingham, …
+ *   "somerset"                20 grants, place chip:  Somerset
+ * ```
+ *
+ * The first two are the same thirty rows. The word "somerset" did nothing at
+ * all — and there was no Somerset chip to reach for either, because the facet
+ * counts come from the same predicate. A local CIC typing their own county got
+ * an answer with nothing from their county in it and no route back to one.
+ *
+ * So each term gets its own floor, against the best match for THAT word, and a
+ * grant counts when it clears any one of them. "somerset" grants are the best
+ * there is for "somerset", so they clear their own bar; a grant whose only tie
+ * to "youth" is a recipient called a Youth something still loses to the
+ * youth-titled grants on that word, which is the noise the floor is for.
+ *
+ * This keeps the promise the whole search is built on — ANY of your words,
+ * because "young people, employment training" is what you meant by "youth
+ * skills" — and applies the floor within each word rather than across them.
  */
-const TSQUERY = '$1';
+function textSearch(terms: readonly string[]): TextSearch | null {
+  const lexemes = searchable(terms).map((term) => `${term}:*`);
+  if (lexemes.length === 0) return null;
 
-/**
- * The relevance floor, computed once per statement.
- *
- * ## Why this is a CTE and not a number from Node
- *
- * The floor depends on the best match in the corpus for these words, so
- * somebody has to compute it. Doing that in Node means an extra round trip and
- * a value threaded through `searchAwards`, `facetsFor`, `funderSummaries` and
- * `funderExamples` — four places that must agree, where the only thing
- * stopping them diverging is that nobody forgot. This is one string, used by
- * every statement, so they cannot.
- *
- * MATERIALIZED because `facetsFor` references it a dozen times, once per facet
- * option. Postgres would otherwise be free to inline it and aggregate over the
- * matched set a dozen times.
- *
- * ## Why the floor ignores the filters
- *
- * Deliberately: it is computed over everything matching the TEXT, whatever is
- * filtered. So narrowing to one county cannot lower the bar and let weaker
- * matches in, and every number on the page — the total, each facet count, each
- * funder's tally — is measured against the same line.
- */
-const FLOOR_CTE = `search_floor AS MATERIALIZED (
-       SELECT coalesce(max(ts_rank(b.search_vector, to_tsquery('english', ${TSQUERY}))), 0)
-                * ${RELEVANCE_FLOOR} AS rank
-         FROM funder_awards b
-        WHERE b.search_vector @@ to_tsquery('english', ${TSQUERY}))`;
+  // MATERIALIZED because `facetsFor` reads this a dozen times, once per facet
+  // option, and Postgres would otherwise be free to inline it and aggregate
+  // over the matched set a dozen times per term.
+  //
+  // Each floor is computed over everything matching that WORD, whatever the
+  // filters. Deliberately: narrowing to one county must not lower the bar and
+  // admit weaker matches, and every number on the page — the total, each chip
+  // count, each funder's tally — is then measured against the same line.
+  const floors = lexemes.map(
+    (_, i) => `SELECT ${i + 1} AS i,
+                coalesce(max(ts_rank(b.search_vector, to_tsquery('english', ${at(i)}))), 0)
+                  * ${RELEVANCE_FLOOR} AS rank
+           FROM funder_awards b
+          WHERE b.search_vector @@ to_tsquery('english', ${at(i)})`,
+  );
 
+  const close = lexemes.map(
+    (_, i) => `(a.search_vector @@ to_tsquery('english', ${at(i)})
+             AND ts_rank(a.search_vector, to_tsquery('english', ${at(i)}))
+                   >= (SELECT rank FROM search_floor WHERE i = ${i + 1}))`,
+  );
 
-/**
- * Awards matching ANY of the terms, newest first.
- *
- * ANY rather than ALL, deliberately. Somebody types "youth skills Somerset" and
- * means "anything like this" — a grant described as "young people, employment
- * training" in Wells is exactly what they wanted and shares not one whole word
- * with the query. Requiring every term would return nothing and look like an
- * empty corpus. Ranking is what puts the closest first, and that happens in
- * `domain/grants/query.ts` where it can be tested without a database.
- *
- * The terms arrive already tokenised by `queryTerms`, which splits on anything
- * that is not a letter or a digit — so nothing that reaches `$1` can carry a
- * tsquery operator, a wildcard or a quote. `tsqueryFor` applies the same
- * whitelist again rather than trusting that.
- *
- * `LIMIT` is not paging politeness: the corpus can carry hundreds of thousands
- * of awards, and a screen that tried to render them all would take the request
- * with it. The caller is told when it was capped so it can say so rather than
- * quietly showing a slice.
- */
+  return {
+    values: [lexemes.join(' | '), ...lexemes],
+    cte: `search_floor AS MATERIALIZED (${floors.join(' UNION ALL ')})`,
+    // The whole query first, so the GIN index drives the scan rather than the
+    // per-term OR having to.
+    where: `a.search_vector @@ to_tsquery('english', $1)\n        AND (${close.join('\n          OR ')})`,
+  };
+}
+
 /**
  * The WHERE clause for a search, assembled from the filters.
  *
@@ -238,18 +259,18 @@ const FLOOR_CTE = `search_floor AS MATERIALIZED (
  * are provably the same predicate. They have to be: a count that came from a
  * different WHERE than the list is a lie with a number on it.
  *
- * The text part takes no argument: the query is `$1` by convention and the
- * floor comes out of the `search_floor` CTE, so every statement that carries
- * `FLOOR_CTE` and calls this asks the same question. `startAt` is where this
- * clause's own binds begin, which is after the tsquery and after anything an
- * enclosing statement has already bound.
+ * The text part comes in whole from `textSearch`, so every statement that
+ * carries its CTE and calls this asks the same question. `startAt` is where
+ * this clause's own binds begin, which is after the text's own values and
+ * after anything an enclosing statement has already bound.
  *
  * Returns SQL with `$n` placeholders and the values to bind, so nothing a
  * person typed is ever concatenated into the statement.
  */
 function buildWhere(
+  text: TextSearch,
   filters: GrantFilters,
-  startAt = 1,
+  startAt: number,
 ): { sql: string; values: unknown[] } {
   const values: unknown[] = [];
   const bind = (value: unknown): string => {
@@ -259,18 +280,10 @@ function buildWhere(
 
   // One indexed column covers what four ILIKEs and an unnest used to: the
   // trigger in 0015 keeps `search_vector` over title, description, recipient,
-  // region and tags together.
-  //
-  // Two clauses, not one. The first is the index scan — every grant mentioning
-  // any of the words. The second is the floor: close enough to the best match
-  // for these words to be worth counting. Both are here rather than in the one
-  // query that lists grants, because a count that came from a looser predicate
-  // than the list is a lie with a number on it.
-  const clauses: string[] = [
-    `a.search_vector @@ to_tsquery('english', ${TSQUERY})`,
-    `ts_rank(a.search_vector, to_tsquery('english', ${TSQUERY}))`
-      + ` >= (SELECT rank FROM search_floor)`,
-  ];
+  // region and tags together. The floor rides along with it, rather than
+  // living in the one query that lists grants: a count that came from a looser
+  // predicate than the list is a lie with a number on it.
+  const clauses: string[] = [`(${text.where})`];
 
   const bands = filters.bands
     .map(bandById)
@@ -322,11 +335,12 @@ export async function searchAwards(
   filters: GrantFilters = NO_FILTERS,
   limit = 120,
 ): Promise<{ awards: AwardResult[]; capped: boolean }> {
-  if (searchable(terms).length === 0) {
+  const text = textSearch(terms);
+  if (text === null) {
     return { awards: [], capped: false };
   }
 
-  const where = buildWhere(filters);
+  const where = buildWhere(text, filters, text.values.length);
   // BY RELEVANCE, then by date.
   //
   // This ordered by `awarded_on` alone, and the limit below is what made that
@@ -340,12 +354,12 @@ export async function searchAwards(
   // counts for about ten times a recipient-name match. Date remains the
   // tie-break, because among equally good matches the recent one is the
   // better lead.
-  const values = [tsqueryFor(terms), ...where.values, limit + 1];
+  const values = [...text.values, ...where.values, limit + 1];
   const { rows } = await tx.query<Row>(
-    `WITH ${FLOOR_CTE}
+    `WITH ${text.cte}
      ${SELECT}
       WHERE ${where.sql}
-      ORDER BY ts_rank(a.search_vector, to_tsquery('english', ${TSQUERY})) DESC,
+      ORDER BY ts_rank(a.search_vector, to_tsquery('english', $1)) DESC,
                a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
       LIMIT $${values.length}`,
     values,
@@ -429,16 +443,18 @@ export async function facetsFor(
   terms: readonly string[],
   filters: GrantFilters,
 ): Promise<Facets> {
-  if (searchable(terms).length === 0) {
+  const text = textSearch(terms);
+  if (text === null) {
     return { amount: [], since: [], place: [], topic: [], total: 0 };
   }
 
-  // $1, by the convention `TSQUERY` names. Every predicate below reads it and
-  // so does the floor.
-  const values: unknown[] = [tsqueryFor(terms)];
+  // The text's own values come first, so every predicate below and the floor
+  // itself read the same placeholders.
+  const values: unknown[] = [...text.values];
   /** One dimension's predicate, with its placeholders numbered for the whole query. */
   const predicate = (dimension: Dimension | null): string => {
     const where = buildWhere(
+      text,
       dimension === null ? filters : without(filters, dimension),
       values.length,
     );
@@ -493,7 +509,7 @@ export async function facetsFor(
   );
 
   const { rows } = await tx.query<{ dim: string; value: string | null; n: number }>(
-    `WITH ${FLOOR_CTE}, ${parts.join(', ')}
+    `WITH ${text.cte}, ${parts.join(', ')}
      SELECT 'amount' AS dim, value, n FROM amount
      UNION ALL SELECT 'since', value, n FROM since
      UNION ALL SELECT 'place', value, n FROM place
@@ -611,12 +627,13 @@ export async function funderSummaries(
   filters: GrantFilters,
   options: { region?: string | null; limit?: number } = {},
 ): Promise<FunderSummary[]> {
-  if (searchable(terms).length === 0) return [];
+  const text = textSearch(terms);
+  if (text === null) return [];
 
   const limit = options.limit ?? FUNDER_LIMIT;
   const region = options.region?.trim() ?? '';
-  const where = buildWhere(filters);
-  const values: unknown[] = [tsqueryFor(terms), ...where.values];
+  const where = buildWhere(text, filters, text.values.length);
+  const values: unknown[] = [...text.values, ...where.values];
   const bind = (value: unknown): string => {
     values.push(value);
     return `$${values.length}`;
@@ -642,7 +659,7 @@ export async function funderSummaries(
     in_region: number;
     common_tag: string | null;
   }>(
-    `WITH ${FLOOR_CTE}
+    `WITH ${text.cte}
      SELECT a.funder_id,
             f.name    AS funder_name,
             f.website AS funder_website,
@@ -713,8 +730,13 @@ async function funderExamples(
   filters: GrantFilters,
   funderIds: readonly string[],
 ): Promise<Map<string, FunderExample[]>> {
-  const where = buildWhere(filters);
-  const values = [tsqueryFor(terms), ...where.values, funderIds, EXAMPLES_PER_FUNDER];
+  const text = textSearch(terms);
+  // Unreachable: `funderSummaries` returns before calling this when there is
+  // nothing to search for, and it is the only caller. Asserted rather than
+  // assumed, because the alternative is a statement with no predicate.
+  if (text === null) return new Map();
+  const where = buildWhere(text, filters, text.values.length);
+  const values = [...text.values, ...where.values, funderIds, EXAMPLES_PER_FUNDER];
   const idsAt = `$${values.length - 1}`;
   const perFunderAt = `$${values.length}`;
 
@@ -728,7 +750,7 @@ async function funderExamples(
     awarded_on: string | null;
     region: string | null;
   }>(
-    `WITH ${FLOOR_CTE}, ranked AS (
+    `WITH ${text.cte}, ranked AS (
        SELECT a.id, a.funder_id, a.title, a.description, a.recipient_name,
               a.amount_gbp::text AS amount_gbp, a.awarded_on::text AS awarded_on, a.region,
               row_number() OVER (

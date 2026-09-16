@@ -510,6 +510,29 @@ try {
     fail(`the count is not the floored set: ${/[0-9]+ grants? close to your search/i.exec(floored)?.[0] ?? 'no count found'}`);
   } else ok('the count over the page is the floored set, not the wider one');
 
+  // --- and a place name still reaches the place -----------------------------
+  //
+  // The floor was one floor for the whole query, and that made a county inert:
+  // a region is weight D and a title is A, so the bar came from the best title
+  // match and every region-only grant fell under it. Measured on a 468-grant
+  // corpus, "youth skills" and "youth skills somerset" returned the same
+  // thirty rows and offered no Somerset chip. Each term has its own floor now.
+  //
+  // `NOISE` is in Devon and about a roof. It is out of a search for "youth",
+  // asserted above — and in a search for "youth devon", because it is in
+  // Devon, which is what the person typed.
+  await page.goto(`${B}/grants?q=1&text=youth+devon&view=grants`, { waitUntil: 'networkidle' });
+  const placed = await page.locator('body').innerText();
+  if (!/Chapel roof repair/.test(placed)) {
+    fail('adding a county to the search did not reach the county');
+  } else ok('a county in the search reaches grants in that county');
+  if (!/Riverside youth skills programme/.test(placed)) {
+    fail('adding a county cost us the grants the other words found');
+  } else ok('and does not cost the grants the other words found');
+  if (!/\b9 grants close to your search/i.test(placed)) {
+    fail(`the county count is wrong: ${/[0-9]+ grants? close to your search/i.exec(placed)?.[0] ?? 'no count found'}`);
+  } else ok('the count is the union of the two words, not one of them');
+
   // --- narrowing ------------------------------------------------------------
   await page.goto(`${B}/grants?q=1&text=youth&view=grants`, { waitUntil: 'networkidle' });
 
