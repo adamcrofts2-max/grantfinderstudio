@@ -6,7 +6,9 @@ import { requireOrganisationId, requireUserId } from '@/app/session';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
 import { addBudgetLine, deleteBudgetLine } from '@/db/budget';
 import { addOutcome, deleteOutcome } from '@/db/outcomes';
+import { saveReview } from '@/db/reviews';
 import { isCostCategory } from '@/domain/budget/categories';
+import { rethrowControlFlow } from '@/app/control-flow';
 import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
 import { MAX_ANSWER_LENGTH, countWords } from '@/domain/questions/words';
 import { draftSummary } from '@/domain/provenance/draft-summary';
@@ -506,6 +508,12 @@ export async function reviewApplicationAction(
   const organisationId = await requireOrganisationId();
   const applicationId = String(formData.get('applicationId') ?? '');
   const mode = formData.get('mode') === 'red_team' ? 'red_team' : 'standard';
+  // Posted by the panel, which is rendered inside the page that computed it.
+  // Recomputing it here would mean loading the budget, the outcomes and the
+  // criteria again to arrive at a number already on the screen.
+  const posted = Number(formData.get('readinessPercent') ?? '');
+  const readinessPercent =
+    Number.isInteger(posted) && posted >= 0 && posted <= 100 ? posted : null;
   if (applicationId === '') return { ...EMPTY_REVIEW, ok: false, message: 'No application.' };
 
   const provider = await providerFromStore();
@@ -554,21 +562,48 @@ export async function reviewApplicationAction(
 
     const answers = answered.map((q) => q.answer);
     const checked = keepCheckableFindings(result.output, answers);
+    const findings = [...checked.findings].toSorted(bySeverity);
+    const message =
+      checked.findings.length === 0
+        ? 'Nothing found. That is worth a second read by a person before you rely on it.'
+        : `${checked.findings.length} ${checked.findings.length === 1 ? 'thing' : 'things'} to look at.`;
+
+    // KEPT, because it cost a model call. A review used to live in
+    // `useActionState` and be gone the moment somebody navigated away, so
+    // working through a finding the next evening meant paying for the whole
+    // review again. `readinessPercent` is stamped with it so the panel can
+    // later say what has moved since.
+    //
+    // Stored only after `keepCheckableFindings` has had it: a finding quoting
+    // words the application does not contain is discarded before it reaches
+    // the screen, and one that never reached the screen has no business
+    // surviving in the record.
+    await database.withTenant(organisationId, (tx) =>
+      saveReview(tx, organisationId, applicationId, {
+        mode,
+        summary: message,
+        findings,
+        mostImportant: checked.mostImportant,
+        strengths: checked.strengths,
+        injected: checked.instructionLikeContent,
+        readinessPercent: readinessPercent ?? null,
+      }),
+    );
+    revalidatePath(`/applications/${applicationId}`);
 
     return {
       ok: true,
-      message:
-        checked.findings.length === 0
-          ? 'Nothing found. That is worth a second read by a person before you rely on it.'
-          : `${checked.findings.length} ${checked.findings.length === 1 ? 'thing' : 'things'} to look at.`,
+      message,
       mode,
-      findings: [...checked.findings].toSorted(bySeverity),
+      findings,
       mostImportant: checked.mostImportant,
       strengths: checked.strengths,
       injected: checked.instructionLikeContent,
       discarded: result.output.findings.length - checked.findings.length,
     };
-  } catch {
+  } catch (error) {
+    rethrowControlFlow(error);
+    console.error('[grantfinderstudio] the review could not be completed:', error);
     return { ...EMPTY_REVIEW, ok: false, message: 'The review could not be completed. Nothing has changed.' };
   }
 }

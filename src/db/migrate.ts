@@ -42,6 +42,7 @@ export const MIGRATIONS = [
   '0016_corpus_discarded.sql',
   '0017_drop_stale_awards.sql',
   '0018_corpus_failed.sql',
+  '0019_review_detail.sql',
 ] as const;
 
 /**

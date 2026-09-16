@@ -4,6 +4,7 @@ import { requireOrganisationId } from '@/app/session';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
 import { loadBudgetLines } from '@/db/budget';
 import { loadOutcomes } from '@/db/outcomes';
+import { answersEditedSince, loadLatestReview } from '@/db/reviews';
 import { loadCriteria } from '@/db/queries';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
@@ -34,6 +35,12 @@ export default async function ApplicationPage({
     const facts = await loadFacts(tx);
     const budgetLines = await loadBudgetLines(tx, id);
     const outcomes = await loadOutcomes(tx, id);
+    // The last review, and how much has moved under it. A finding quotes the
+    // words it is about, so a review of answers since rewritten has to say so
+    // rather than read as current.
+    const review = await loadLatestReview(tx, id);
+    const answersEdited =
+      review === null ? 0 : await answersEditedSince(tx, id, review.createdAt);
     // Only criteria a human has verified — `loadCriteria` filters on
     // `verified_at`, which is what makes the budget check the funder's rule
     // rather than somebody's reading of their prose.
@@ -74,11 +81,12 @@ export default async function ApplicationPage({
           : [],
       });
     }
-    return { application, facts, questions, budgetLines, outcomes, criteria };
+    return { application, facts, questions, budgetLines, outcomes, criteria, review, answersEdited };
   });
 
   if (!page) notFound();
-  const { application, facts, questions, budgetLines, outcomes, criteria } = page;
+  const { application, facts, questions, budgetLines, outcomes, criteria, review, answersEdited } =
+    page;
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
@@ -214,7 +222,14 @@ export default async function ApplicationPage({
 
       <OutcomesPanel applicationId={application.id} outcomes={outcomes} />
 
-      {questions.length === 0 ? null : <ReviewPanel applicationId={application.id} />}
+      {questions.length === 0 ? null : (
+        <ReviewPanel
+          answersEdited={answersEdited}
+          applicationId={application.id}
+          readinessPercent={readiness.percent}
+          stored={review}
+        />
+      )}
 
       {answered > 0 ? (
         <section className="card">

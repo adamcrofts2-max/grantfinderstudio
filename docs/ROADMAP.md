@@ -226,8 +226,16 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Wire `eligibilityVerdict` into readiness for real. It was hardcoded
       `'eligible'`, is now honestly `'unknown'`, and running the engine needs
       the applicant profile and project the application query does not load
-- [ ] Store reviews against the application (the `reviews` table is still
-      unused — the last of the four tables 0001 created with no writer)
+- [x] **Store reviews against the application** (migration 0019). The last of
+      the four tables 0001 created with no writer. A review cost a model call
+      and then lived in `useActionState`, so it was gone on navigation and
+      working through a finding the next evening meant paying again
+- [x] A stored review is shown with a date, the readiness it was read at, and
+      a count of the answers edited since — because a finding quotes the words
+      it is about, and a rewritten answer leaves the quote describing text that
+      is no longer there
+- [ ] Offer the earlier reviews, not only the latest. They are all kept, and
+      "what did it say before I rewrote this" is a fair question
 
 ## Phase 10 — Tracker, pipeline and export
 - [ ] Pipeline states

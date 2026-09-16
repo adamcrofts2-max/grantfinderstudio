@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,530 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 84 assertions) and `npm run walk`.
+**1,547 tests (5 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 84 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3644,3 +3644,76 @@ Worth recording because the failure looked exactly like a broken feature, and
 the temptation at that point is to go and "fix" working code. The figures now
 sit in the script with a comment saying what each is chosen to do, so the next
 person changing the project's ask sees what depends on it.
+
+## Reviews, kept — and honest about what has moved under them
+
+`reviews` was the last of the four tables migration 0001 created with no
+writer. A review lived in `useActionState` and was gone the moment somebody
+navigated away, so the product spent a model call, showed the findings once,
+and discarded them. An applicant who wanted to work through a finding the next
+evening had to pay for the whole review again.
+
+Migration 0019 adds the parts of a review 0001 did not anticipate, because the
+Critic did not return them yet — `summary`, `most_important`, `strengths` and
+`injected`. Added as columns rather than folded into `findings`, which means
+findings: a column whose name stops describing its contents is how a schema
+becomes a thing you have to ask somebody about.
+
+### The part that matters: a review is of a version
+
+A finding QUOTES the words it is about. That is what makes it checkable, and
+`keepCheckableFindings` already discards any finding quoting words the
+application does not contain. But an answer rewritten afterwards leaves the
+quote describing text that no longer exists — so a stored review shown as
+current would be the same stale-summary fault as everything else fixed this
+week, only slower to notice.
+
+So the panel says what has moved:
+
+> Read 2 minutes ago, when this was 38% complete rather than 40%.
+>
+> ⚠ 1 answer has changed since this reading. Each finding quotes the words it
+> is about, so any quoting an answer you have rewritten may no longer apply.
+> Read it again when you are done.
+
+`answersEditedSince` counts DISTINCT answers written after the review, not
+versions: somebody who saved the same answer four times has changed one
+answer, and "4 answers have changed" would be wrong in the direction that
+matters — it would make the review look staler than it is. It reads
+`answer_versions`, which already records every save with a timestamp, so it
+needs no fingerprint column and cannot drift from what happened.
+
+The screenshot of this working is its own argument: the finding quotes "We
+help lots of people in Somerset" while the answer box beneath it reads "We
+supported 132 young people in Wells last year across 40 sessions."
+
+### Two smaller things the walk found
+
+**Postgres timestamps are not ISO enough for a browser.** `created_at::text`
+renders a timestamptz with a `+00` offset, which `new Date()` refuses — so
+"read 3 minutes ago" fell back to the word "earlier" on every stored review.
+Now emitted as `to_char(… 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`, which parses
+everywhere and is still a timestamptz when handed back to
+`answersEditedSince`, so one field serves both. Two tests pin both uses.
+
+**The review action was swallowing its errors too.** Same `catch {}` with no
+binding as the onboarding pair, in the same file I had just fixed. It now
+rethrows control flow and logs the cause.
+
+### Reading back data written by an older shape
+
+Stored reviews outlive the code that wrote them, so `loadLatestReview`
+validates its own jsonb: a finding missing a field, a severity that is not one,
+an entry that is not an object, or a `findings` that is not an array at all.
+Each renders as a review missing that part rather than taking the page down —
+the alternative is an application somebody cannot open because of a review
+they have already read.
+
+### What still has no automated check
+
+Producing a real review needs an Anthropic key, so "press the button → Critic
+runs → row written → row read back" has only ever run against a stub. The
+storage and the render were verified by inserting a review row and driving a
+browser over it, which is not the same thing. Worth naming rather than letting
+it read as covered: every fault found this week lived on a path only
+production, a browser or a screenshot exercised.

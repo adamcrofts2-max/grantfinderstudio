@@ -4,6 +4,20 @@ import { useActionState } from 'react';
 
 import { reviewApplicationAction } from './actions';
 import { EMPTY_REVIEW, findingLabel, SEVERITY_LABEL } from './state';
+import type { StoredReview } from '@/db/reviews';
+
+/** "3 minutes ago", "yesterday" — enough to know whether it is current. */
+function when(iso: string): string {
+  const then = new Date(iso.replace(' ', 'T'));
+  if (Number.isNaN(then.getTime())) return 'earlier';
+  const minutes = Math.round((Date.now() - then.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
 
 /**
  * Review the whole application before it goes in.
@@ -12,9 +26,61 @@ import { EMPTY_REVIEW, findingLabel, SEVERITY_LABEL } from './state';
  * before a person reads it: the machine takes the structural faults so that
  * whoever reads it next — a trustee, a colleague, later a paid bid writer —
  * spends their time on judgement instead of on things arithmetic can catch.
+ *
+ * ## Why a stored review is shown, and shown with a date on it
+ *
+ * Each review costs a model call, and one used to live in `useActionState`
+ * and be gone the moment somebody navigated away. So the last one is loaded
+ * and is this panel's resting state.
+ *
+ * But a finding QUOTES the words it is about — that is what makes it
+ * checkable — and an answer rewritten afterwards leaves the quote describing
+ * text that no longer exists. `answersEdited` is how many answers have been
+ * saved since, and when any have, the panel says so instead of presenting a
+ * stale reading as current. That is the difference between keeping work and
+ * pretending it is still true.
  */
-export function ReviewPanel({ applicationId }: { applicationId: string }) {
+export function ReviewPanel({
+  applicationId,
+  readinessPercent,
+  stored,
+  answersEdited,
+}: {
+  applicationId: string;
+  readinessPercent: number;
+  stored: StoredReview | null;
+  answersEdited: number;
+}) {
   const [state, review, reviewing] = useActionState(reviewApplicationAction, EMPTY_REVIEW);
+
+  // A review just run is current by definition. Otherwise fall back to the
+  // last stored one, which is where the date and the staleness notice apply.
+  const fresh = state.ok === true;
+  const shown = fresh
+    ? {
+        mode: state.mode,
+        message: state.message,
+        findings: state.findings,
+        mostImportant: state.mostImportant,
+        strengths: state.strengths,
+        injected: state.injected,
+        discarded: state.discarded,
+        createdAt: null as string | null,
+        readinessThen: null as number | null,
+      }
+    : stored === null
+      ? null
+      : {
+          mode: stored.mode,
+          message: stored.summary ?? `${stored.findings.length} things to look at.`,
+          findings: stored.findings,
+          mostImportant: stored.mostImportant,
+          strengths: stored.strengths,
+          injected: stored.injected,
+          discarded: 0,
+          createdAt: stored.createdAt,
+          readinessThen: stored.readinessPercent,
+        };
 
   return (
     <section className="card">
@@ -28,13 +94,19 @@ export function ReviewPanel({ applicationId }: { applicationId: string }) {
         <form action={review}>
           <input type="hidden" name="applicationId" value={applicationId} />
           <input type="hidden" name="mode" value="standard" />
+          <input type="hidden" name="readinessPercent" value={readinessPercent} />
           <button className="btn btn-primary" type="submit" disabled={reviewing}>
-            {reviewing ? 'Reading it…' : 'Review the application'}
+            {reviewing
+              ? 'Reading it…'
+              : stored === null
+                ? 'Review the application'
+                : 'Review it again'}
           </button>
         </form>
         <form action={review}>
           <input type="hidden" name="applicationId" value={applicationId} />
           <input type="hidden" name="mode" value="red_team" />
+          <input type="hidden" name="readinessPercent" value={readinessPercent} />
           <button className="btn btn-secondary" type="submit" disabled={reviewing}>
             Read it like an assessor looking for a reason to say no
           </button>
@@ -48,34 +120,61 @@ export function ReviewPanel({ applicationId }: { applicationId: string }) {
         </p>
       ) : null}
 
-      {state.ok === true ? (
+      {shown === null ? null : (
         <div style={{ marginTop: 'var(--s-5)' }}>
-          <p className="headline" style={{ fontWeight: 600 }}>
-            {state.mode === 'red_team' ? 'Read sceptically. ' : ''}
-            {state.message}
-          </p>
+          {shown.createdAt === null ? null : (
+            <p className="hint">
+              Read {when(shown.createdAt)}
+              {shown.readinessThen === null || shown.readinessThen === readinessPercent
+                ? ''
+                : `, when this was ${shown.readinessThen}% complete rather than ${readinessPercent}%`}
+              .
+            </p>
+          )}
 
-          {state.injected.length > 0 ? (
+          {/* A finding quotes the words it is about. Rewrite the answer and
+              the quote describes text that is no longer there, so a stored
+              review has to say what has moved under it. */}
+          {shown.createdAt !== null && answersEdited > 0 ? (
             <p className="notice notice-caution" style={{ marginTop: 'var(--s-3)' }}>
               <span aria-hidden="true">⚠</span>
               <span>
-                {state.injected.length} passage
-                {state.injected.length === 1 ? '' : 's'} in this application tried to instruct the
+                {answersEdited} answer{answersEdited === 1 ? ' has' : 's have'} changed since
+                this reading. Each finding quotes the words it is about, so any quoting an
+                answer you have rewritten may no longer apply. Read it again when you are done.
+              </span>
+            </p>
+          ) : null}
+
+          <p
+            className="headline"
+            style={{ fontWeight: 600, marginTop: shown.createdAt === null ? 0 : 'var(--s-3)' }}
+          >
+            {shown.mode === 'red_team' ? 'Read sceptically. ' : ''}
+            {shown.message}
+          </p>
+
+          {shown.injected.length > 0 ? (
+            <p className="notice notice-caution" style={{ marginTop: 'var(--s-3)' }}>
+              <span aria-hidden="true">⚠</span>
+              <span>
+                {shown.injected.length} passage
+                {shown.injected.length === 1 ? '' : 's'} in this application tried to instruct the
                 reviewer. That was ignored, but it is worth knowing it is in there.
               </span>
             </p>
           ) : null}
 
-          {state.mostImportant === null ? null : (
+          {shown.mostImportant === null ? null : (
             <p className="notice notice-neutral" style={{ marginTop: 'var(--s-3)' }}>
               <span>
                 <strong>If you only change one thing: </strong>
-                {state.mostImportant}
+                {shown.mostImportant}
               </span>
             </p>
           )}
 
-          {state.findings.map((finding, index) => {
+          {shown.findings.map((finding, index) => {
             const badge = SEVERITY_LABEL[finding.severity];
             return (
               <section
@@ -113,11 +212,11 @@ export function ReviewPanel({ applicationId }: { applicationId: string }) {
             );
           })}
 
-          {state.strengths.length > 0 ? (
+          {shown.strengths.length > 0 ? (
             <section className="card" style={{ marginTop: 'var(--s-4)' }}>
               <h3 className="card-title">What it already does well</h3>
               <ul className="list" style={{ marginTop: 'var(--s-2)' }}>
-                {state.strengths.map((strength) => (
+                {shown.strengths.map((strength) => (
                   <li key={strength}>{strength}</li>
                 ))}
               </ul>
@@ -127,12 +226,12 @@ export function ReviewPanel({ applicationId }: { applicationId: string }) {
           <p className="hint" style={{ marginTop: 'var(--s-4)' }}>
             This is a first pass, not a verdict — it says nothing about whether you will be
             funded, because it cannot know.
-            {state.discarded > 0
-              ? ` ${state.discarded} finding${state.discarded === 1 ? '' : 's'} quoted wording your application does not contain, so ${state.discarded === 1 ? 'it was' : 'they were'} dropped.`
+            {shown.discarded > 0
+              ? ` ${shown.discarded} finding${shown.discarded === 1 ? '' : 's'} quoted wording your application does not contain, so ${shown.discarded === 1 ? 'it was' : 'they were'} dropped.`
               : ''}
           </p>
         </div>
-      ) : null}
+      )}
     </section>
   );
 }
