@@ -826,6 +826,32 @@ details[open] > .funder-summary .chev-toggle::after { content: 'Close'; }
   .card:has(.parts) .metric-value { display: none; }
 }
 
+/* ---------- The audit trail -----------------------------------------------
+   One line per change: what, when, who, and at most one clause of detail.
+   A grid rather than prose so the column of "3 minutes ago" lines up and the
+   list can be scanned down rather than read across. */
+
+.trail { list-style: none; margin: 0; padding: 0; }
+.trail-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--s-3);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+.trail-line:first-child { border-top: 0; padding-top: 0; }
+.trail-what { font-weight: 620; }
+.trail-when { color: var(--ink-faint); text-align: right; white-space: nowrap; }
+.trail-who { color: var(--ink-soft); }
+.trail-detail { grid-column: 1 / -1; color: var(--ink-soft); }
+@media (max-width: 560px) {
+  /* The detail wraps under everything already; at this width the actor does
+     too, rather than squeezing "3 minutes ago" onto two lines. */
+  .trail-line { grid-template-columns: 1fr; }
+  .trail-when { text-align: left; }
+}
+
 .part-head {
   margin: var(--s-5) 0 0;
   font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.05em;

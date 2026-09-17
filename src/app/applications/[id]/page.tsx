@@ -1,12 +1,14 @@
 import { notFound } from 'next/navigation';
 import { getDatabase } from '@/db';
-import { requireOrganisationId } from '@/app/session';
+import { requireOrganisationId, requireUserId } from '@/app/session';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
 import { loadBudgetLines } from '@/db/budget';
 import { loadOutcomes } from '@/db/outcomes';
 import { answersEditedSince, loadLatestReview } from '@/db/reviews';
+import { loadAuditTrail } from '@/db/audit';
 import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
+import { since } from '@/domain/time/since';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { validateBudget } from '@/domain/budget/validate';
@@ -17,6 +19,7 @@ import { PasteQuestions } from './PasteQuestions';
 import { ReviewPanel } from './ReviewPanel';
 import { BudgetPanel } from './BudgetPanel';
 import { OutcomesPanel } from './OutcomesPanel';
+import { TrailPanel } from './TrailPanel';
 import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +31,7 @@ export default async function ApplicationPage({
 }) {
   const { id } = await params;
   const organisationId = await requireOrganisationId();
+  const viewerId = await requireUserId();
   const database = await getDatabase();
 
   const page = await database.withTenant(organisationId, async (tx) => {
@@ -59,6 +63,10 @@ export default async function ApplicationPage({
     // onboarding, and null means no verdict rather than a default of "fine".
     const organisation = await loadOrganisation(tx);
     const project = await loadProject(tx);
+    // Scoped to this application: the organisation's own events — a fact
+    // confirmed, a document uploaded — belong to the organisation and not to
+    // whatever application happens to be open.
+    const trail = await loadAuditTrail(tx, organisationId, { applicationId: id });
 
     const questions: QuestionView[] = [];
     for (const q of application.questions) {
@@ -91,15 +99,22 @@ export default async function ApplicationPage({
     }
     return {
       application, facts, questions, budgetLines, outcomes, criteria, review,
-      answersEdited, organisation, project,
+      answersEdited, organisation, project, trail,
     };
   });
 
   if (!page) notFound();
   const {
     application, facts, questions, budgetLines, outcomes, criteria, review,
-    answersEdited, organisation, project,
+    answersEdited, organisation, project, trail,
   } = page;
+
+  // ONE clock reading, here, for every relative time on this page. Read while
+  // rendering a client component it gives a different answer in the server's
+  // HTML than on hydration, which is React #418 and a discarded tree — the
+  // fault `ReviewPanel` shipped with.
+  const now = Date.now();
+  const whenByRow = Object.fromEntries(trail.map((row) => [row.id, since(row.createdAt, now)]));
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
@@ -328,6 +343,7 @@ export default async function ApplicationPage({
           applicationId={application.id}
           readinessPercent={readiness.percent}
           stored={review}
+          storedWhen={review === null ? null : since(review.createdAt, now)}
         />
       )}
 
@@ -348,6 +364,11 @@ export default async function ApplicationPage({
           </div>
         </section>
       ) : null}
+
+      {/* Last, and folded away. A history is a reference rather than a task,
+          and forty lines of it above the answer boxes would be the page
+          talking about itself instead of letting somebody work. */}
+      <TrailPanel trail={trail} viewerId={viewerId} whenByRow={whenByRow} />
     </div>
   );
 }

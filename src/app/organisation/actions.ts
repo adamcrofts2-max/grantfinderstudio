@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { confirmFact, correctFact, recordSelfDeclaredFact } from '@/db/workspace';
+import { recordAudit } from '@/db/audit';
 import { readableClaim, readSelfDeclaredFact } from '@/domain/provenance/self-declared';
 import {
   SELF_DECLARED_FIELDS,
@@ -23,7 +24,17 @@ export async function confirmFactAction(
   if (factId === '') return { factId: null, ok: false, message: 'No fact selected.' };
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => confirmFact(tx, factId, userId));
+  await database.withTenant(organisationId, async (tx) => {
+    await confirmFact(tx, factId, userId);
+    // No application: this is the organisation's own record, and folding it
+    // into an application's trail would tell a reviewer of one application
+    // about work that has nothing to do with it.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'fact.confirmed',
+      entityId: factId,
+    });
+  });
   revalidatePath('/organisation');
   return { factId, ok: true, message: 'Confirmed.' };
 }
@@ -47,7 +58,18 @@ export async function correctFactAction(
   }
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => correctFact(tx, factId, value, userId));
+  await database.withTenant(organisationId, async (tx) => {
+    await correctFact(tx, factId, value, userId);
+    // The new value is NOT recorded here. A fact's values are versioned in
+    // `facts` — superseded, not overwritten — so the trail would be a second
+    // copy of the same claim, and the one place a reviewer could read a
+    // corrected turnover the applicant had since corrected again.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'fact.corrected',
+      entityId: factId,
+    });
+  });
   revalidatePath('/organisation');
   return { factId, ok: true, message: 'Corrected and confirmed.' };
 }
@@ -83,9 +105,14 @@ export async function addFactAction(
 
   try {
     const database = await getDatabase();
-    await database.withTenant(organisationId, (tx) =>
-      recordSelfDeclaredFact(tx, organisationId, userId, fact),
-    );
+    await database.withTenant(organisationId, async (tx) => {
+      await recordSelfDeclaredFact(tx, organisationId, userId, fact);
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'fact.added',
+        metadata: { claim: fact.claim },
+      });
+    });
   } catch (error) {
     console.error('[grantfinderstudio] could not record a fact:', error);
     return {

@@ -6,19 +6,6 @@ import { reviewApplicationAction } from './actions';
 import { EMPTY_REVIEW, findingLabel, SEVERITY_LABEL } from './state';
 import type { StoredReview } from '@/db/reviews';
 
-/** "3 minutes ago", "yesterday" — enough to know whether it is current. */
-function when(iso: string): string {
-  const then = new Date(iso.replace(' ', 'T'));
-  if (Number.isNaN(then.getTime())) return 'earlier';
-  const minutes = Math.round((Date.now() - then.getTime()) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? 'yesterday' : `${days} days ago`;
-}
-
 /**
  * Review the whole application before it goes in.
  *
@@ -40,15 +27,34 @@ function when(iso: string): string {
  * stale reading as current. That is the difference between keeping work and
  * pretending it is still true.
  */
+/**
+ * THE CLOCK IS READ ON THE SERVER, NOT HERE.
+ *
+ * "3 minutes ago" was computed in this component from `Date.now()`, and this
+ * component is `'use client'` — which in Next means it is rendered on the
+ * server for the initial HTML and then hydrated in the browser. Those are two
+ * different clock readings, so a load that straddled a minute tick put "3
+ * minutes ago" in the HTML and "4 minutes ago" on hydration: a text mismatch,
+ * React error #418, and the whole tree thrown away and re-rendered. It fired
+ * only when the boundary happened to fall inside the load, which is why it
+ * never showed up in a test and did show up as an occasional console error.
+ *
+ * `storedWhen` is the phrase, computed once by the page that loaded the
+ * review. A review just run in this session needs no clock at all: it is
+ * "just now" by definition.
+ */
 export function ReviewPanel({
   applicationId,
   readinessPercent,
   stored,
+  storedWhen,
   answersEdited,
 }: {
   applicationId: string;
   readinessPercent: number;
   stored: StoredReview | null;
+  /** How long ago the stored review was read, phrased by the server. */
+  storedWhen: string | null;
   answersEdited: number;
 }) {
   const [state, review, reviewing] = useActionState(reviewApplicationAction, EMPTY_REVIEW);
@@ -65,7 +71,10 @@ export function ReviewPanel({
         strengths: state.strengths,
         injected: state.injected,
         discarded: state.discarded,
-        createdAt: null as string | null,
+        // Null, like the `createdAt` this replaced: a review just run needs no
+        // date line, no staleness notice and no gap above the headline,
+        // because nothing has moved under it yet.
+        when: null as string | null,
         readinessThen: null as number | null,
       }
     : stored === null
@@ -78,7 +87,7 @@ export function ReviewPanel({
           strengths: stored.strengths,
           injected: stored.injected,
           discarded: 0,
-          createdAt: stored.createdAt,
+          when: storedWhen,
           readinessThen: stored.readinessPercent,
         };
 
@@ -122,9 +131,9 @@ export function ReviewPanel({
 
       {shown === null ? null : (
         <div style={{ marginTop: 'var(--s-5)' }}>
-          {shown.createdAt === null ? null : (
+          {shown.when === null ? null : (
             <p className="hint">
-              Read {when(shown.createdAt)}
+              Read {shown.when}
               {shown.readinessThen === null || shown.readinessThen === readinessPercent
                 ? ''
                 : `, when this was ${shown.readinessThen}% complete rather than ${readinessPercent}%`}
@@ -135,7 +144,7 @@ export function ReviewPanel({
           {/* A finding quotes the words it is about. Rewrite the answer and
               the quote describes text that is no longer there, so a stored
               review has to say what has moved under it. */}
-          {shown.createdAt !== null && answersEdited > 0 ? (
+          {shown.when !== null && answersEdited > 0 ? (
             <p className="notice notice-caution" style={{ marginTop: 'var(--s-3)' }}>
               <span aria-hidden="true">⚠</span>
               <span>
@@ -148,7 +157,7 @@ export function ReviewPanel({
 
           <p
             className="headline"
-            style={{ fontWeight: 600, marginTop: shown.createdAt === null ? 0 : 'var(--s-3)' }}
+            style={{ fontWeight: 600, marginTop: shown.when === null ? 0 : 'var(--s-3)' }}
           >
             {shown.mode === 'red_team' ? 'Read sceptically. ' : ''}
             {shown.message}

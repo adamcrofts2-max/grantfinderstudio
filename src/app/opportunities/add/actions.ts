@@ -8,6 +8,7 @@ import { ANALYST, analystOutputSchema, buildAnalystPrompt } from '@/ai/agents/an
 import { runAgent } from '@/ai/run';
 import { getDatabase, withAdmin } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
+import { recordAudit } from '@/db/audit';
 import {
   createPastedOpportunity,
   deletePastedOpportunity,
@@ -36,6 +37,7 @@ export async function addOpportunityAction(
   formData: FormData,
 ): Promise<AddState> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const guidance = String(formData.get('guidance') ?? '').trim();
   const sourceUrlRaw = String(formData.get('sourceUrl') ?? '').trim();
 
@@ -95,14 +97,25 @@ export async function addOpportunityAction(
   const database = await getDatabase();
   let opportunityId: string;
   try {
-    const stored = await database.withTenant(organisationId, (tx) =>
-      createPastedOpportunity(tx, organisationId, {
+    const stored = await database.withTenant(organisationId, async (tx) => {
+      const opportunity = await createPastedOpportunity(tx, organisationId, {
         analysis,
         funderId,
         sourceText: guidance,
         sourceUrl,
-      }),
-    );
+      });
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'opportunity.added',
+        entityId: opportunity.id,
+        metadata: {
+          funderName: analysis.funderName,
+          criteria: analysis.criteria.length,
+          fromUrl: sourceUrl !== null,
+        },
+      });
+      return opportunity;
+    });
     opportunityId = stored.id;
   } catch {
     return { ok: false, message: 'We read the guidance but could not save it. Please try again.' };
@@ -120,7 +133,18 @@ export async function verifyCriterionAction(formData: FormData): Promise<void> {
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => verifyCriterion(tx, id, userId));
+  await database.withTenant(organisationId, async (tx) => {
+    await verifyCriterion(tx, id, userId);
+    // A verified criterion is the thing the eligibility engine and the budget
+    // check both run on, so who verified it and when is the provenance behind
+    // every verdict downstream of it.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'criterion.verified',
+      entityId: id,
+      metadata: { opportunityId },
+    });
+  });
   revalidatePath(`/opportunities/${opportunityId}/review`);
   revalidatePath(`/opportunities/${opportunityId}`);
 }
@@ -133,20 +157,41 @@ export async function rejectCriterionAction(formData: FormData): Promise<void> {
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => rejectCriterion(tx, id, userId));
+  await database.withTenant(organisationId, async (tx) => {
+    await rejectCriterion(tx, id, userId);
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'criterion.rejected',
+      entityId: id,
+      metadata: { opportunityId },
+    });
+  });
   revalidatePath(`/opportunities/${opportunityId}/review`);
   revalidatePath(`/opportunities/${opportunityId}`);
 }
 
 export async function deleteOpportunityAction(formData: FormData): Promise<void> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const id = String(formData.get('opportunityId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) =>
-    deletePastedOpportunity(tx, id, organisationId),
-  );
+  await database.withTenant(organisationId, async (tx) => {
+    // BEFORE the delete: `audit_logs.application_id` cascades from
+    // `applications`, and deleting the opportunity takes its applications
+    // with it. The line about the deletion is organisation-level, so it
+    // survives — but it has to be written while the row it names still
+    // exists, because nothing here can look it up afterwards.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'opportunity.removed',
+      entityId: id,
+    });
+    await deletePastedOpportunity(tx, id, organisationId);
+  });
   revalidatePath('/');
+  // Outside the transaction: `redirect` throws, and throwing inside
+  // `withTenant` would roll back the delete it was announcing.
   redirect('/');
 }

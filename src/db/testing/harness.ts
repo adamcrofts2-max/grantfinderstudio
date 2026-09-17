@@ -124,6 +124,16 @@ async function seedFixtures(db: PGlite): Promise<void> {
       ('app_a', '${ORG_A}', 'drafting', 30000),
       ('app_b', '${ORG_B}', 'drafting', 15000);
 
+    -- One audit line each, so the isolation suite can assert that the trail
+    -- is tenant-scoped like everything else. It has to be: a reviewer given
+    -- one application read-only is shown a trail, and a trail that leaked
+    -- across tenants would leak it through the one screen built to be shared.
+    INSERT INTO audit_logs
+      (id, organisation_id, user_id, action, entity_type, entity_id, application_id)
+    VALUES
+      ('aud_a', '${ORG_A}', 'user_a', 'answer.saved', 'answer', 'q_a', 'app_a'),
+      ('aud_b', '${ORG_B}', 'user_b', 'answer.saved', 'answer', 'q_b', 'app_b');
+
     INSERT INTO source_datasets
       (id, name, publisher, licence, attribution, retrieved_at)
     VALUES

@@ -26,6 +26,12 @@ const TENANT_TABLES = [
   'facts',
   'documents',
   'applications',
+  // Added when `audit_logs` got its first writer. It is the table that will
+  // prove a reviewer's access was lawful, and it is read on the one screen
+  // built to be shown to somebody outside the organisation — so "a tenant
+  // sees only its own rows" is a property to assert here rather than assume
+  // from the policy list in 0001.
+  'audit_logs',
 ] as const;
 
 describe('reads', () => {

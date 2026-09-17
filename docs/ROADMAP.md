@@ -201,6 +201,16 @@ marketplace built first is a bet; built last it is an obvious extension.
       rather than scored zero
 
 **Step 2 — a human of the applicant's choosing (free, no supply side needed)**
+- [x] **The audit trail** (migration 0022, `src/db/audit.ts`). `audit_logs` was
+      the fifth and last table 0001 created with no writer, and the third
+      bullet below cannot be honoured without it. Twenty tenant-facing actions
+      write to it, in the same transaction as the change so the trail can never
+      record something that rolled back; the vocabulary is closed in the domain
+      so twenty call sites cannot invent three spellings of one event;
+      `metadata` carries shape and never answer prose; and 0022 adds
+      `application_id` as a column so a reviewer given one application cannot
+      be shown the organisation's others. Read on the application page, folded
+      away, newest first
 - [ ] Share an application read-only for review: answers, the evidence behind
       every claim, unsupported-claim flags, the eligibility verdict
 - [ ] Structured comments a reviewer can leave against a specific answer
@@ -544,12 +554,18 @@ this cheque before", where no source answers "what is open".
       it cut "youth skills somerset" from 284 to 49 and left "mental health
       young people" at 252, because on this corpus those 252 really do all
       mention one of those words
-- [ ] Find the React #418. Seen three times, always while the corpus was being
-      written to by a chained load step; never in 54 navigations on a settled
-      one. Consistent with the row count moving between the server render and
-      the navigation's payload, which costs a client re-render and nothing a
-      user sees fail. The e2e reports the URL with the error now, so the next
-      sighting names its page
+- [x] **Fix the hydration bug that WAS in the product.** `ReviewPanel` is
+      `'use client'` and computed "3 minutes ago" from `Date.now()` during
+      render — two clock readings, server and hydration, so a load straddling a
+      minute tick mismatched. The page reads the clock once and passes the
+      phrase down; `since()` lives in `src/domain/time/` and takes `now`
+- [ ] Reproduce the remaining React #418 on demand. The e2e named it:
+      `/grants?q=1&text=youth`, which is `force-dynamic` over the corpus and
+      starts a corpus step itself through `after()`. Three sightings, all
+      inside a load; zero in ~130 navigations on a settled one. React recovers
+      by re-rendering so nothing a user sees fails, and the e2e now waits for
+      the corpus to settle — but two attempts at a reproduction missed the
+      window, so the mechanism is consistent and not demonstrated
 - [ ] Give `relevance` a weight for the REGION field. The SQL vector has it at
       D and the in-memory ranker has no weight for it at all, so a typed county
       earns rank in the fetch and nothing in the final ordering — only the

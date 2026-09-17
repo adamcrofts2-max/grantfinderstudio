@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
+import { recordAudit } from '@/db/audit';
 import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion } from '@/db/workspace';
 import { addBudgetLine, deleteBudgetLine } from '@/db/budget';
 import { addOutcome, deleteOutcome } from '@/db/outcomes';
@@ -128,6 +129,20 @@ export async function draftAnswerAction(
       },
       userId,
     );
+    // Drafted rather than written, and how many of its sentences are traced
+    // to a confirmed fact — which is the thing anybody reviewing this would
+    // want to know about a machine-written answer.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'answer.drafted',
+      entityId: questionId,
+      applicationId,
+      metadata: {
+        wordCount: checked.wordCount,
+        sentences: sentences.length,
+        grounded: sentences.filter((sentence) => sentence.factId !== null).length,
+      },
+    });
   });
 
   revalidatePath(`/applications/${applicationId}`);
@@ -228,16 +243,27 @@ export async function saveOwnAnswerAction(
 
   const wordCount = countWords(content);
 
-  await database.withTenant(organisationId, (tx) =>
-    saveAnswer(
+  await database.withTenant(organisationId, async (tx) => {
+    await saveAnswer(
       tx,
       organisationId,
       // No claims: see the provenance rule above. This deletes the refs from
       // any previous draft, which is the point rather than a side effect.
       { questionId, content, wordCount, claims: [] },
       userId,
-    ),
-  );
+    );
+    // A COUNT, not the words. `answer_versions` already keeps every save; the
+    // trail says that a save happened and how long it was. Copying the prose
+    // in here would make a second, unversioned store of the applicant's
+    // writing — and hand it to whoever the application gets shared with.
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'answer.saved',
+      entityId: questionId,
+      applicationId,
+      metadata: { wordCount, wordLimit: question.word_limit },
+    });
+  });
 
   revalidatePath(`/applications/${applicationId}`);
 
@@ -306,9 +332,20 @@ export async function addQuestionsAction(
   }
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) =>
-    addQuestions(tx, organisationId, applicationId, questions),
-  );
+  const userId = await requireUserId();
+  await database.withTenant(organisationId, async (tx) => {
+    await addQuestions(tx, organisationId, applicationId, questions);
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'application.questions_added',
+      entityId: applicationId,
+      applicationId,
+      metadata: {
+        added: questions.length,
+        withWordLimit: questions.filter((q) => q.wordLimit !== null).length,
+      },
+    });
+  });
 
   revalidatePath(`/applications/${applicationId}`);
   return {
@@ -386,15 +423,23 @@ export async function addBudgetLineAction(
   }
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) =>
-    addBudgetLine(tx, organisationId, applicationId, {
+  const userId = await requireUserId();
+  await database.withTenant(organisationId, async (tx) => {
+    const lineId = await addBudgetLine(tx, organisationId, applicationId, {
       category,
       description: description.slice(0, MAX_LINE_TEXT),
       // Two decimal places, because the column is numeric(12,2) and rounding
       // at the boundary is better than the database doing it silently.
       amountGbp: Math.round(amount * 100) / 100,
-    }),
-  );
+    });
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'budget_line.added',
+      entityId: lineId,
+      applicationId,
+      metadata: { category, amountGbp: Math.round(amount * 100) / 100 },
+    });
+  });
 
   revalidatePath(`/applications/${applicationId}`);
   return { ok: true, message: `Added "${description.slice(0, 60)}".` };
@@ -412,9 +457,22 @@ export async function removeBudgetLineAction(
   }
 
   const database = await getDatabase();
-  const removed = await database.withTenant(organisationId, (tx) =>
-    deleteBudgetLine(tx, applicationId, lineId),
-  );
+  const userId = await requireUserId();
+  const removed = await database.withTenant(organisationId, async (tx) => {
+    const gone = await deleteBudgetLine(tx, applicationId, lineId);
+    // Only when something was actually removed. A trail that records every
+    // attempted delete, including the ones that found nothing, says a row was
+    // removed twice and cannot be reconciled against the budget.
+    if (gone) {
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'budget_line.removed',
+        entityId: lineId,
+        applicationId,
+      });
+    }
+    return gone;
+  });
   revalidatePath(`/applications/${applicationId}`);
   return removed
     ? { ok: true, message: 'Removed.' }
@@ -455,15 +513,23 @@ export async function addOutcomeAction(
   }
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) =>
-    addOutcome(tx, organisationId, applicationId, {
+  const userId = await requireUserId();
+  await database.withTenant(organisationId, async (tx) => {
+    const outcomeId = await addOutcome(tx, organisationId, applicationId, {
       activity,
       output,
       outcome,
       indicator: indicator === '' ? null : indicator,
       target: target === '' ? null : target,
-    }),
-  );
+    });
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'outcome.added',
+      entityId: outcomeId,
+      applicationId,
+      metadata: { hasIndicator: indicator !== '', hasTarget: target !== '' },
+    });
+  });
 
   revalidatePath(`/applications/${applicationId}`);
   return { ok: true, message: 'Added.' };
@@ -481,9 +547,19 @@ export async function removeOutcomeAction(
   }
 
   const database = await getDatabase();
-  const removed = await database.withTenant(organisationId, (tx) =>
-    deleteOutcome(tx, applicationId, id),
-  );
+  const userId = await requireUserId();
+  const removed = await database.withTenant(organisationId, async (tx) => {
+    const gone = await deleteOutcome(tx, applicationId, id);
+    if (gone) {
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'outcome.removed',
+        entityId: id,
+        applicationId,
+      });
+    }
+    return gone;
+  });
   revalidatePath(`/applications/${applicationId}`);
   return removed
     ? { ok: true, message: 'Removed.' }
@@ -506,6 +582,7 @@ export async function reviewApplicationAction(
   formData: FormData,
 ): Promise<ReviewState> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const applicationId = String(formData.get('applicationId') ?? '');
   const mode = formData.get('mode') === 'red_team' ? 'red_team' : 'standard';
   // Posted by the panel, which is rendered inside the page that computed it.
@@ -578,8 +655,8 @@ export async function reviewApplicationAction(
     // words the application does not contain is discarded before it reaches
     // the screen, and one that never reached the screen has no business
     // surviving in the record.
-    await database.withTenant(organisationId, (tx) =>
-      saveReview(tx, organisationId, applicationId, {
+    await database.withTenant(organisationId, async (tx) => {
+      await saveReview(tx, organisationId, applicationId, {
         mode,
         summary: message,
         findings,
@@ -587,8 +664,23 @@ export async function reviewApplicationAction(
         strengths: checked.strengths,
         injected: checked.instructionLikeContent,
         readinessPercent: readinessPercent ?? null,
-      }),
-    );
+      });
+      // A review costs a model call, so a record of how many were run and in
+      // which mode is worth having on its own. The findings are in `reviews`;
+      // this is the event.
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'review.read',
+        entityId: applicationId,
+        applicationId,
+        metadata: {
+          mode,
+          findings: findings.length,
+          discarded: result.output.findings.length - checked.findings.length,
+          readinessPercent: readinessPercent ?? null,
+        },
+      });
+    });
     revalidatePath(`/applications/${applicationId}`);
 
     return {

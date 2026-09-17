@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { getDatabase } from '@/db';
-import { requireOrganisationId } from '@/app/session';
+import { requireOrganisationId, requireUserId } from '@/app/session';
+import { recordAudit } from '@/db/audit';
 import { markSubmitted, unmarkSubmitted } from '@/db/tracker';
 
 /**
@@ -19,7 +20,16 @@ export async function markSubmittedAction(formData: FormData): Promise<void> {
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => markSubmitted(tx, id));
+  const userId = await requireUserId();
+  await database.withTenant(organisationId, async (tx) => {
+    await markSubmitted(tx, id);
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'application.submitted',
+      entityId: id,
+      applicationId: id,
+    });
+  });
   revalidatePath('/tracker');
   revalidatePath('/applications');
 }
@@ -31,7 +41,16 @@ export async function unmarkSubmittedAction(formData: FormData): Promise<void> {
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => unmarkSubmitted(tx, id));
+  const userId = await requireUserId();
+  await database.withTenant(organisationId, async (tx) => {
+    await unmarkSubmitted(tx, id);
+    await recordAudit(tx, organisationId, {
+      userId,
+      action: 'application.unsubmitted',
+      entityId: id,
+      applicationId: id,
+    });
+  });
   revalidatePath('/tracker');
   revalidatePath('/applications');
 }

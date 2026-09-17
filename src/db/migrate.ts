@@ -45,6 +45,7 @@ export const MIGRATIONS = [
   '0019_review_detail.sql',
   '0020_weight_search_fields.sql',
   '0021_drop_dead_trigram_index.sql',
+  '0022_audit_application_scope.sql',
 ] as const;
 
 /**

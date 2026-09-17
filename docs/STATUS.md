@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-17
 
 ## What exists
 
-**1,569 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 100 assertions) and `npm run walk`.
+**1,593 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 110 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,154 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## The audit trail, which is the last of 0001's empty tables
+
+`audit_logs` was the fifth and last table migration 0001 created with nothing
+writing to it, after `reviews`, `budgets`, `budget_lines` and `outcomes`. It is
+next in the sequence because Phase 9 Step 2 shares an application read-only
+with a reviewer the applicant names, and the roadmap's own words are that the
+access must be **scoped, time-boxed, revocable and audited**. There is no
+audited access without an audit log.
+
+It is also worth having on its own. "Who changed this, and when" is a fair
+question in an organisation with more than one person in it, and until now the
+only answer was the answer itself.
+
+```
+  WHAT HAS HAPPENED HERE                                        Close
+
+  Every change to this application, newest first. Kept so that you —
+  or anyone you show it to — can see how it got to where it is.
+
+  Outcome added                                             just now
+  Budget line added                                         just now
+  £12,500 · Freelancers
+  Answer written                                            just now
+  19 words of 200
+  Questions added from the funder's form                    just now
+  2 questions
+  Application started                                       just now
+```
+
+### Twenty actions write to it, and that is the point
+
+Every tenant-facing server action: starting an application, pasting the
+questions, saving or drafting an answer, adding and removing budget lines and
+outcomes, running a review, confirming, correcting and adding facts, adding and
+deleting a fund, verifying and rejecting a criterion, uploading and deleting a
+document, marking and unmarking a submission.
+
+Wiring all twenty rather than the interesting six is the whole design. **An
+audit log with gaps is worse than none**, because absence stops meaning
+anything — and once absence means nothing, no line in it is evidence of
+anything either.
+
+### Four decisions worth keeping
+
+**Written in the same transaction as the thing it records.** Not after, not
+fire-and-forget. Outside the transaction, the trail can record a change that
+rolled back — a line saying something happened that did not makes every other
+line uncheckable. Swallowed, the trail can silently stop. So a failed audit
+write fails the action it was recording: no record, no change. That is the only
+trade consistent with access being lawful *because* it is audited.
+
+**The action vocabulary is closed, in the domain.** `action` is a `text`
+column, and a text column filled from twenty call sites becomes three spellings
+of one event. `AUDIT_ACTIONS` is the set, each with the sentence a person
+reads, so a new action cannot be added without deciding how it renders. And
+`entity_type` is **derived** from the action, never passed: `action:
+'answer.saved', entityType: 'answers'` type-checks, writes, and quietly splits
+the trail in two.
+
+**`metadata` carries shape, never content.** A word count, an amount, a
+category, a filename. Never the answer's prose — that would be a second,
+unversioned store of the applicant's writing outside `answer_versions`, handed
+to whoever the application gets shared with. There is a test in
+`audit.test.ts` and an assertion in the e2e that the trail contains the
+answer's word count and not its words.
+
+**Migration 0022 adds `application_id` as a column**, nullable. A reviewer
+given one application must not be shown the organisation's others, so the trail
+has to be selectable by application reliably rather than by a convention about
+what somebody remembered to put in `metadata`. Organisation-level events — a
+fact confirmed, a document uploaded — carry null and are left out of an
+application's trail rather than folded into it.
+
+### What the screenshot changed, again
+
+**Five lines each ending "by you"** — the page telling a sole director who they
+are. The actor now appears only when the trail has more than one, which is the
+case it distinguishes. A raw category id too: "£12,500 · freelancers" beside a
+budget panel saying "Freelancers and contractors" is one record described two
+ways, and `auditDetail` reaches for `categoryLabel` now.
+
+Neither was a test failure. Both were obvious on sight.
+
+### The reader filters by organisation, and my own test found out why
+
+`loadAuditTrail` relied on RLS for tenant scoping, which is correct in
+production. Then seeding an audit line per tenant in the shared test harness
+made it return five rows where a test expected three — because the tests
+connect as a superuser, and **a superuser bypasses RLS entirely**.
+
+The test was brittle and the function was worse. This is the table that will
+prove a reviewer's access was lawful, read on the one screen built to be shown
+to somebody outside the organisation. A reader whose only defence is a policy
+invisible from the call site is one connection setting away from being the
+leak. It takes `organisationId` and filters on it now, and RLS refuses as well.
+`audit_logs` also joins `TENANT_TABLES` in `rls.test.ts`, so "a tenant sees
+only its own rows" is asserted rather than inherited from the policy list.
+
+## The React #418, named at last — and it is the rig, not the product
+
+Three turns of circumstantial evidence, then the e2e reported the URL and it
+said `/grants?q=1&text=youth`.
+
+That rules out the cause I had just fixed and points at the one the evidence
+always suggested. `/grants` is `force-dynamic`, its content **is** the corpus,
+and it starts a corpus step itself through `after()` when the corpus is still
+loading — and that load CHAINS, each step asking for the next. So the HTML and
+the payload the client reconciles against can be rendered either side of a
+write. React recovers by discarding the server's markup and re-rendering, so
+nothing a user sees fails.
+
+Two things follow.
+
+**The e2e was searching a table that was still being written to.** That is the
+rig's race, not the product's, and it had already cost a false lead: a search
+read 49 in one view and 51 in the other, which looked exactly like the two
+views disagreeing. The walk now waits for `/api/corpus` to report
+`loading: false` before anything searches, which is one assertion and removes
+both problems. Every `pageerror` stays fatal.
+
+**A tighter reproduction was attempted and did not land.** Twice: once against
+the e2e stub, whose nine grants load in a single step so the window had closed
+before the first sweep, and once against the 42-funder stub, where the wait
+loop outlived the timeout. So the mechanism is consistent with everything
+observed — three sightings, all inside a load; zero in ~130 navigations on a
+settled corpus — and it is still not demonstrated on demand. Recorded as that,
+on the roadmap, rather than as solved.
+
+### And a hydration bug that WAS in the product, found while looking for this one
+
+`ReviewPanel` is `'use client'` and computed "3 minutes ago" from `Date.now()`
+during render. A client component in Next is rendered on the server for the
+initial HTML and then hydrated in the browser: two clock readings, so a load
+straddling a minute tick put "3 minutes ago" in the HTML and "4 minutes ago" on
+hydration. React #418, the tree thrown away, intermittent by construction, and
+invisible to every test.
+
+The clock is read once now, by the page, and the phrase is passed down.
+`since()` moved into `src/domain/time/` taking `now` as an argument — which
+does not fix it by itself, but makes the mistake hard to make again — and the
+trail's timestamps go through the same one reading. Its own tests pin the
+minute boundary from both sides, both timestamp formats Postgres can produce,
+and a future timestamp from clock skew.
+
+This is not the error I was chasing. It is a real one of the same class, in the
+file next to it, and it would have fired on any application page with a stored
+review.
 
 ## The readiness card shows its parts, and eligibility is evaluated at last
 

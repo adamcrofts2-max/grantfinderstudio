@@ -376,6 +376,39 @@ try {
     } else fail('the read count still claims completeness while a funder failed');
   }
 
+  /**
+   * WAIT FOR THE CORPUS TO SETTLE BEFORE SEARCHING IT.
+   *
+   * The step above starts a load, and a load CHAINS: a step with more to do
+   * asks for the next one. So without this, everything below searches a table
+   * that is still being written to, and two things go wrong.
+   *
+   * The counts move mid-walk — a search read 49 in one view and 51 in the
+   * other, which looked exactly like the two views disagreeing and took a
+   * while to rule out.
+   *
+   * And /grants is `force-dynamic` over data that is changing, which produced
+   * an intermittent React #418: the HTML and the payload the client
+   * reconciles against were rendered either side of a write. Three sightings,
+   * all inside a load; none in ~130 navigations on a settled corpus. React
+   * recovers by re-rendering, so nothing a user sees fails — but a walk that
+   * fails one run in three is a walk nobody believes, and the race is the
+   * rig's rather than the product's. Recorded on the roadmap with the page
+   * named, which is what the URL in the pageerror handler is for.
+   */
+  {
+    const settled = async () => {
+      const r = await fetch(`${B}/api/corpus`).then((x) => x.json()).catch(() => null);
+      return r === null ? true : r.loading !== true;
+    };
+    const until = Date.now() + 120_000;
+    while (!(await settled()) && Date.now() < until) {
+      await page.waitForTimeout(1500);
+    }
+    if (await settled()) ok('the corpus finished loading before anything searched it');
+    else fail('the corpus was still loading after two minutes');
+  }
+
   // --- one grant, read as a grant ------------------------------------------
   //
   // Explicitly the grant list: funders are the default view now, and this
@@ -1037,6 +1070,76 @@ try {
       if (lefts.length < 2) fail('not enough bars to check their alignment');
       else if (spread > 1) fail(`the readiness bars are ragged by ${spread}px`);
       else ok(`the ${lefts.length} bars start on the same pixel`);
+
+      // --- the audit trail --------------------------------------------------
+      //
+      // `audit_logs` was the last table 0001 created with nothing writing to
+      // it, and it is the table that has to prove a reviewer's access was
+      // lawful before Phase 9 Step 2 can share anything. Everything above this
+      // point in the walk — starting the application, pasting the questions,
+      // saving an answer, three budget lines, two outcomes — should be on it.
+      const trail = page.locator('details', { has: page.locator('.trail') }).first();
+      if ((await trail.count()) === 0) fail('the application has no history panel');
+      else {
+        ok('the application carries a history of itself');
+        await trail.locator('summary').first().click();
+        await page.waitForTimeout(400);
+        const lines = await page.locator('.trail-line').all();
+        if (lines.length < 6) {
+          fail(`the trail has ${lines.length} lines for a walk that did at least six things`);
+        } else ok(`the trail recorded ${lines.length} changes`);
+
+        const what = await page.locator('.trail-what').allTextContents();
+        const expected = ['Application started', 'Questions added', 'Answer written',
+          'Budget line added', 'Outcome added'];
+        const absent = expected.filter((w) => !what.some((x) => x.includes(w)));
+        if (absent.length > 0) fail(`the trail never recorded: ${absent.join(', ')}`);
+        else ok('and names each kind of change in words rather than slugs');
+
+        // No slugs. A trail rendering `budget_line.added` is a log file.
+        const slugs = what.filter((x) => /[a-z]+[._][a-z]/u.test(x));
+        if (slugs.length > 0) fail(`the trail is showing slugs: ${slugs.join(', ')}`);
+        else ok('and no line is a raw action name');
+
+        // NEWEST FIRST, checked against what the walk did last: the outcomes
+        // came after the budget, which came after the answer.
+        const first = what[0] ?? '';
+        if (!/Outcome added/u.test(first)) {
+          fail(`the newest line is not the last thing done: "${first}"`);
+        } else ok('newest first, so the last thing done is at the top');
+
+        // THE ACTOR IS ABSENT HERE, ON PURPOSE.
+        //
+        // One person has touched this application, so "by you" on every line
+        // would be the page telling a sole director who they are — the first
+        // screenshot was five lines each ending in it. It appears when the
+        // trail has more than one actor, which this walk has no second user to
+        // produce; that case is covered in `TrailPanel`'s own reasoning and by
+        // `audit.test.ts` recording two distinct actors.
+        const actors = await page.locator('.trail-who').count();
+        if (actors > 0) {
+          fail(`the trail names the actor ${actors} times for a single-handed application`);
+        } else ok('and does not repeat "by you" when nobody else has been in here');
+
+        // SHAPE, NOT CONTENT. The answer the walk saved is in the trail's
+        // application, so its prose is on the page — but it must not be
+        // inside a trail line, because copying answer text into `audit_logs`
+        // would make a second, unversioned store of the applicant's writing
+        // and hand it to whoever the application gets shared with.
+        const inTrail = (await trail.innerText()).replace(/\n+/gu, ' ');
+        // The budget line's category as the budget panel words it, not as the
+        // column stores it: "freelancers" in one place and "Freelancers and
+        // contractors" in the other is one record described two ways.
+        if (/·\s*[a-z_]+\s*$/mu.test(inTrail)) {
+          fail(`the trail is showing a raw category id: ${inTrail.slice(0, 200)}`);
+        } else ok('and names a cost category the way the budget panel does');
+        if (/young people aged 14 to 19/u.test(inTrail)) {
+          fail('the trail is carrying the answer’s prose, not just its shape');
+        } else ok('and carries the shape of a change, never the words');
+        if (!/\b\d+ words?\b/u.test(inTrail)) {
+          fail(`the answer line records no word count: ${inTrail.slice(0, 200)}`);
+        } else ok('a saved answer is recorded as a word count');
+      }
     }
   }
 } finally {

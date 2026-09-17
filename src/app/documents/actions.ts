@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { getDatabase } from '@/db';
-import { requireOrganisationId } from '@/app/session';
+import { requireOrganisationId, requireUserId } from '@/app/session';
+import { recordAudit } from '@/db/audit';
 import {
   createDocument,
   deleteDocument,
@@ -39,6 +40,7 @@ export async function uploadDocumentAction(
   formData: FormData,
 ): Promise<UploadState> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const file = formData.get('file');
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, message: 'Choose a file to upload.' };
@@ -101,6 +103,20 @@ export async function uploadDocumentAction(
       await saveChunks(tx, organisationId, documentId, ingested.chunks);
       await saveCandidateFacts(tx, organisationId, documentId, ingested.results);
       await markExtracted(tx, documentId, ingested.instructionLikeContent);
+      // The filename, because that is how a person refers to the thing they
+      // uploaded. Not the text: `document_chunks` holds that already, and a
+      // trail is not a place to keep a second copy of a document.
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'document.uploaded',
+        entityId: documentId,
+        metadata: {
+          filename: file.name,
+          byteSize: file.size,
+          candidateFacts: ingested.results.length,
+          injected: ingested.instructionLikeContent.length,
+        },
+      });
     });
   } catch {
     // The document row may or may not exist; mark it failed if it does, so a
@@ -130,11 +146,15 @@ export async function uploadDocumentAction(
 
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
   const id = String(formData.get('documentId') ?? '');
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, (tx) => deleteDocument(tx, id));
+  await database.withTenant(organisationId, async (tx) => {
+    await recordAudit(tx, organisationId, { userId, action: 'document.removed', entityId: id });
+    await deleteDocument(tx, id);
+  });
   revalidatePath('/documents');
   revalidatePath('/organisation');
 }
