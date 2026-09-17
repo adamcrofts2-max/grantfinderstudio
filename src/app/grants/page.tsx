@@ -3,7 +3,7 @@ import { after } from 'next/server';
 import { getDatabase } from '@/db';
 import { requireSession } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
-import { queryTerms, rankGrants } from '@/domain/grants/query';
+import { rankGrants } from '@/domain/grants/query';
 import { filtersFromParams, filtersToParams, hasFilters } from '@/domain/grants/facets';
 import { rankFunders } from '@/domain/grants/funders';
 import { gbp } from '@/app/components';
@@ -199,10 +199,23 @@ export default async function GrantsPage({
       await nudgeCorpusOnVisit();
     });
   }
-  const terms = queryTerms(text);
+  /**
+   * Words typed that appear in no grant we hold.
+   *
+   * From `facets.terms`, which counts each word over the whole corpus rather
+   * than over the result — so this separates "the record has none of these"
+   * from "your filters removed them", which are different problems and looked
+   * identical.
+   */
+  const unmatched =
+    result.state === 'ok' ? result.facets.terms.filter((t) => t.matches === 0).map((t) => t.term) : [];
+  /** How many words were searchable at all, so the empty state can tell the
+   *  difference between "none of your words are here" and "some are". */
+  const queryWords = result.state === 'ok' ? result.facets.terms.length : 0;
+
   const ranked =
     result.state === 'ok'
-      ? rankGrants(result.grants, { terms, region, amountSoughtGbp: ask })
+      ? rankGrants(result.grants, { region, amountSoughtGbp: ask })
       : [];
 
   /**
@@ -311,11 +324,39 @@ export default async function GrantsPage({
               ? 'There are no grants here to search yet — the record is still being built, as above.'
               : hasFilters(filters)
                 ? 'Your words match grants, but not once the filters above are applied. Remove one and the counts will show you what is there.'
-                : `No grant among the ${count(result.corpus.awards)} held mentions any of those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`}
+                : unmatched.length > 0
+                  ? `No grant among the ${count(result.corpus.awards)} held mentions ${unmatched.join(' or ')}${unmatched.length === queryWords ? '' : ', and the rest of your words matched nothing close enough to count'}. Try plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`
+                  : `No grant among the ${count(result.corpus.awards)} held is a close enough match for those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`}
           </p>
         </section>
       ) : (
         <>
+          {/* THE WORDS THAT FOUND NOTHING.
+              The most useful thing a search can tell you and the one thing it
+              never did. Somebody searched "community tree nursery somerset"
+              against a record holding no nurseries, got 47% of everything
+              back, and had no way to see that their most specific word was
+              the one doing nothing — so the breadth read as a broken search
+              rather than as a gap in the record. Counted over the whole
+              corpus, so this says "we hold none of these" and not "your
+              filters removed them". */}
+          {unmatched.length === 0 ? null : (
+            <p className="notice notice-caution" style={{ marginTop: 'var(--s-5)' }}>
+              <span aria-hidden="true">⚠</span>
+              <span>
+                No grant we hold mentions{' '}
+                {unmatched.map((word, i) => (
+                  <span key={word}>
+                    {i === 0 ? '' : i === unmatched.length - 1 ? ' or ' : ', '}
+                    <strong>{word}</strong>
+                  </span>
+                ))}
+                . {unmatched.length === 1 ? 'That word is' : 'Those words are'} doing nothing
+                here, so what follows matches the rest of your search. Funders write plainly —
+                “growing” finds more than “horticulture”.
+              </span>
+            </p>
+          )}
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
             {view === 'funders'
               ? // "grants like yours" oversold the number, and then "grants

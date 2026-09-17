@@ -548,6 +548,20 @@ this cheque before", where no source answers "what is open".
       who would notice is the one looking for that grant. Knowing how many
       were left out costs a second count, which is the query this phase is
       already trying to run once
+- [x] **Weight words by how much they narrow** (`textSearch`, inverse document
+      frequency). Reported: "community tree nursery somerset shows a lot of
+      irrelevant results". Measured: it returned 218 of 464 grants, which is
+      exactly the number matching `community` — one word carried the whole
+      result and the tree nursery was seventh in it. Each word now contributes
+      `idf × rank / best_rank_for_that_word`, normalised so a rare place name
+      is not crushed by the D weight on region. 47% of the corpus -> 8%, led by
+      the right grant. Costs the page 453 -> 548 ms at 59,392 grants; an
+      eight-word query got faster
+- [x] **Name the words that matched nothing.** `food bank leeds` matches
+      `bank` and `leeds` zero times on this corpus, and the page said nothing
+      about it — so a result that was really just "food" read as broken.
+      Counted over the corpus, not the result, so it separates "we hold none of
+      these" from "your filters removed them"
 - [ ] Re-measure ranking against real 360Giving prose. The stub draws from
       fifteen work descriptions, so scores cluster (8, 4, 1) in a way real
       grant text would not — and the floor's effect depends on that spread:

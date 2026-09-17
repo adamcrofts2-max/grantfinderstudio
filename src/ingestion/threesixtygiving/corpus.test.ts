@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { advanceCorpus } from './corpus.js';
 import type { HttpClient } from './connector.js';
 import { claimCorpusStep, readCorpusProgress, startCorpusLoad } from '../../db/corpus.js';
-import { searchAwards } from '../../db/grants.js';
+import { searchAwards, textSearch } from '../../db/grants.js';
 import { createTestDatabase, type TestDatabase } from '../../db/testing/harness.js';
 import type { Queryable } from '../../db/client.js';
 
@@ -166,7 +166,9 @@ describe('walking the funder list', () => {
     const { http } = fakeApi({ funders: ['GB-CHC-1'] });
     await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
 
-    const { awards } = await runInTransaction((tx) => searchAwards(tx, ['somerset']));
+    const { awards } = await runInTransaction(async (tx) =>
+      searchAwards(tx, (await textSearch(tx, ['somerset']))!),
+    );
     expect(awards).toHaveLength(1);
     expect(awards[0]?.amountGbp).toBe(12_000);
     expect(awards[0]?.attribution).toContain('360Giving Data Standard');

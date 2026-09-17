@@ -71,160 +71,125 @@ export function searchPattern(text: string): string | null {
 
 /**
  * How close a grant has to be to count as a match, as a fraction of the best
- * match for the same words.
+ * score anything could get for the same words.
  *
- * ## Why the count needed a floor at all
+ * ## What the score is
  *
- * The search is ANY of your words, deliberately — see the note on
- * `searchAwards`. Ranking fixed the ORDER, so the good matches come first, but
- * it left the COUNT describing breadth: "youth skills somerset" matched 284 of
- * 467 grants, 61% of the corpus, and the funder view said so. 284 is not a
- * number anybody can act on, and it was not far off "we hold 467 grants".
+ * Each word contributes `idf(word) × (this row's rank for it / the best rank
+ * that word achieves anywhere)`, and the achievable total is the sum of every
+ * word's idf. So the fraction is "how much of what these words could tell you
+ * does this grant actually satisfy". `textSearch` in `src/db/grants.ts` has
+ * the reasoning for both halves.
  *
- * ## Why a fraction of the best rather than a fixed rank
+ * ## Why a fraction and not a rank
  *
  * `ts_rank` is not on a scale anybody can name a constant on: it depends on
- * how many of your words matched, at which weights, in a document of some
- * length. A fixed floor tuned to one corpus is a number that silently means
- * something else on the next one.
+ * how many words matched, at which weights, in a document of some length. A
+ * fixed floor tuned to one corpus quietly means something else on the next.
  *
- * A fraction of the BEST match for the same query is self-calibrating, and it
- * is what makes a place search survive. Measured on a 467-grant corpus:
+ * ## Why a quarter
+ *
+ * Measured, on a 464-grant corpus, against the four queries that earlier
+ * versions of this floor got wrong and the two they got right:
  *
  * ```
- *                            matched   at this floor
- *   youth skills somerset      284          49
- *   youth                      278          49
- *   somerset                    13          13
- *   chapel roof repair          18          18
+ *                                       10%    15%    25%    33%
+ *   community tree nursery somerset      85     39     39     30
+ *   youth                                80     21     21     21
+ *   somerset                             19     19     19     19
+ *   youth skills somerset                39     39     39     39
+ *   chapel roof repair                   44     44     44     22
+ *   mental health young people          205    205    106     69
  * ```
  *
- * "youth" matched 278 grants because a quarter of the recipients are called
- * something like "Lantern Youth Project" — and it keeps 49, the ones actually
- * about youth work. But "somerset" keeps all 13: a county only ever appears in
- * the region field, so when nothing matches better, the best match IS a region
- * match and everything sits at the top of its own scale. A structural rule —
- * "ignore matches that are only in the name or the county" — would have
- * emptied that search completely.
+ * At a tenth, "youth" brings back the eighty grants whose only tie to the word
+ * is a recipient called a Youth something, and the tree-nursery search still
+ * leads with community food hubs. Fifteen per cent fixes both, and everything
+ * from there to a quarter gives the same answer on the first five.
  *
- * ## Why a tenth
+ * A quarter rather than fifteen per cent because of the last row: four common
+ * words stayed at 44% of the corpus until a quarter, where it halves. Nothing
+ * in the first five changes between them, so a quarter is the same answer for
+ * less breadth.
  *
- * Because that is Postgres's own D weight. The default `ts_rank` weights are
- * `{D,C,B,A} = {0.1, 0.2, 0.4, 1.0}`, and migration 0020 puts the recipient
- * name and the region at D and the title at A. So a grant matched only through
- * a name scores about a tenth of one matched through its title, and a tenth is
- * exactly the line between them. It is one constant, and it is the same
- * constant the ranking already uses.
+ * NOT A THIRD, and the reason is the place search. A county appears only in
+ * the region field, so `somerset` contributes its idf and nothing else —
+ * 32% of the achievable total in that four-word query, which clears a quarter
+ * and fails a third. At a third, typing your own county alongside four other
+ * words silently stops finding grants in it, and the count drops from 39 to
+ * 30. That is the fault two earlier versions of this constant already had, so
+ * the floor stays under the level where a place term stops counting.
  *
- * Measured at other values on the same corpus: a fifth also drops description
- * matches on one of three words — "community use" in a chapel grant's own
- * description, for a search for "community allotment growing" — which is a
- * real if weak match and the reason ANY-of-your-words exists. A twentieth
- * drops nothing at all.
+ * The consequence to be honest about: a word is worth less the more other
+ * words you type, so a grant matching one word of six may fall under the
+ * floor. That is the correct reading of a six-word query — and the place
+ * facet, which the same predicate feeds, is the way to hold a county
+ * regardless.
  */
-export const RELEVANCE_FLOOR = 0.1;
+export const RELEVANCE_FLOOR = 0.25;
 
 export interface Rankable {
-  title: string | null;
-  description: string | null;
-  recipientName: string | null;
   region: string | null;
-  /** The publisher's classification labels, which say what it was FOR. */
-  tags?: readonly string[];
   amountGbp: number;
+  /**
+   * How well this grant matches the words typed, 0–1, from the database.
+   *
+   * Null when there was no search to be relevant to.
+   */
+  textScore: number | null;
 }
 
 export interface RankContext {
-  terms: readonly string[];
   region: string | null;
   amountSoughtGbp: number | null;
 }
 
 /**
- * Whether a term appears, allowing for the plural.
+ * How much the words are worth against how much the applicant is worth.
  *
- * `includes` alone is asymmetric, and the asymmetry began to matter when the
- * database search became full-text (migration 0015). Postgres stems, so a
- * search for "youths" now MATCHES a grant that says "youth" — and then this
- * function scored that grant zero and sorted it below rows that matched
- * nothing at all, because "youth" does not contain "youths". A row the query
- * returned and the ranking cannot see is worse than a row that was never
- * returned: it looks like the ordering is random.
+ * ## Why the text part is not computed here any more
  *
- * Trailing "s" both ways covers it. The other direction is already free —
- * a haystack of "youths" contains "youth". This is not a stemmer and is not
- * trying to be one; it closes the one gap that English plurals actually open,
- * and it can be read in a line.
+ * It used to be. This function held field weights — title 4, tag 3,
+ * description 2, recipient 1 — and counted, for each word, the best field it
+ * appeared in. Those numbers were themselves a fix for an earlier version
+ * where every field counted the same and a grant to "Wells Youth Collective"
+ * for a roof outranked thirty-nine grants titled "Youth skills programme".
+ *
+ * Counting fields cannot get this right, because it cannot know how much a
+ * word NARROWS. `community` and `nursery` both appeared in a title, so both
+ * scored 4 — and `community` matched 47% of the corpus while `nursery`
+ * matched 4%. A user searching "community tree nursery somerset" got a page
+ * of community food hubs, and nothing here could tell the difference.
+ *
+ * Inverse document frequency is the missing ingredient and it needs the whole
+ * corpus to compute, so it belongs in the query that has one. `textScore` is
+ * that answer, arriving as a fraction of the best score those words could get
+ * — see `textSearch` in `src/db/grants.ts`.
+ *
+ * What is left here is the two things the DATABASE cannot know, because they
+ * are about this applicant rather than about the corpus: whether the grant
+ * went to their own area, and whether it is a size this funder actually gives
+ * at. The stemming and the field weights that used to live here are the
+ * database's now — Postgres stems, and migration 0020 put `setweight` on the
+ * vector — which is why the plural helper this file used to carry is gone.
+ *
+ * ## The scale
+ *
+ * Text is worth up to `TEXT_WEIGHT`, which is deliberately much larger than
+ * either bonus: somebody who typed words wants grants matching those words,
+ * and their county is how to order the ones that do rather than a reason to
+ * lift the ones that do not. A grant matching 70% of the query beats one
+ * matching 30% in their own area at their own size — 14 against 11 — and
+ * between two equally good matches, theirs comes first.
  */
-function matches(haystack: string, term: string): boolean {
-  if (haystack.includes(term)) return true;
-  return term.endsWith('s') && term.length > 3 && haystack.includes(term.slice(0, -1));
-}
-
-/**
- * What a term match is worth, by where it was found.
- *
- * ## The search that forced these numbers
- *
- * Every field used to count the same, at two points a term, and the region
- * bonus was three. Measured against a real corpus, "youth skills somerset"
- * put five **Chapel roof repair** grants above all thirty-nine grants titled
- * "Youth skills programme" — because the chapel grants went to "Wells Youth
- * Collective" in Somerset, so one incidental word in a RECIPIENT'S NAME plus
- * the right county (2 + 3 = 5) beat two deliberate words in a TITLE (2 + 2 =
- * 4). The whole page of 120 results held three distinct scores.
- *
- * A recipient's name is not what the money paid for. Half the youth
- * organisations in the country have "youth" in their name, and a grant to one
- * of them for a roof is a roof grant.
- *
- * Still small integers, and every point still corresponds to something the
- * screen can state in a sentence — that rule was never the problem. What was
- * missing is that the sentences are not equally strong.
- */
-const WEIGHT = {
-  /** The publisher's own summary of what the grant was for. */
-  title: 4,
-  /** Chosen from a list rather than written, so deliberate but coarse. */
-  tag: 3,
-  /** Where the detail is, and also where incidental words are. */
-  description: 2,
-  /** Who got it. A real signal, and weak evidence of what it funded. */
-  recipient: 1,
-} as const;
-
-const lower = (text: string | null | undefined): string => (text ?? '').toLowerCase();
-
+const TEXT_WEIGHT = 20;
 /** Their area, which is often the difference between eligible and not. */
 const REGION_BONUS = 3;
 /** A size they actually give at. */
 const AMOUNT_BONUS = 2;
 
-/**
- * How well one grant answers the search, 0 upwards.
- *
- * Deliberately a small integer built from countable things rather than a
- * weighted float: every point corresponds to something the screen can state
- * in a sentence, so an applicant can see why a row is where it is. A score
- * nobody can check is worse than no ordering at all.
- *
- * A term is scored ONCE, at the best place it was found — a word in both the
- * title and the description is one piece of evidence stated twice, and adding
- * the two would reward a publisher for repeating themselves.
- */
 export function relevance(grant: Rankable, context: RankContext): number {
-  const title = lower(grant.title);
-  const tags = lower((grant.tags ?? []).join(' '));
-  const description = lower(grant.description);
-  const recipient = lower(grant.recipientName);
-
-  let score = 0;
-  for (const term of context.terms) {
-    if (matches(title, term)) score += WEIGHT.title;
-    else if (matches(tags, term)) score += WEIGHT.tag;
-    else if (matches(description, term)) score += WEIGHT.description;
-    else if (matches(recipient, term)) score += WEIGHT.recipient;
-  }
+  let score = (grant.textScore ?? 0) * TEXT_WEIGHT;
 
   const region = context.region?.trim().toLowerCase();
   if (region !== undefined && region !== '' && grant.region !== null) {

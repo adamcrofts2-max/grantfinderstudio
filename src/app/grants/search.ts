@@ -5,6 +5,7 @@ import {
   funderSummaries,
   recentAwards,
   searchAwards,
+  textSearch,
   type AwardResult,
   type Facets,
   type FunderSummary,
@@ -27,6 +28,8 @@ export interface FoundGrant {
   /** The licence line that must travel with anything derived from the source. */
   attribution: string | null;
   licence: string | null;
+  /** How well it matches the words typed, 0–1. Null when nothing was typed. */
+  textScore: number | null;
 }
 
 export interface CorpusState {
@@ -70,6 +73,7 @@ function toFound(award: AwardResult): FoundGrant | null {
     tags: award.tags,
     attribution: award.attribution,
     licence: award.licence,
+    textScore: award.textScore,
   };
 }
 
@@ -129,19 +133,38 @@ export async function searchCorpus(
       return { state: 'idle', corpus: state, recent: found(recent) };
     }
 
-    // One connection, both queries: the page and its counts must come from
-    // the same view of the table, and they are the same predicate by
-    // construction — see `buildWhere`.
-    const { awards, capped, facets, funders } = await withAdmin(async (tx) => {
-      const page = await searchAwards(tx, terms, filters);
+    // One connection, one scope, three queries.
+    //
+    // `textSearch` works out what each word is worth — how rare it is in the
+    // corpus, and the best rank it can reach — and every statement below is
+    // handed that same answer. They take a scope they cannot build
+    // themselves, which is what makes the page's number, its order and its
+    // chip counts the same question rather than three opinions of it.
+    const result = await withAdmin(async (tx) => {
+      const scope = await textSearch(tx, terms);
+      if (scope === null) return null;
+      const page = await searchAwards(tx, scope, filters);
       return {
         ...page,
-        facets: await facetsFor(tx, terms, filters),
-        funders: await funderSummaries(tx, terms, filters, {
+        facets: await facetsFor(tx, scope, filters),
+        funders: await funderSummaries(tx, scope, filters, {
           region: options.region ?? null,
         }),
       };
     });
+    if (result === null) {
+      // Nothing searchable survived the tokeniser — punctuation, or words too
+      // short to narrow anything. An empty result, not the whole corpus.
+      return {
+        state: 'ok',
+        grants: [],
+        capped: false,
+        corpus: state,
+        facets: { amount: [], since: [], place: [], topic: [], total: 0, terms: [] },
+        funders: [],
+      };
+    }
+    const { awards, capped, facets, funders } = result;
     return { state: 'ok', grants: found(awards), capped, corpus: state, facets, funders };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);

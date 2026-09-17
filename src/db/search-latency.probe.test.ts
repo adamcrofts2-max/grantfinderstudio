@@ -25,7 +25,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { facetsFor, searchAwards, funderSummaries } from './grants.js';
+import { facetsFor, searchAwards, funderSummaries, textSearch } from './grants.js';
 import { NO_FILTERS } from '../domain/grants/facets.js';
 import type { Queryable } from './client.js';
 
@@ -63,10 +63,14 @@ describe.skipIf(PROBE_URL === '')('search latency at corpus scale', () => {
     const { rows } = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM funder_awards');
     console.log('PROBE corpus rows:', rows[0]?.n);
 
-    await time('searchAwards (the page of results)', () => searchAwards(tx, terms));
-    await time('facetsFor (every chip count)', () => facetsFor(tx, terms, NO_FILTERS));
+    // The scope is its own round trip now — one aggregate per word, to work
+    // out what each is worth — so it is timed as part of the page.
+    await time('textSearch (what each word is worth)', () => textSearch(tx, terms));
+    const text = (await textSearch(tx, terms))!;
+    await time('searchAwards (the page of results)', () => searchAwards(tx, text));
+    await time('facetsFor (every chip count)', () => facetsFor(tx, text, NO_FILTERS));
     await time('funderSummaries (the by-funder view)', () =>
-      funderSummaries(tx, terms, NO_FILTERS, { region: 'Somerset' }),
+      funderSummaries(tx, text, NO_FILTERS, { region: 'Somerset' }),
     );
 
     // The worst case the tokeniser allows. Each term carries its own floor
@@ -74,10 +78,12 @@ describe.skipIf(PROBE_URL === '')('search latency at corpus scale', () => {
     // MAX_TERMS is 8 and somebody pasting a sentence gets all eight.
     const many = ['youth', 'skills', 'somerset', 'training', 'volunteering',
       'placements', 'wells', 'employment'];
-    await time(`searchAwards (${many.length} terms)`, () => searchAwards(tx, many));
-    await time(`facetsFor (${many.length} terms)`, () => facetsFor(tx, many, NO_FILTERS));
+    const wide = (await textSearch(tx, many))!;
+    await time(`textSearch (${many.length} terms)`, () => textSearch(tx, many));
+    await time(`searchAwards (${many.length} terms)`, () => searchAwards(tx, wide));
+    await time(`facetsFor (${many.length} terms)`, () => facetsFor(tx, wide, NO_FILTERS));
     await time(`funderSummaries (${many.length} terms)`, () =>
-      funderSummaries(tx, many, NO_FILTERS, { region: 'Somerset' }),
+      funderSummaries(tx, wide, NO_FILTERS, { region: 'Somerset' }),
     );
 
     await client.end();

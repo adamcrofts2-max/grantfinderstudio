@@ -1,7 +1,7 @@
 /** Why does a chapel-roof grant outrank a youth-skills one? A measurement. */
 import { describe, expect, it } from 'vitest';
 
-import { searchAwards } from './grants.js';
+import { searchAwards, textSearch } from './grants.js';
 import { NO_FILTERS } from '../domain/grants/facets.js';
 import { queryTerms, relevance } from '../domain/grants/query.js';
 import type { Queryable } from './client.js';
@@ -20,7 +20,7 @@ describe.skipIf(PROBE_URL === '')('why that order', () => {
 
     const terms = queryTerms('youth skills somerset');
     const context = { terms, region: 'Somerset', amountSoughtGbp: 30_000 };
-    const page = await searchAwards(tx, terms, NO_FILTERS);
+    const page = await searchAwards(tx, (await textSearch(tx, terms))!, NO_FILTERS);
 
     const scored = page.awards.map((a) => ({
       score: relevance(a, context),

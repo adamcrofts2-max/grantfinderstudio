@@ -10,7 +10,15 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { corpusSize, facetsFor, funderSummaries, recentAwards, searchAwards } from './grants.js';
+import {
+  corpusSize,
+  facetsFor,
+  funderSummaries,
+  recentAwards,
+  searchAwards,
+  textSearch,
+  type TextSearch,
+} from './grants.js';
 import { NO_FILTERS, type GrantFilters } from '../domain/grants/facets.js';
 import { createTestDatabase, type TestDatabase } from './testing/harness.js';
 import type { Queryable } from './client.js';
@@ -50,6 +58,21 @@ afterEach(async () => {
   await harness.close();
 });
 
+/**
+ * The scope the product builds once per page, built here per call.
+ *
+ * `searchAwards`, `facetsFor` and `funderSummaries` take a `TextSearch` they
+ * cannot construct themselves — it holds what each word is worth, which needs
+ * the whole corpus — so a test has to build one too. Throws on an empty word
+ * list, because that case is now `textSearch` returning null and is asserted
+ * on its own.
+ */
+const scope = async (words: readonly string[]): Promise<TextSearch> => {
+  const text = await textSearch(tx(), words);
+  if (text === null) throw new Error(`nothing searchable in ${JSON.stringify(words)}`);
+  return text;
+};
+
 const ids = (awards: readonly { id: string }[]): string[] => awards.map((a) => a.id).toSorted();
 
 /** Result ids in the order returned, for asserting an order rather than a set. */
@@ -62,15 +85,15 @@ const order = (bandId: string): number =>
 
 describe('searching what is held', () => {
   it('matches a word in the description', async () => {
-    const { awards } = await searchAwards(tx(), ['training']);
+    const { awards } = await searchAwards(tx(), await scope(['training']));
     expect(ids(awards)).toEqual(['aw_1']);
   });
 
   it('matches a recipient, a title, a region and a tag', async () => {
-    expect(ids((await searchAwards(tx(), ['leeds'])).awards)).toEqual(['aw_2']);
-    expect(ids((await searchAwards(tx(), ['chapel'])).awards)).toEqual(['aw_3']);
-    expect(ids((await searchAwards(tx(), ['devon'])).awards)).toEqual(['aw_3']);
-    expect(ids((await searchAwards(tx(), ['heritage'])).awards)).toEqual(['aw_3']);
+    expect(ids((await searchAwards(tx(), await scope(['leeds']))).awards)).toEqual(['aw_2']);
+    expect(ids((await searchAwards(tx(), await scope(['chapel']))).awards)).toEqual(['aw_3']);
+    expect(ids((await searchAwards(tx(), await scope(['devon']))).awards)).toEqual(['aw_3']);
+    expect(ids((await searchAwards(tx(), await scope(['heritage']))).awards)).toEqual(['aw_3']);
   });
 
   it('matches ANY term, not all of them', async () => {
@@ -79,35 +102,38 @@ describe('searching what is held', () => {
     // exactly what they wanted and shares not one whole word with the query,
     // so requiring every term would return nothing and look like an empty
     // corpus. Ranking is what puts the closest first, elsewhere.
-    const { awards } = await searchAwards(tx(), ['chapel', 'leeds']);
+    const { awards } = await searchAwards(tx(), await scope(['chapel', 'leeds']));
     expect(ids(awards)).toEqual(['aw_2', 'aw_3']);
   });
 
   it('ignores case, because nobody types a funder’s capitals', async () => {
-    expect(ids((await searchAwards(tx(), ['SOMERSET'])).awards)).toEqual(['aw_1']);
+    expect(ids((await searchAwards(tx(), await scope(['SOMERSET']))).awards)).toEqual(['aw_1']);
   });
 
   it('returns nothing for no terms rather than the whole corpus', async () => {
     // An empty query must not become "select everything": that is a slow
-    // request and a screen of noise.
-    expect((await searchAwards(tx(), [])).awards).toEqual([]);
-    expect((await searchAwards(tx(), ['   '])).awards).toEqual([]);
+    // request and a screen of noise. There is no scope to build from nothing,
+    // so there is no statement to run — the guard is `textSearch` returning
+    // null, in one place, rather than repeated in each entry point where it
+    // could disagree with the predicate about what "nothing" means.
+    expect(await textSearch(tx(), [])).toBeNull();
+    expect(await textSearch(tx(), ['   '])).toBeNull();
   });
 
   it('carries the licence, so attribution travels with the row', async () => {
-    const { awards } = await searchAwards(tx(), ['training']);
+    const { awards } = await searchAwards(tx(), await scope(['training']));
     expect(awards[0]?.attribution).toContain('360Giving Data Standard');
     expect(awards[0]?.funderName).toBe('The Test Trust');
     expect(awards[0]?.funderWebsite).toBe('https://example.org');
   });
 
   it('orders newest first', async () => {
-    const { awards } = await searchAwards(tx(), ['somerset', 'leeds', 'devon']);
+    const { awards } = await searchAwards(tx(), await scope(['somerset', 'leeds', 'devon']));
     expect(awards.map((a) => a.id)).toEqual(['aw_1', 'aw_2', 'aw_3']);
   });
 
   it('says when it capped, rather than quietly showing a slice', async () => {
-    const { awards, capped } = await searchAwards(tx(), ['somerset', 'leeds', 'devon'], NO_FILTERS, 2);
+    const { awards, capped } = await searchAwards(tx(), await scope(['somerset', 'leeds', 'devon']), NO_FILTERS, 2);
     expect(awards).toHaveLength(2);
     expect(capped).toBe(true);
   });
@@ -116,7 +142,7 @@ describe('searching what is held', () => {
     // `queryTerms` splits on everything that is not a letter or a digit, so a
     // term can never carry one — a whitelist rather than an escape step. This
     // asserts the boundary holds even if something bypasses the tokeniser.
-    expect((await searchAwards(tx(), ['%'])).awards).toEqual([]);
+    expect(await textSearch(tx(), ['%'])).toBeNull();
   });
 
   it('returns nothing from ANY entry point for a term of pure punctuation', async () => {
@@ -126,16 +152,21 @@ describe('searching what is held', () => {
     // guard, produced no text clause, and the WHERE fell through to TRUE —
     // every grant in the corpus, presented as a result.
     const junk = ['%', '&', '!', '(', ':*'];
-    expect((await searchAwards(tx(), junk)).awards).toEqual([]);
-    expect((await facetsFor(tx(), junk, NO_FILTERS)).total).toBe(0);
-    expect(await funderSummaries(tx(), junk, NO_FILTERS)).toEqual([]);
+    // There is no scope to build from it, so there is no statement to run.
+    // The guard used to be repeated in each of the three entry points and
+    // they disagreed with the predicate about what "nothing" meant; now the
+    // entry points take a scope they cannot construct, so the one place that
+    // can say "nothing searchable" is the only place that has to.
+    expect(await textSearch(tx(), junk)).toBeNull();
+    expect(await textSearch(tx(), [])).toBeNull();
+    expect(await textSearch(tx(), ['   '])).toBeNull();
   });
 
   it('cannot be made to raise by a tsquery operator', async () => {
     // `&`, `|`, `!` and `<->` are tsquery syntax. Passed through they would
     // not match anything — they would make `to_tsquery` raise, which turns a
     // typed character into a 500 on the search page.
-    await expect(searchAwards(tx(), ['youth & !', 'somerset | (devon'])).resolves.toBeTruthy();
+    await expect(searchAwards(tx(), await scope(['youth & !', 'somerset | (devon']))).resolves.toBeTruthy();
   });
 });
 
@@ -148,7 +179,7 @@ describe('matching words rather than substrings', () => {
    * discovered by somebody searching.
    */
   it('finds the plural from the singular', async () => {
-    const { awards } = await searchAwards(tx(), ['parcel']);
+    const { awards } = await searchAwards(tx(), await scope(['parcel']));
     expect(ids(awards)).toEqual(['aw_2']);
   });
 
@@ -156,15 +187,15 @@ describe('matching words rather than substrings', () => {
     // "Practical training for young people" — a search for "youths" used to
     // match nothing at all, because no substring of the row is "youths".
     // Stemming makes them one word.
-    const { awards } = await searchAwards(tx(), ['youths']);
+    const { awards } = await searchAwards(tx(), await scope(['youths']));
     expect(ids(awards)).toContain('aw_1');
   });
 
   it('finds a word from its prefix, because people type half a word', async () => {
     // This is what `:*` in `tsqueryFor` is for. Without it "somer" would find
     // nothing, and somebody mid-word would watch the results empty out.
-    expect(ids((await searchAwards(tx(), ['somer'])).awards)).toEqual(['aw_1']);
-    expect(ids((await searchAwards(tx(), ['yorks'])).awards)).toEqual(['aw_2']);
+    expect(ids((await searchAwards(tx(), await scope(['somer']))).awards)).toEqual(['aw_1']);
+    expect(ids((await searchAwards(tx(), await scope(['yorks']))).awards)).toEqual(['aw_2']);
   });
 
   it('searches the classification tags, which are often the only "what for"', async () => {
@@ -172,23 +203,23 @@ describe('matching words rather than substrings', () => {
     // aw_3 — only in its tag. The tag is in the indexed vector because
     // `array_to_string` is STABLE and so cannot be used in an index
     // expression, which is why 0015 maintains a column with a trigger.
-    expect(ids((await searchAwards(tx(), ['heritage'])).awards)).toEqual(['aw_3']);
+    expect(ids((await searchAwards(tx(), await scope(['heritage']))).awards)).toEqual(['aw_3']);
   });
 
   it('no longer matches the middle of a word, and that is the trade', async () => {
     // `merset` matched Somerset under trigrams. It does not now. Written down
     // as an expectation rather than left as a surprise: the loss is real, it
     // is not how anybody searches, and it bought the corpus its storage.
-    expect((await searchAwards(tx(), ['merset'])).awards).toEqual([]);
+    expect((await searchAwards(tx(), await scope(['merset']))).awards).toEqual([]);
   });
 
   it('keeps the counts and the list on exactly the same predicate', async () => {
     // The whole reason `buildWhere` exists. A facet total that came from a
     // different WHERE than the list is a lie with a number on it — and the
     // text clause is the part that just changed.
-    const terms = ['youths', 'somer'];
-    const { awards } = await searchAwards(tx(), terms);
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const text = await scope(['youths', 'somer']);
+    const { awards } = await searchAwards(tx(), text);
+    const facets = await facetsFor(tx(), text, NO_FILTERS);
     expect(facets.total).toBe(awards.length);
   });
 });
@@ -236,7 +267,7 @@ describe('the index the search is built on', () => {
       `UPDATE funder_awards SET description = 'Allotment beds and a polytunnel'
         WHERE id = 'aw_3'`,
     );
-    expect(ids((await searchAwards(tx(), ['polytunnel'])).awards)).toEqual(['aw_3']);
+    expect(ids((await searchAwards(tx(), await scope(['polytunnel']))).awards)).toEqual(['aw_3']);
   });
 
   it('holds no trigram indexes any more', async () => {
@@ -251,9 +282,19 @@ describe('the index the search is built on', () => {
 });
 
 describe('a screen nobody has typed into', () => {
-  it('shows the most recent awards, dateless ones last', async () => {
-    const recent = await recentAwards(tx(), 10);
-    expect(recent.map((a) => a.id)).toEqual(['aw_1', 'aw_2', 'aw_3', 'aw_4']);
+  /**
+   * Dateless rows are not returned at all now.
+   *
+   * They used to be, last, and then `toFound` in `search.ts` dropped every one
+   * of them before the screen saw it — because a grant with no date cannot be
+   * ranked or shown honestly. So asking for the 24 most recent returned 24
+   * rows and rendered fewer, and the missing ones were invisible. The filter
+   * moved into the query, where the count and the page agree.
+   */
+  it('shows the most recent awards, and never a dateless one', async () => {
+    const awards = await recentAwards(tx(), 10);
+    expect(awards.map((a) => a.id)).toEqual(['aw_1', 'aw_2', 'aw_3']);
+    expect(awards.every((a) => a.awardedOn !== null)).toBe(true);
   });
 
   it('counts what is held, so an empty search can say why', async () => {
@@ -270,7 +311,7 @@ describe('the tenant connection', () => {
     // published open data, not anybody's own work. So the search needs no
     // tenant scoping — there is nothing organisation-specific in it to leak.
     await harness.db.exec("SET ROLE app_user;");
-    const { awards } = await searchAwards(tx(), ['training']);
+    const { awards } = await searchAwards(tx(), await scope(['training']));
     expect(awards).toHaveLength(1);
     await harness.db.exec('RESET ROLE;');
   });
@@ -291,7 +332,7 @@ describe('narrowing a search', () => {
     // aw_2 is £8,000, aw_1 £12,000, aw_3 £40,000, aw_4 £5,000.
     const { awards } = await searchAwards(
       tx(),
-      ['somerset', 'leeds', 'devon', 'cornwall'],
+      await scope(['somerset', 'leeds', 'devon', 'cornwall']),
       filters({ bands: ['5k-25k'] }),
     );
     expect(ids(awards)).toEqual(['aw_1', 'aw_2', 'aw_4']);
@@ -300,7 +341,7 @@ describe('narrowing a search', () => {
   it('treats several bands as "any of these"', async () => {
     const { awards } = await searchAwards(
       tx(),
-      ['somerset', 'devon'],
+      await scope(['somerset', 'devon']),
       filters({ bands: ['5k-25k', '25k-100k'] }),
     );
     expect(ids(awards)).toEqual(['aw_1', 'aw_3']);
@@ -310,8 +351,8 @@ describe('narrowing a search', () => {
     // £5,000 is the boundary between "under £5,000" and "£5,000–£25,000".
     // Inclusive lower, exclusive upper, so it belongs to the upper band and to
     // only one — a grant counted twice would make every total wrong.
-    const under = await searchAwards(tx(), ['cornwall'], filters({ bands: ['under5k'] }));
-    const over = await searchAwards(tx(), ['cornwall'], filters({ bands: ['5k-25k'] }));
+    const under = await searchAwards(tx(), await scope(['cornwall']), filters({ bands: ['under5k'] }));
+    const over = await searchAwards(tx(), await scope(['cornwall']), filters({ bands: ['5k-25k'] }));
     expect(ids(under.awards)).toEqual([]);
     expect(ids(over.awards)).toEqual(['aw_4']);
   });
@@ -319,7 +360,7 @@ describe('narrowing a search', () => {
   it('keeps only grants in the chosen place', async () => {
     const { awards } = await searchAwards(
       tx(),
-      ['somerset', 'leeds', 'devon'],
+      await scope(['somerset', 'leeds', 'devon']),
       filters({ places: ['Devon'] }),
     );
     expect(ids(awards)).toEqual(['aw_3']);
@@ -327,30 +368,30 @@ describe('narrowing a search', () => {
 
   it('matches a place loosely, because publishers write it differently', async () => {
     // "West Yorkshire" should be reachable from "yorkshire".
-    const { awards } = await searchAwards(tx(), ['leeds'], filters({ places: ['yorkshire'] }));
+    const { awards } = await searchAwards(tx(), await scope(['leeds']), filters({ places: ['yorkshire'] }));
     expect(ids(awards)).toEqual(['aw_2']);
   });
 
   it('matches a topic exactly, because the label came from the facet list', async () => {
-    const exact = await searchAwards(tx(), ['somerset'], filters({ topics: ['Young people'] }));
+    const exact = await searchAwards(tx(), await scope(['somerset']), filters({ topics: ['Young people'] }));
     expect(ids(exact.awards)).toEqual(['aw_1']);
     // Not a substring: merging "Young people" with "Young people, rural"
     // behind somebody's back would make the count they clicked a lie.
-    const loose = await searchAwards(tx(), ['somerset'], filters({ topics: ['Young'] }));
+    const loose = await searchAwards(tx(), await scope(['somerset']), filters({ topics: ['Young'] }));
     expect(ids(loose.awards)).toEqual([]);
   });
 
   it('combines dimensions with AND', async () => {
     const { awards } = await searchAwards(
       tx(),
-      ['somerset', 'leeds', 'devon'],
+      await scope(['somerset', 'leeds', 'devon']),
       filters({ bands: ['5k-25k'], places: ['Somerset'] }),
     );
     expect(ids(awards)).toEqual(['aw_1']);
   });
 
   it('cannot be tricked by a wildcard in a place', async () => {
-    expect((await searchAwards(tx(), ['somerset'], filters({ places: ['%'] }))).awards).toEqual([]);
+    expect((await searchAwards(tx(), await scope(['somerset']), filters({ places: ['%'] }))).awards).toEqual([]);
   });
 });
 
@@ -387,13 +428,13 @@ describe('which matches the page gets', () => {
   });
 
   it('returns the best match first, not the newest', async () => {
-    const { awards } = await searchAwards(tx(), ['youth', 'skills']);
+    const { awards } = await searchAwards(tx(), await scope(['youth', 'skills']));
     expect(awards[0]?.id).toBe('aw_best');
   });
 
   it('keeps the best match even when the page holds one row', async () => {
     // The real shape of the bug: the limit decides what the ranker can see.
-    const { awards } = await searchAwards(tx(), ['youth', 'skills'], NO_FILTERS, 1);
+    const { awards } = await searchAwards(tx(), await scope(['youth', 'skills']), NO_FILTERS, 1);
     expect(awards.map((a) => a.id)).toEqual(['aw_best']);
   });
 
@@ -406,7 +447,7 @@ describe('which matches the page gets', () => {
               'Devon', ARRAY['Young people'], 'ds_x', 'Youth skills training',
               'Practical skills training for young people');
     `);
-    const { awards } = await searchAwards(tx(), ['youth', 'skills'], NO_FILTERS, 2);
+    const { awards } = await searchAwards(tx(), await scope(['youth', 'skills']), NO_FILTERS, 2);
     expect(awards[0]?.id).toBe('aw_best2');
   });
 
@@ -418,7 +459,7 @@ describe('which matches the page gets', () => {
     // "youth" is that the recipient is called a Youth something is not a
     // match, once anything matched the word properly. `aw_name` is exactly
     // that row, and it is not on the page at all.
-    const shown = ids2(await searchAwards(tx(), ['youth']));
+    const shown = ids2(await searchAwards(tx(), await scope(['youth'])));
     expect(shown).toContain('aw_best');
     expect(shown).not.toContain('aw_name');
   });
@@ -433,9 +474,9 @@ describe('which matches the page gets', () => {
    * say — would leave the header saying 284 over a page of 49.
    */
   it('counts what the list shows, everywhere the number appears', async () => {
-    const listed = ids2(await searchAwards(tx(), ['youth']));
-    const facets = await facetsFor(tx(), ['youth'], NO_FILTERS);
-    const funders = await funderSummaries(tx(), ['youth'], NO_FILTERS);
+    const listed = ids2(await searchAwards(tx(), await scope(['youth'])));
+    const facets = await facetsFor(tx(), await scope(['youth']), NO_FILTERS);
+    const funders = await funderSummaries(tx(), await scope(['youth']), NO_FILTERS);
 
     expect(facets.total).toBe(listed.length);
     expect(funders.reduce((sum, funder) => sum + funder.matching, 0)).toBe(listed.length);
@@ -450,7 +491,7 @@ describe('which matches the page gets', () => {
     // best match. Worth pinning: a floor that could empty a search which had
     // results would be worse than no floor.
     for (const term of ['youth', 'chapel', 'devon', 'skills', 'roof']) {
-      const { awards } = await searchAwards(tx(), [term]);
+      const { awards } = await searchAwards(tx(), await scope([term]));
       expect(awards.length, `"${term}" matched nothing`).toBeGreaterThan(0);
     }
   });
@@ -474,8 +515,8 @@ describe('which matches the page gets', () => {
    * of them.
    */
   it('reaches the county when a county is one of the words', async () => {
-    const withPlace = ids((await searchAwards(tx(), ['youth', 'somerset'])).awards);
-    const without = ids((await searchAwards(tx(), ['youth'])).awards);
+    const withPlace = ids((await searchAwards(tx(), await scope(['youth', 'somerset']))).awards);
+    const without = ids((await searchAwards(tx(), await scope(['youth']))).awards);
     // The bell tower is in Somerset and about nothing else in the query.
     expect(without).not.toContain('aw_place');
     expect(withPlace).toContain('aw_place');
@@ -487,13 +528,84 @@ describe('which matches the page gets', () => {
   });
 
   it('counts the county grants too, everywhere the number appears', async () => {
-    const listed = ids2(await searchAwards(tx(), ['youth', 'somerset']));
-    const facets = await facetsFor(tx(), ['youth', 'somerset'], NO_FILTERS);
-    const funders = await funderSummaries(tx(), ['youth', 'somerset'], NO_FILTERS);
+    const listed = ids2(await searchAwards(tx(), await scope(['youth', 'somerset'])));
+    const facets = await facetsFor(tx(), await scope(['youth', 'somerset']), NO_FILTERS);
+    const funders = await funderSummaries(tx(), await scope(['youth', 'somerset']), NO_FILTERS);
     expect(facets.total).toBe(listed.length);
     expect(funders.reduce((sum, funder) => sum + funder.matching, 0)).toBe(listed.length);
     // The chip a person would reach for is offered, which it was not before.
     expect(facets.place.map((option) => option.value)).toContain('Somerset');
+  });
+
+  /**
+   * A COMMON WORD MUST NOT CARRY THE RESULT.
+   *
+   * The fault a user reported: "community tree nursery somerset" returned 218
+   * of 464 grants — 47% of everything held — and 218 is exactly the number
+   * matching `community` on its own. One word, the least informative one,
+   * was the entire result, and the thing being looked for was seventh in it.
+   *
+   * Both rows below have "community" in their title. Only one is about trees.
+   * The word `tree` is rare in this fixture and `community` is not, so the
+   * tree row scores far higher — and the other falls under the floor.
+   */
+  it('does not let the commonest word carry the result', async () => {
+    await harness.db.exec(`
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES
+        ('aw_tree', 'funder_360g_GB-CHC-1', 'Parish Trust', 8000, '2025-06-01',
+         'Devon', ARRAY['Environment'], 'ds_x', 'Community tree nursery',
+         'Growing native trees from seed with volunteers'),
+        ('aw_comm1', 'funder_360g_GB-CHC-1', 'Hall Trust', 8000, '2025-06-02',
+         'Devon', ARRAY['Community buildings'], 'ds_x', 'Community hall roof',
+         'Community use of a village hall');
+      -- Enough of them to make "community" A COMMON WORD, which is the whole
+      -- premise. Eight more, because inverse document frequency is a fact
+      -- about the corpus: with three community grants in nine the word still
+      -- narrows something and the row rightly survives. A fixture testing a
+      -- common word has to contain a common word.
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      SELECT 'aw_comm_' || i, 'funder_360g_GB-CHC-1', 'Community Group ' || i, 8000,
+             '2025-06-04', 'Devon', ARRAY['Community buildings'], 'ds_x',
+             'Community centre project ' || i, 'A community project'
+        FROM generate_series(1, 8) AS g(i);
+    `);
+    const shown = ids2(await searchAwards(tx(), await scope(['community', 'tree', 'nursery'])));
+    expect(shown[0]).toBe('aw_tree');
+    // And the ten grants whose only tie to the query is the commonest word in
+    // it are not counted as matches at all.
+    expect(shown.filter((id) => id.startsWith('aw_comm'))).toEqual([]);
+  });
+
+  /**
+   * The score the ordering uses is the score the count used.
+   *
+   * It was not: the list came back ordered by `ts_rank` over the whole query
+   * while the in-memory ranker re-sorted it by counting fields, so the page's
+   * order and the page's number came from two different opinions of relevance.
+   * The database computes it once now and hands it out.
+   */
+  it('reports how well each grant matched, highest first', async () => {
+    const { awards } = await searchAwards(tx(), await scope(['youth', 'skills']));
+    const scores = awards.map((a) => a.textScore);
+    expect(scores.every((s) => typeof s === 'number' && s > 0 && s <= 1)).toBe(true);
+    expect(scores).toEqual([...scores].toSorted((a, b) => (b ?? 0) - (a ?? 0)));
+  });
+
+  it('says how many grants each word matched, including none at all', async () => {
+    const facets = await facetsFor(tx(), await scope(['youth', 'unicorn']), NO_FILTERS);
+    expect(facets.terms).toEqual([
+      { term: 'youth', matches: expect.any(Number) },
+      { term: 'unicorn', matches: 0 },
+    ]);
+    expect(facets.terms.find((t) => t.term === 'youth')?.matches).toBeGreaterThan(0);
+    // A word nobody has used must not empty the search either: it contributes
+    // nothing to the score and nothing to the achievable total.
+    expect((await searchAwards(tx(), await scope(['youth', 'unicorn']))).awards.length).toBeGreaterThan(0);
   });
 
   it('keeps a match that is only a region, when nothing beat it', async () => {
@@ -504,7 +616,7 @@ describe('which matches the page gets', () => {
     //
     // It is relative to the BEST match for the same words, so when every
     // match is a region match the best one is too and they all clear it.
-    const { awards } = await searchAwards(tx(), ['devon']);
+    const { awards } = await searchAwards(tx(), await scope(['devon']));
     expect(ids(awards)).toEqual(['aw_3', 'aw_best', 'aw_name']);
   });
 });
@@ -522,7 +634,7 @@ describe('a filter that leaves nothing', () => {
   it('still offers the chosen amount band when it counts zero', async () => {
     // Nothing in the fixture is over £500,000.
     const chosenBand: GrantFilters = { ...NO_FILTERS, bands: ['over500k'] };
-    const facets = await facetsFor(tx(), ['youth'], chosenBand);
+    const facets = await facetsFor(tx(), await scope(['youth']), chosenBand);
 
     expect(facets.total).toBe(0);
     const chosen = facets.amount.find((option) => option.value === 'over500k');
@@ -532,7 +644,7 @@ describe('a filter that leaves nothing', () => {
 
   it('keeps it in scale order rather than pushing it to the end', async () => {
     // Amount bands read as a scale. A chosen zero belongs where it always was.
-    const facets = await facetsFor(tx(), ['youth'], {
+    const facets = await facetsFor(tx(), await scope(['youth']), {
       ...NO_FILTERS,
       bands: ['over500k'],
     });
@@ -544,7 +656,7 @@ describe('a filter that leaves nothing', () => {
     // Harder than the bands: place options come from a GROUP BY over the
     // matching rows, so a place matching nothing is not in the result at all.
     // There is no zero to preserve — one has to be supplied.
-    const facets = await facetsFor(tx(), ['youth'], {
+    const facets = await facetsFor(tx(), await scope(['youth']), {
       ...NO_FILTERS,
       places: ['Orkney Islands'],
     });
@@ -554,7 +666,7 @@ describe('a filter that leaves nothing', () => {
   });
 
   it('still offers a chosen TOPIC that matches nothing', async () => {
-    const facets = await facetsFor(tx(), ['youth'], {
+    const facets = await facetsFor(tx(), await scope(['youth']), {
       ...NO_FILTERS,
       topics: ['Deep sea exploration'],
     });
@@ -564,38 +676,38 @@ describe('a filter that leaves nothing', () => {
   it('still offers the chosen recency when it counts zero', async () => {
     // aw_1 is dated 2025-05-01 and the fixture clock is later, so "the last
     // year" excludes it.
-    const facets = await facetsFor(tx(), ['chapel'], { ...NO_FILTERS, since: '1y' });
+    const facets = await facetsFor(tx(), await scope(['chapel']), { ...NO_FILTERS, since: '1y' });
     expect(facets.since.map((option) => option.value)).toContain('1y');
   });
 
   it('goes on hiding options nobody picked', async () => {
     // The point of the counts. Exempting the chosen option must not turn into
     // showing every dead end.
-    const facets = await facetsFor(tx(), ['chapel'], NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(['chapel']), NO_FILTERS);
     expect(facets.amount.every((option) => option.count > 0)).toBe(true);
     expect(facets.place.every((option) => option.count > 0)).toBe(true);
   });
 });
 
 describe('the counts on the filters', () => {
-  const terms = ['somerset', 'leeds', 'devon', 'cornwall'];
+  const words = ['somerset', 'leeds', 'devon', 'cornwall'];
 
   it('counts the whole match, not the page', async () => {
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(words), NO_FILTERS);
     expect(facets.total).toBe(4);
   });
 
   it('offers only options that would leave something', async () => {
     // Every chip has to be a real move. An option counted at zero is a trap,
     // so it is not offered at all.
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(words), NO_FILTERS);
     expect(facets.amount.every((option) => option.count > 0)).toBe(true);
     expect(facets.place.every((option) => option.count > 0)).toBe(true);
     expect(facets.topic.every((option) => option.count > 0)).toBe(true);
   });
 
   it('counts each amount band', async () => {
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(words), NO_FILTERS);
     const byId = new Map(facets.amount.map((option) => [option.value, option.count]));
     expect(byId.get('5k-25k')).toBe(3);
     expect(byId.get('25k-100k')).toBe(1);
@@ -605,7 +717,7 @@ describe('the counts on the filters', () => {
   it('keeps the bands in scale order rather than by popularity', async () => {
     // They read as a scale. Sorting them by count would make them harder to
     // use, however "relevant" the ordering.
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(words), NO_FILTERS);
     expect(facets.amount.map((option) => option.value)).toEqual(['5k-25k', '25k-100k']);
   });
 
@@ -615,14 +727,14 @@ describe('the counts on the filters', () => {
     // place filter applied and the amount filter released. Counting with the
     // amount filter still on would show every unpicked band as zero and make
     // a live screen look like a dead end.
-    const facets = await facetsFor(tx(), terms, filters({ bands: ['5k-25k'] }));
+    const facets = await facetsFor(tx(), await scope(words), filters({ bands: ['5k-25k'] }));
     const byId = new Map(facets.amount.map((option) => [option.value, option.count]));
     expect(byId.get('5k-25k')).toBe(3);
     expect(byId.get('25k-100k')).toBe(1);
   });
 
   it('narrows the other dimensions when one is chosen', async () => {
-    const facets = await facetsFor(tx(), terms, filters({ places: ['Somerset'] }));
+    const facets = await facetsFor(tx(), await scope(words), filters({ places: ['Somerset'] }));
     // Only aw_1 is in Somerset, so the amount counts collapse to it.
     expect(facets.amount.map((option) => option.value)).toEqual(['5k-25k']);
     expect(facets.amount[0]?.count).toBe(1);
@@ -633,7 +745,7 @@ describe('the counts on the filters', () => {
   });
 
   it('offers the places and topics actually present, with counts', async () => {
-    const facets = await facetsFor(tx(), terms, NO_FILTERS);
+    const facets = await facetsFor(tx(), await scope(words), NO_FILTERS);
     expect(facets.place.map((option) => option.value).toSorted()).toEqual([
       'Cornwall',
       'Devon',
@@ -644,8 +756,10 @@ describe('the counts on the filters', () => {
   });
 
   it('offers nothing at all when nothing was searched for', async () => {
-    const facets = await facetsFor(tx(), [], NO_FILTERS);
-    expect(facets).toEqual({ amount: [], since: [], place: [], topic: [], total: 0 });
+    // Nothing to build a scope from, so nothing to count. `searchCorpus` is
+    // what turns that into the empty shape the page renders — asserted there
+    // rather than here, because that is where the decision now lives.
+    expect(await textSearch(tx(), [])).toBeNull();
   });
 });
 
@@ -685,7 +799,7 @@ describe('grouping the matches by who gave them', () => {
   it('summarises each funder over the MATCHING grants, not their whole history', async () => {
     // The Second Trust has five Somerset grants; one search term reaches only
     // some of them, and the figures must describe those.
-    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS);
     const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
     expect(second?.matching).toBe(5);
     expect(second?.amounts.min).toBe(1000);
@@ -700,21 +814,21 @@ describe('grouping the matches by who gave them', () => {
   it('narrows the figures when the search narrows', async () => {
     // "wells" reaches only aw_1 of the first funder. Its median must then be
     // that grant, not the funder's usual.
-    const summaries = await funderSummaries(tx(), ['wells'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['wells']), NO_FILTERS);
     const first = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-1');
     expect(first?.matching).toBe(1);
     expect(first?.amounts.median).toBe(12000);
   });
 
   it('reports when the funder last gave, and when they started', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS);
     const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
     expect(second?.lastAwardedOn).toBe('2026-05-05');
     expect(second?.firstAwardedOn).toBe('2026-01-05');
   });
 
   it('counts how many went to the applicant’s own area', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset', 'devon'], NO_FILTERS, {
+    const summaries = await funderSummaries(tx(), await scope(['somerset', 'devon']), NO_FILTERS, {
       region: 'Somerset',
     });
     const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
@@ -725,14 +839,14 @@ describe('grouping the matches by who gave them', () => {
     // The trap: an empty region becomes ILIKE '%%', which matches every row —
     // and would have told every applicant that every funder works where they
     // are.
-    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS, { region: '' });
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS, { region: '' });
     expect(summaries.every((s) => s.inYourRegion === 0)).toBe(true);
-    const none = await funderSummaries(tx(), ['somerset'], NO_FILTERS, { region: null });
+    const none = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS, { region: null });
     expect(none.every((s) => s.inYourRegion === 0)).toBe(true);
   });
 
   it('respects the filters, so a narrowed search groups the narrowed set', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset'], {
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), {
       ...NO_FILTERS,
       bands: ['under5k'],
     });
@@ -743,26 +857,45 @@ describe('grouping the matches by who gave them', () => {
   });
 
   it('carries a few of the matching grants for the funder’s own row', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS);
     const second = summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2');
     expect(second?.examples).toHaveLength(3);
     // Most recent first: a funder's newest grants are the ones worth reading.
     expect(second?.examples.map((e) => e.id)).toEqual(['bw_5', 'bw_4', 'bw_3']);
   });
 
+  /**
+   * One word, not three, and the reason is worth writing down.
+   *
+   * This searched "somerset leeds devon" and asserted the second funder led,
+   * because it had five matching grants to the first funder's three. Then the
+   * scoring became idf-weighted, and on a nine-row fixture `somerset` matches
+   * six of nine rows — so it is genuinely uninformative HERE, its idf is low,
+   * and the second funder's five Somerset grants fell under the floor while
+   * the first funder's lone Leeds and Devon rows (one match each, so rare and
+   * highly weighted) sailed through. The ordering flipped, correctly for that
+   * corpus.
+   *
+   * A fixture of nine rows cannot exercise inverse document frequency: every
+   * word in it is common. So this asserts the thing it was always about —
+   * repeated giving orders funders — with one word both funders match, and
+   * leaves the idf behaviour to be measured where there is a corpus to measure
+   * it against (`search-quality.probe.test.ts`).
+   */
   it('puts repeated giving first, then recency', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset', 'leeds', 'devon'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS);
     expect(summaries[0]?.funderId).toBe('funder_360g_GB-CHC-2');
+    expect(summaries[0]?.matching).toBeGreaterThan(summaries[1]?.matching ?? 99);
   });
 
   it('names the label a funder uses most often', async () => {
-    const summaries = await funderSummaries(tx(), ['somerset'], NO_FILTERS);
+    const summaries = await funderSummaries(tx(), await scope(['somerset']), NO_FILTERS);
     expect(summaries.find((s) => s.funderId === 'funder_360g_GB-CHC-2')?.commonTag).toBe(
       'Young people',
     );
   });
 
   it('returns nothing for an empty search rather than the whole corpus', async () => {
-    expect(await funderSummaries(tx(), [], NO_FILTERS)).toEqual([]);
+    expect(await textSearch(tx(), [])).toBeNull();
   });
 });

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,593 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 110 assertions) and `npm run walk`.
+**1,586 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 114 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,156 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## Words are not worth the same, and the search now knows it
+
+Reported: *"if I search 'Community tree nursery somerset' it shows a lot of
+irrelevant results."* Reproduced before anything was changed, against a
+464-grant corpus, and the reason is stark:
+
+```
+  community   218 matches   47.0% of the corpus   best rank 0.67 (a title)
+  tree         42 matches    9.1%                 best rank 0.64
+  nursery      20 matches    4.3%                 best rank 0.61
+  somerset     19 matches    4.1%                 best rank 0.06 (a region)
+
+  returned: 218 of 464 = 47% of everything held
+  led by:   Orchard restoration (26), Community energy survey (24),
+            Community food hub (24), Green spaces volunteering (22),
+            Chapel roof repair (22) — and "Community tree nursery" SEVENTH
+```
+
+**218 is exactly the number of grants matching `community`.** One word — the
+least informative in the query — was the entire result, and the thing being
+looked for was seventh in it. Twenty-two chapel roofs came back for a tree
+nursery.
+
+### Why the previous two fixes could not have caught this
+
+Both were about how well a row matched a word. Neither knew how much the word
+was worth. `ts_rank` has no corpus statistics at all: it knows where in a
+document a word appeared and at what weight, and nothing about how many other
+documents contain it — so it cannot tell a word that narrows a search from one
+that does not, and "community" in a corpus of community grants is barely a
+word.
+
+### The formula
+
+```
+  contribution(term) = idf(term) × ts_rank(row, term) / best_rank(term)
+  score              = Σ contribution / Σ idf
+```
+
+**How rare the word is.** `idf = ln(1 + N / (1 + df))`, smoothed inverse
+document frequency. On that corpus: community 1.14, tree 2.47, nursery 3.14,
+somerset 3.19 — a nursery worth nearly three communities, which is the
+judgement a reader would make.
+
+**Normalised against what the term can achieve.** Dividing by the term's own
+best rank is what stops the field weights distorting the comparison. A county
+appears only in the region field, which 0020 weights D, so `somerset` tops out
+at 0.06 where a title word reaches 0.67. An un-normalised sum would give a rare
+place name a tenth of the weight of a common title word however informative it
+was — and the place search is the thing the last fix was for.
+
+A row counts at `RELEVANCE_FLOOR` of the achievable total.
+
+### One expression where three rules used to be
+
+```
+                                       before   after   of the corpus
+  community tree nursery somerset        218      39      47% -> 8%
+  mental health young people             241     106      52% -> 23%
+  community allotment growing            108      40      23% -> 9%
+  youth        (recipient-name noise)     90      21      unchanged
+  somerset     (a place on its own)       19      19      all of them, still
+  chapel roof repair                      44      44      unchanged
+  youth skills somerset                   39      39      unchanged
+```
+
+The recipient-name cut, the place search and the common-word flood are one
+problem seen three ways. In a browser, "community tree nursery somerset" now
+leads with six Community tree nursery grants.
+
+### Why a quarter, and why not a third
+
+Measured at six floors. Everything from 15% to 25% gives the same answer on the
+first five queries; a quarter halves the four-common-word case where 15% does
+not. **A third breaks the place search**: `somerset` contributes 32% of the
+achievable total in that four-word query, so at a third, typing your own county
+alongside four other words silently stops finding grants in it. The floor stays
+under the level where a place term stops counting — which is the fault two
+earlier versions of this constant already had.
+
+The consequence to state plainly: a word is worth less the more other words you
+type, so a grant matching one word of six may fall under the floor. That is the
+correct reading of a six-word query, and the place chip — fed by the same
+predicate — is how to hold a county regardless.
+
+### The words that matched NOTHING are now named
+
+The most useful thing a search can tell you and the one thing it never did. On
+this corpus `food bank leeds` matches `food` 122 times and `bank` and `leeds`
+**zero** — so the page says:
+
+> ⚠ No grant we hold mentions **bank** or **leeds**. Those words are doing
+> nothing here, so what follows matches the rest of your search. Funders write
+> plainly — "growing" finds more than "horticulture".
+
+Counted over the whole corpus rather than the result, so it separates "we hold
+none of these" from "your filters removed them" — different problems that
+looked identical. The tree-nursery search would have been immediately legible
+if this had existed: it was 47% of the corpus BECAUSE one word was carrying it.
+
+### The first implementation was 3× too slow, and measuring caught it
+
+The weights started as a CTE with the score as a correlated subquery over it.
+At 59,392 grants:
+
+| | per-term floors | IDF via CTE | IDF inlined |
+|---|---|---|---|
+| `textSearch` | — | — | 41 ms |
+| `searchAwards` | 46 ms | 192 ms | 24 ms |
+| `facetsFor` | 163 ms | 702 ms | 359 ms |
+| `funderSummaries` | 243 ms | 336 ms | 124 ms |
+| **the three a page runs** | **453 ms** | **1,230 ms** | **548 ms** |
+| eight terms, all three | 1,118 ms | 6,976 ms | **871 ms** |
+
+`facetsFor` evaluates the predicate a dozen times, once per facet option, and
+each evaluation was walking the CTE for every candidate row. A term's weight is
+a constant for the whole query, so it is computed once — one round trip — and
+inlined as a number, leaving the per-row path as plain arithmetic over
+`ts_rank` calls, which is the irreducible part. The eight-term case came out
+FASTER than before the change, because far fewer rows now match.
+
+### One scope, built once, passed to all four statements
+
+`searchAwards`, `facetsFor`, `funderSummaries` and `funderExamples` take a
+`TextSearch` they cannot construct themselves. That is the property the CTE
+existed to guarantee — every number on the page measured against one scale —
+kept by the type system instead of by a repeated query. It also moved the
+"nothing searchable" guard to one place: it used to be repeated in three entry
+points, which is how a search for `%` once returned the whole corpus.
+
+And `relevance()` stopped having a second opinion. It held field weights and
+counted, per word, the best field it appeared in — which cannot know how much a
+word narrows. The database computes the score now and the in-memory ranker adds
+only the two things the database cannot know, because they are about this
+applicant rather than the corpus: whether the grant went to their own area, and
+whether it is a size this funder gives at. Text is worth up to 20, region 3,
+amount 2 — so a better match elsewhere beats a weaker one on the doorstep, and
+between two equal matches theirs comes first. The stemming and field weights
+that used to live there are the database's, which is why the plural helper is
+gone.
+
+### A rig note
+
+The corpus held nothing like a tree nursery, so there was no right answer for
+the search to find and no way to tell a ranking failure from an empty shelf.
+Five work types were added to the stub — a community tree nursery, an orchard
+restoration, a repair café, an energy survey, bereavement support. A rig has to
+contain the thing you are testing for; that is the third time this month the
+rig has been the thing standing between a measurement and the truth.
 
 ## The audit trail, which is the last of 0001's empty tables
 

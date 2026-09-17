@@ -547,6 +547,30 @@ try {
     fail(`the count is not the floored set: ${/[0-9]+ grants? close to your search/i.exec(floored)?.[0] ?? 'no count found'}`);
   } else ok('the count over the page is the floored set, not the wider one');
 
+  // --- a word that matches nothing says so ----------------------------------
+  //
+  // The most useful thing a search can tell you and the one thing it never
+  // did. A user searched "community tree nursery somerset" against a record
+  // holding no nurseries, got 47% of everything back, and had no way to see
+  // that their most specific word was the one doing nothing — so the breadth
+  // read as a broken search rather than as a gap in the record.
+  await page.goto(`${B}/grants?q=1&text=youth+unicorn&view=grants`, { waitUntil: 'networkidle' });
+  const gap = await page.locator('body').innerText();
+  if (!/No grant we hold mentions/iu.test(gap)) {
+    fail('a word matching nothing is not reported');
+  } else ok('a word that matches nothing is named');
+  if (!/unicorn/iu.test(gap)) fail('the unmatched word is not named');
+  else ok('and it is named, not just counted');
+  // And it must not empty the search: the other word still works.
+  if (!/Riverside youth skills programme/.test(gap)) {
+    fail('one dud word emptied the whole search');
+  } else ok('and the rest of the search still runs');
+  // A search where everything matches must NOT show the notice.
+  await page.goto(`${B}/grants?q=1&text=youth&view=grants`, { waitUntil: 'networkidle' });
+  if (/No grant we hold mentions/iu.test(await page.locator('body').innerText())) {
+    fail('the unmatched-word notice shows when every word matched');
+  } else ok('and stays out of the way when every word matched something');
+
   // --- and a place name still reaches the place -----------------------------
   //
   // The floor was one floor for the whole query, and that made a county inert:

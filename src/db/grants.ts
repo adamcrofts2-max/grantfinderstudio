@@ -53,10 +53,25 @@ export interface AwardResult {
   attribution: string | null;
   /** The licence itself, which is what a footer should name. */
   licence: string | null;
+  /**
+   * How well this grant matches the words typed, 0–1.
+   *
+   * A fraction of the best score anything could get for those words — see
+   * `textSearch` and `RELEVANCE_FLOOR`. Null when there was no search to be
+   * relevant to, which is the "most recent grants" screen.
+   *
+   * Carried out of the database rather than recomputed in `relevance()`
+   * because only the database knows how rare each word is, and a screen that
+   * ordered results by a second, worse opinion of relevance than the one the
+   * count came from would be back to the fault this replaced.
+   */
+  textScore: number | null;
 }
 
 interface Row {
   id: string;
+  /** Only on a search; `recentAwards` has no query to be relevant to. */
+  text_score?: string | null;
   funder_id: string;
   funder_name: string;
   funder_website: string | null;
@@ -72,14 +87,25 @@ interface Row {
   licence: string | null;
 }
 
+/**
+ * The columns a grant row carries, and the tables behind them.
+ *
+ * Split in two so a caller can add a column of its own — `searchAwards` adds
+ * the relevance score, which is an expression over the CTEs rather than a
+ * column of any table.
+ */
 const SELECT = `
   SELECT a.id, a.funder_id, f.name AS funder_name, f.website AS funder_website,
          a.recipient_name, a.title, a.amount_gbp::text AS amount_gbp,
          a.awarded_on::text AS awarded_on, a.description,
-         a.jurisdiction, a.region, a.tags, d.attribution, d.licence
+         a.jurisdiction, a.region, a.tags, d.attribution, d.licence`;
+
+const FROM = `
     FROM funder_awards a
     JOIN funders f ON f.id = a.funder_id
     LEFT JOIN source_datasets d ON d.id = a.source_dataset_id`;
+
+const SELECT_FROM = `${SELECT}${FROM}`;
 
 function toAward(row: Row): AwardResult {
   return {
@@ -97,6 +123,7 @@ function toAward(row: Row): AwardResult {
     tags: row.tags ?? [],
     attribution: row.attribution,
     licence: row.licence,
+    textScore: row.text_score == null ? null : Number(row.text_score),
   };
 }
 
@@ -166,89 +193,175 @@ function searchable(terms: readonly string[]): string[] {
     .filter((term) => term !== '');
 }
 
-/** Where a term's lexeme is bound in a search statement. `$1` is the whole query. */
-const at = (index: number): string => `$${index + 2}`;
+/**
+ * One term's lexeme, read out of the single bound array.
+ *
+ * Subscripting `$1` rather than binding each lexeme again: the score names
+ * individual terms and the predicate names the whole query, and binding the
+ * same strings twice is a way for the two to end up describing different
+ * searches. One parameter, so filter binds still start at `$2`.
+ */
+const at = (index: number): string => `($1::text[])[${index + 1}]`;
 
-interface TextSearch {
-  /**
-   * The values bound before anything else: the whole query at `$1`, then one
-   * lexeme per term at `$2` onwards. Every statement binds these first, so a
-   * clause can name a placeholder without being handed it.
-   */
-  values: string[];
-  /** `search_floor`, one row per term. Goes at the head of every statement. */
-  cte: string;
-  /** Matches the query, and is a close match on at least one of its words. */
+export interface TextSearch {
+  /** The lexemes, bound as `$1`. Filter binds start at `$2`. */
+  values: [string[]];
+  /** How well one row matches, 0–1: a fraction of the best a row could do. */
+  score: string;
+  /** Matches the query, and is close enough to it to count. */
   where: string;
+  /** Each word and how many grants in the corpus contain it. */
+  coverage: { term: string; matches: number }[];
 }
 
 /**
- * The text half of a search: the query, the floor under it, and the predicate.
+ * The text half of a search: the query, how well a row matches it, and the
+ * floor under that.
  *
- * ## Why the floor is PER TERM
+ * ## The fault this replaced
  *
- * It was one floor for the whole query — a tenth of the best rank any grant
- * reached for all the words together — and that made a place name inert. A
- * county appears in the region field and nowhere else, so 0020 weights it D;
- * a work word appears in titles, so it reaches A. Searching "youth skills
- * somerset" set the bar from the best youth-skills TITLE match, which every
- * Somerset grant fell a long way under.
+ * Every word counted the same, and a floor per word meant a grant counted if
+ * it was a close match on ANY ONE of them. A user searched
  *
- * Measured, on a 468-grant corpus, with one floor for the query:
+ *     community tree nursery somerset
+ *
+ * and got 218 of 464 grants — 47% of everything held — led by twenty-two
+ * chapel roof repairs. Measured, the reason is stark:
  *
  * ```
- *   "youth skills"            30 grants, place chips: Fife, Birmingham, …
- *   "youth skills somerset"   30 grants, place chips: Fife, Birmingham, …
- *   "somerset"                20 grants, place chip:  Somerset
+ *   community   218 matches   47.0% of the corpus   best rank 0.67 (a title)
+ *   tree         42 matches    9.1%                 best rank 0.64
+ *   nursery      20 matches    4.3%                 best rank 0.61
+ *   somerset     19 matches    4.1%                 best rank 0.06 (a region)
  * ```
  *
- * The first two are the same thirty rows. The word "somerset" did nothing at
- * all — and there was no Somerset chip to reach for either, because the facet
- * counts come from the same predicate. A local CIC typing their own county got
- * an answer with nothing from their county in it and no route back to one.
+ * The returned count was 218, which is exactly the number matching
+ * `community` — one word, the least informative in the query, carried the
+ * whole result, and "Community tree nursery" was seventh in it. The words that
+ * MEAN something there are `tree` and `nursery`, and nothing in the ranking
+ * knew that.
  *
- * So each term gets its own floor, against the best match for THAT word, and a
- * grant counts when it clears any one of them. "somerset" grants are the best
- * there is for "somerset", so they clear their own bar; a grant whose only tie
- * to "youth" is a recipient called a Youth something still loses to the
- * youth-titled grants on that word, which is the noise the floor is for.
+ * ## Why Postgres cannot do this alone
  *
- * This keeps the promise the whole search is built on — ANY of your words,
- * because "young people, employment training" is what you meant by "youth
- * skills" — and applies the floor within each word rather than across them.
+ * `ts_rank` has no corpus statistics. It knows where in a document a word
+ * appeared and at what weight, and nothing about how many other documents
+ * contain it — so it cannot tell a word that narrows a search from one that
+ * does not, and "community" in a corpus of community grants is barely a word.
+ *
+ * ## What a term's contribution accounts for
+ *
+ *     contribution = idf(term) × ts_rank(row, term) / best_rank(term)
+ *
+ * **How rare the word is.** `idf = ln(1 + N / (1 + df))`, the standard
+ * smoothed inverse document frequency. On the corpus above: community 1.14,
+ * tree 2.47, nursery 3.14, somerset 3.19 — a nursery worth nearly three
+ * communities, which is the judgement a reader would make.
+ *
+ * **NORMALISED against what that term can achieve.** Dividing by the term's
+ * own best rank stops the field weights distorting the comparison. A county
+ * only appears in the region field, which 0020 weights D, so `somerset` tops
+ * out at 0.06 where a title word reaches 0.67 — and an un-normalised sum would
+ * give a rare place name a tenth of the weight of a common title word, however
+ * informative. Normalised, each term contributes between nothing and its idf.
+ *
+ * A row's score is the sum over terms, as a fraction of the sum of every
+ * term's idf — the score a row would get by matching every word as well as
+ * anything in the corpus does. It counts at `RELEVANCE_FLOOR` of that.
+ *
+ * ## One formula, where three rules used to be
+ *
+ * ```
+ *                                          before   after   of the corpus
+ *   community tree nursery somerset          218      39      47% -> 8%
+ *   mental health young people               241     106      52% -> 23%
+ *   community allotment growing              108      40      23% -> 9%
+ *   youth        (recipient-name noise)       90      21       unchanged
+ *   somerset     (a place on its own)         19      19       all of them
+ *   youth skills somerset                     39      39       unchanged
+ * ```
+ *
+ * The recipient-name cut, the place search and the common-word flood are one
+ * problem seen three ways — how much a word tells you, and how well this row
+ * matches it.
+ *
+ * ## Why the weights are computed HERE and not in the statement
+ *
+ * They were a CTE, and the score was a correlated subquery over it. Measured
+ * at 59,392 grants that cost the page 453 ms → 1,230 ms, and an eight-word
+ * query 1.1 s → 7.0 s, because `facetsFor` evaluates the predicate a dozen
+ * times, once per facet option, and each evaluation walked the CTE for every
+ * candidate row.
+ *
+ * A term's weight is a constant for the whole query. So it is computed once,
+ * in one round trip, and inlined as a number — leaving the per-row path as
+ * plain arithmetic over `ts_rank` calls, which is the irreducible part.
+ *
+ * ONE scope is built per page and passed to all four statements. They take a
+ * `TextSearch` they cannot construct themselves, so they cannot disagree about
+ * what the words are worth — the property the CTE was there to guarantee, kept
+ * by the type system instead of by a repeated query.
  */
-function textSearch(terms: readonly string[]): TextSearch | null {
-  const lexemes = searchable(terms).map((term) => `${term}:*`);
-  if (lexemes.length === 0) return null;
+export async function textSearch(
+  tx: Queryable,
+  terms: readonly string[],
+): Promise<TextSearch | null> {
+  const words = searchable(terms);
+  if (words.length === 0) return null;
+  const lexemes = words.map((term) => `${term}:*`);
 
-  // MATERIALIZED because `facetsFor` reads this a dozen times, once per facet
-  // option, and Postgres would otherwise be free to inline it and aggregate
-  // over the matched set a dozen times per term.
-  //
-  // Each floor is computed over everything matching that WORD, whatever the
-  // filters. Deliberately: narrowing to one county must not lower the bar and
-  // admit weaker matches, and every number on the page — the total, each chip
-  // count, each funder's tally — is then measured against the same line.
-  const floors = lexemes.map(
-    (_, i) => `SELECT ${i + 1} AS i,
-                coalesce(max(ts_rank(b.search_vector, to_tsquery('english', ${at(i)}))), 0)
-                  * ${RELEVANCE_FLOOR} AS rank
-           FROM funder_awards b
-          WHERE b.search_vector @@ to_tsquery('english', ${at(i)})`,
+  const { rows } = await tx.query<{ term: string; df: string; best: string; idf: string }>(
+    `SELECT q.term,
+            count(b.id)::text AS df,
+            coalesce(max(ts_rank(b.search_vector, to_tsquery('english', q.term))), 0)::text AS best,
+            ln(1 + (SELECT count(*)::numeric FROM funder_awards)
+                     / (1 + count(b.id)))::text AS idf
+       FROM unnest($1::text[]) AS q(term)
+       LEFT JOIN funder_awards b ON b.search_vector @@ to_tsquery('english', q.term)
+      GROUP BY q.term`,
+    [lexemes],
   );
 
-  const close = lexemes.map(
-    (_, i) => `(a.search_vector @@ to_tsquery('english', ${at(i)})
-             AND ts_rank(a.search_vector, to_tsquery('english', ${at(i)}))
-                   >= (SELECT rank FROM search_floor WHERE i = ${i + 1}))`,
-  );
+  const byTerm = new Map(rows.map((row) => [row.term, row]));
+  /** Terms nothing matches contribute nothing, and cannot be divided by. */
+  const scoring = lexemes
+    .map((lexeme, index) => {
+      const row = byTerm.get(lexeme);
+      const best = Number(row?.best ?? 0);
+      const idf = Number(row?.idf ?? 0);
+      return { lexeme, index, weight: best > 0 ? idf / best : 0, idf: best > 0 ? idf : 0 };
+    })
+    .filter((term) => term.weight > 0);
+
+  const achievable = scoring.reduce((sum, term) => sum + term.idf, 0);
+
+  // `$1` is the array; each term's own lexeme is at $2+index for the
+  // `ts_rank` calls. The weights are numbers this function computed, formatted
+  // to a fixed precision — there is nothing here a person typed.
+  const sum =
+    scoring.length === 0
+      ? '0'
+      : scoring
+          .map(
+            (term) =>
+              `ts_rank(a.search_vector, to_tsquery('english', ${at(term.index)}))` +
+              ` * ${term.weight.toFixed(6)}`,
+          )
+          .join(' + ');
+  const score =
+    achievable > 0 ? `((${sum}) / ${achievable.toFixed(6)})` : '0';
 
   return {
-    values: [lexemes.join(' | '), ...lexemes],
-    cte: `search_floor AS MATERIALIZED (${floors.join(' UNION ALL ')})`,
+    values: [lexemes],
+    score,
     // The whole query first, so the GIN index drives the scan rather than the
-    // per-term OR having to.
-    where: `a.search_vector @@ to_tsquery('english', $1)\n        AND (${close.join('\n          OR ')})`,
+    // score having to. `array_to_string` rather than another bound parameter:
+    // the lexemes and the query they form cannot then disagree.
+    where: `a.search_vector @@ to_tsquery('english', array_to_string($1::text[], ' | '))
+        AND ${score} >= ${RELEVANCE_FLOOR}`,
+    coverage: words.map((term, index) => ({
+      term,
+      matches: Number(byTerm.get(lexemes[index] as string)?.df ?? 0),
+    })),
   };
 }
 
@@ -331,15 +444,10 @@ function buildWhere(
 
 export async function searchAwards(
   tx: Queryable,
-  terms: readonly string[],
+  text: TextSearch,
   filters: GrantFilters = NO_FILTERS,
   limit = 120,
 ): Promise<{ awards: AwardResult[]; capped: boolean }> {
-  const text = textSearch(terms);
-  if (text === null) {
-    return { awards: [], capped: false };
-  }
-
   const where = buildWhere(text, filters, text.values.length);
   // BY RELEVANCE, then by date.
   //
@@ -356,11 +464,11 @@ export async function searchAwards(
   // better lead.
   const values = [...text.values, ...where.values, limit + 1];
   const { rows } = await tx.query<Row>(
-    `WITH ${text.cte}
-     ${SELECT}
+    `${SELECT},
+            ${text.score} AS text_score
+      ${FROM}
       WHERE ${where.sql}
-      ORDER BY ts_rank(a.search_vector, to_tsquery('english', $1)) DESC,
-               a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
+      ORDER BY text_score DESC, a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
       LIMIT $${values.length}`,
     values,
   );
@@ -383,10 +491,21 @@ export interface Facets {
   /**
    * Grants close enough to the text to count, and matching every active
    * filter. Not every grant that mentions one of the words: that number was
-   * 61% of the corpus and described breadth rather than fit. See
+   * 47% of the corpus and described breadth rather than fit. See
    * `RELEVANCE_FLOOR`.
    */
   total: number;
+  /**
+   * Each word typed, and how many grants in the whole corpus contain it.
+   *
+   * Because a word that matches NOTHING is the most useful thing a search can
+   * tell you and the one thing it never did. Somebody searched "community tree
+   * nursery somerset" on a corpus holding no nurseries at all, got 47% of
+   * everything back, and had no way to know that their most specific word was
+   * the one doing nothing. Counted over the corpus rather than the result, so
+   * it separates "we hold none of these" from "your filters removed them".
+   */
+  terms: { term: string; matches: number }[];
 }
 
 /** How many places and topics to offer: enough to be useful, few enough to read. */
@@ -440,13 +559,9 @@ function offer(options: FacetOption[], chosen: readonly string[]): FacetOption[]
  */
 export async function facetsFor(
   tx: Queryable,
-  terms: readonly string[],
+  text: TextSearch,
   filters: GrantFilters,
 ): Promise<Facets> {
-  const text = textSearch(terms);
-  if (text === null) {
-    return { amount: [], since: [], place: [], topic: [], total: 0 };
-  }
 
   // The text's own values come first, so every predicate below and the floor
   // itself read the same placeholders.
@@ -508,8 +623,12 @@ export async function facetsFor(
     `total AS (SELECT count(*)::int AS n FROM funder_awards a WHERE (${predicate(null)}))`,
   );
 
+  // Straight off `search_terms`, which the CTE computed anyway. A word nobody
+  // has ever used costs nothing extra to report and is the difference between
+  // "these results look odd" and "we hold no grants mentioning nursery".
+
   const { rows } = await tx.query<{ dim: string; value: string | null; n: number }>(
-    `WITH ${text.cte}, ${parts.join(', ')}
+    `WITH ${parts.join(', ')}
      SELECT 'amount' AS dim, value, n FROM amount
      UNION ALL SELECT 'since', value, n FROM since
      UNION ALL SELECT 'place', value, n FROM place
@@ -553,6 +672,10 @@ export async function facetsFor(
       filters.topics,
     ),
     total: rows.find((row) => row.dim === 'total')?.n ?? 0,
+    // Counted when the scope was built, over the whole corpus rather than
+    // the result — which is what separates "we hold none of these words" from
+    // "your filters removed them".
+    terms: text.coverage,
   };
 }
 
@@ -623,13 +746,10 @@ const EXAMPLES_PER_FUNDER = 3;
  */
 export async function funderSummaries(
   tx: Queryable,
-  terms: readonly string[],
+  text: TextSearch,
   filters: GrantFilters,
   options: { region?: string | null; limit?: number } = {},
 ): Promise<FunderSummary[]> {
-  const text = textSearch(terms);
-  if (text === null) return [];
-
   const limit = options.limit ?? FUNDER_LIMIT;
   const region = options.region?.trim() ?? '';
   const where = buildWhere(text, filters, text.values.length);
@@ -659,8 +779,7 @@ export async function funderSummaries(
     in_region: number;
     common_tag: string | null;
   }>(
-    `WITH ${text.cte}
-     SELECT a.funder_id,
+    `SELECT a.funder_id,
             f.name    AS funder_name,
             f.website AS funder_website,
             count(*)::int                                                    AS matching,
@@ -692,7 +811,7 @@ export async function funderSummaries(
 
   const examples = await funderExamples(
     tx,
-    terms,
+    text,
     filters,
     rows.map((row) => row.funder_id),
   );
@@ -726,15 +845,10 @@ export async function funderSummaries(
  */
 async function funderExamples(
   tx: Queryable,
-  terms: readonly string[],
+  text: TextSearch,
   filters: GrantFilters,
   funderIds: readonly string[],
 ): Promise<Map<string, FunderExample[]>> {
-  const text = textSearch(terms);
-  // Unreachable: `funderSummaries` returns before calling this when there is
-  // nothing to search for, and it is the only caller. Asserted rather than
-  // assumed, because the alternative is a statement with no predicate.
-  if (text === null) return new Map();
   const where = buildWhere(text, filters, text.values.length);
   const values = [...text.values, ...where.values, funderIds, EXAMPLES_PER_FUNDER];
   const idsAt = `$${values.length - 1}`;
@@ -750,7 +864,7 @@ async function funderExamples(
     awarded_on: string | null;
     region: string | null;
   }>(
-    `WITH ${text.cte}, ranked AS (
+    `WITH ranked AS (
        SELECT a.id, a.funder_id, a.title, a.description, a.recipient_name,
               a.amount_gbp::text AS amount_gbp, a.awarded_on::text AS awarded_on, a.region,
               row_number() OVER (
@@ -786,7 +900,8 @@ async function funderExamples(
 /** The most recent awards held, for a screen that nobody has typed into yet. */
 export async function recentAwards(tx: Queryable, limit = 40): Promise<AwardResult[]> {
   const { rows } = await tx.query<Row>(
-    `${SELECT}
+    `${SELECT_FROM}
+      WHERE a.awarded_on IS NOT NULL
       ORDER BY a.awarded_on DESC NULLS LAST, a.amount_gbp DESC
       LIMIT $1`,
     [limit],

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { facetsFor, searchAwards } from './grants.js';
+import { facetsFor, searchAwards, textSearch } from './grants.js';
 import { NO_FILTERS } from '../domain/grants/facets.js';
 import { queryTerms, rankGrants } from '../domain/grants/query.js';
 import type { Queryable } from './client.js';
@@ -15,6 +15,8 @@ import type { Queryable } from './client.js';
 const PROBE_URL = process.env['PROBE_DATABASE_URL'] ?? '';
 
 const SEARCHES = [
+  // The query a user reported: "it shows a lot of irrelevant results".
+  'community tree nursery somerset',
   'youth skills somerset',
   'food bank leeds',
   'chapel roof repair',
@@ -38,14 +40,12 @@ describe.skipIf(PROBE_URL === '')('search quality', () => {
     const corpus = Number(total.rows[0]?.n ?? 0);
     console.log(`PROBE corpus: ${corpus} grants\n`);
 
-    for (const text of SEARCHES) {
-      const terms = queryTerms(text);
-      const facets = await facetsFor(tx, terms, NO_FILTERS);
-      const page = await searchAwards(tx, terms, NO_FILTERS);
-      const ranked = rankGrants(
-        page.awards.map((a) => ({ ...a, recipientName: a.recipientName })),
-        { terms, region: 'Somerset', amountSoughtGbp: 30_000 },
-      );
+    for (const typed of SEARCHES) {
+      const terms = queryTerms(typed);
+      const text = (await textSearch(tx, terms))!;
+      const facets = await facetsFor(tx, text, NO_FILTERS);
+      const page = await searchAwards(tx, text, NO_FILTERS);
+      const ranked = rankGrants(page.awards, { region: 'Somerset', amountSoughtGbp: 30_000 });
 
       // What Postgres itself thinks the best matches are, over EVERY match
       // rather than the newest slice the page fetches.
@@ -63,10 +63,23 @@ describe.skipIf(PROBE_URL === '')('search quality', () => {
       const fetched = new Set(page.awards.map((a) => a.id));
       const bestSeen = best.rows.filter((row) => fetched.has(row.id)).length;
 
-      console.log(`PROBE "${text}"  (${terms.join(' ')})`);
+      console.log(`PROBE "${typed}"  (${terms.join(' ')})`);
       console.log(
         `   matched ${facets.total} of ${corpus} grants  = ${Math.round((facets.total / corpus) * 100)}% of the corpus`,
       );
+      // How much each word narrows, which is what the ranking now turns on.
+      console.log(
+        `   words: ${facets.terms
+          .map((t) => `${t.term} ${t.matches}${t.matches === 0 ? ' (NOTHING)' : ''}`)
+          .join(', ')}`,
+      );
+      const scores = page.awards.map((a) => a.textScore ?? 0);
+      if (scores.length > 0) {
+        console.log(
+          `   match scores: best ${Math.round(Math.max(...scores) * 100)}%,` +
+            ` worst on the page ${Math.round(Math.min(...scores) * 100)}%`,
+        );
+      }
       console.log(`   fetched ${page.awards.length}${page.capped ? ' (capped)' : ''}`);
       console.log(
         `   of Postgres's top 20 matches, ${bestSeen} reached the ranker — ${20 - bestSeen} never did`,
