@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,593 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 119 assertions) and `npm run walk`.
+**1,603 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,98 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## Walking it as a tree-nursery CIC found two faults in an hour-old feature
+
+Asked to run through the site as a user looking for community tree nursery
+funding. Signed up as a Somerset CIC growing native trees, asking £18,000, and
+used the product. The search itself was right — 20 grants, all of them tree
+nurseries. Two things around it were not.
+
+### The peer list was ordered by SIZE, on a screen headed "like yours"
+
+```
+  Old Mill Heritage Group                          typically £487,710
+  £2,861,780 across 6 grants · 6 funders
+```
+
+First row, to an applicant asking for eighteen thousand pounds. `ORDER BY
+sum(amount_gbp) DESC` — most raised first — sorts by size, which is the
+opposite of the question the view exists to answer. And the figure beside the
+name was forty times their ask, presented as the typical grant of an
+organisation like them.
+
+I wrote that ordering an hour earlier, in this session, with a comment
+explaining why it was the more instructive example. It read fine and it was
+wrong the moment a real ask was on the screen.
+
+Now ordered by fit: size band, then repeat funding, then their own area, then
+the total. Bands rather than a distance so £17,000 and £19,000 do not reorder
+on noise, and **every key is on the row in words** so the sort can be checked:
+
+```
+  Northfield Neighbourhood Association             typically £18,680
+  £381,780 across 7 grants · 7 funders · about your size
+  Riverside Community Trust                        typically £42,160
+  ... a different scale to your ask
+  Old Mill Heritage Group                          typically £487,710
+  ... nothing like your ask
+```
+
+And it says what the list does not contain: *"None of them is in Somerset —
+nobody there has been funded for this yet."* A list of six counties, none of
+them yours, reads as a broken search; naming it makes it a fact about the
+record. There is no size claim at all until the applicant has said what they
+are asking for — inventing one would be worse than silence, and the e2e
+asserts both states.
+
+### Fourteen funder rows and not one amount
+
+```
+  The Lowfield Charitable Trust    1 grant like yours · gave within the last year
+  The Bramley Trust                1 grant like yours · gave within the last year
+  The Kelmscott Trust              1 grant like yours · gave within the last year
+```
+
+Nine of the fourteen were word-for-word identical. **The default view of the
+product degraded to nothing exactly when the search was precise** — a tight
+search matches one or two grants per funder, `canCharacterise` (five grants)
+rightly refused to summarise, and nothing took its place. The first thing
+anybody needs in order to decide whether to approach a funder is how much they
+gave, and we hold the figure for every one of those grants.
+
+`funders.ts` already said what should happen, at the top of the file: *"Below
+it the figures are given as what they are: a couple of grants, named, not a
+pattern."* **The rule was written down and never implemented.** Now:
+
+```
+  The Ellisfield Trust     3 grants like yours · gave within the last year · £5,440 to £75,180
+  The Lowfield Charitable Trust  1 grant like yours · gave within the last year · £10,160
+```
+
+Naming the amounts makes no statistical claim — that is the whole point of the
+restraint — and lets the reader do the comparison the median would have done
+for them. A funder above the bar is still summarised rather than itemised, and
+a test pins that.
+
+### The rest of the journey, which held up
+
+Arriving cold, signing up, onboarding, the home page's next step, the search
+pre-filled with "Somerset" from the profile, all three views agreeing on 20,
+narrowing to £5,000–£25,000 (7 grants, chip removable), and "Add a fund from
+them" carrying the funder through to a page that says *"The funder whose grants
+you were just looking at. Whatever you add here is joined to that award
+history."* No page errors anywhere.
+
+### And a third rig lesson in one session
+
+`until curl /api/health` does not mean "the server I just started" — an old
+server was already answering on the port, so a walk of the new peer view
+reported two tabs and no organisations against the previous bundle. Then a
+navigation I added to the e2e left the walk on the grant search, and everything
+after it failed with "the application has no history panel". Both cost time on
+bugs that did not exist. A rig that answers is not a rig that is answering
+about what you changed, and a walk has a position as well as a state.
 
 ## "Who got them" — the search grouped by the organisations that were funded
 

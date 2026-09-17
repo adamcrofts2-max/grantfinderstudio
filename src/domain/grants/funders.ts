@@ -15,6 +15,17 @@
 
 import { MIN_AWARDS_TO_CHARACTERISE } from '../funder/behaviour.js';
 
+/**
+ * Pounds, to the nearest pound, for a clause in a sentence.
+ *
+ * Here rather than from `app/components` because this module is domain code
+ * and must not import from the app. The figures it names are grant amounts —
+ * whole pounds, no pence, which is how every funder publishes them.
+ */
+function money(value: number): string {
+  return `£${Math.round(value).toLocaleString('en-GB')}`;
+}
+
 export interface RankableFunder {
   funderId: string;
   matching: number;
@@ -128,6 +139,30 @@ export function whyThisFunder(
     else if (years <= 2) parts.push('gave within 2 years');
     else if (years <= STALE_AFTER_YEARS) parts.push(`last gave about ${Math.round(years)} years ago`);
     else parts.push(`nothing published for ${Math.round(years)} years`);
+  }
+
+  /**
+   * BELOW THE BAR, NAME THE GRANTS INSTEAD OF SUMMARISING THEM.
+   *
+   * This module's own rule, from the top of the file: "Below it the figures
+   * are given as what they are: a couple of grants, named, not a pattern."
+   * The rule was written down and not implemented, and a walk showed what
+   * that cost. A precise search — "community tree nursery" — matches one or
+   * two grants per funder, so `canCharacterise` refused to summarise and
+   * nothing took its place: fourteen rows reading "1 grant like yours · gave
+   * within the last year", nine of them identical, and NOT ONE AMOUNT on the
+   * screen. The first thing anybody needs in order to decide whether to
+   * approach a funder, for a grant we hold the figure for.
+   *
+   * Naming the amounts makes no statistical claim — that is the whole point
+   * of the restraint — and lets the reader do the comparison the median would
+   * have done for them.
+   */
+  if (!canCharacterise(funder.matching)) {
+    const { min, max } = funder.amounts;
+    if (Number.isFinite(min) && min > 0) {
+      parts.push(min === max ? money(min) : `${money(min)} to ${money(max)}`);
+    }
   }
 
   const ask = context.amountSoughtGbp;

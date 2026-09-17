@@ -27,10 +27,20 @@ function year(date: string | null): string {
   return date === null ? '—' : date.slice(0, 4);
 }
 
-function Row({ recipient }: { recipient: RecipientSummary }) {
+/**
+ * How their typical grant compares with the ask, in the words the ordering is
+ * made of — so the reader can check the sort rather than trust it.
+ */
+const SIZE: Record<0 | 1 | 2, string> = {
+  0: 'about your size',
+  1: 'a different scale to your ask',
+  2: 'nothing like your ask',
+};
+
+function Row({ recipient, region }: { recipient: RecipientSummary; region: string | null }) {
   const {
     name, matching, totalGbp, largestGbp, medianGbp, funders, funderNames,
-    regions, firstAwardedOn, lastAwardedOn, commonTag,
+    regions, firstAwardedOn, lastAwardedOn, commonTag, inYourRegion, sizeBand,
   } = recipient;
   const more = funders - funderNames.length;
 
@@ -43,8 +53,16 @@ function Row({ recipient }: { recipient: RecipientSummary }) {
             {gbp(totalGbp)} across {matching} grant{matching === 1 ? '' : 's'}
             {' · '}
             {funders === 1 ? 'one funder' : `${funders} funders`}
-            {regions.length === 0 ? '' : ` · ${regions.slice(0, 2).join(', ')}`}
+            {/* Their area before the label: whether a peer is local is the
+                part an applicant reads first, and it is one of the keys the
+                ordering uses. */}
+            {region !== null && inYourRegion > 0
+              ? ` · ${inYourRegion === matching ? `all in ${region}` : `${inYourRegion} in ${region}`}`
+              : regions.length === 0
+                ? ''
+                : ` · ${regions.slice(0, 2).join(', ')}`}
             {commonTag === null ? '' : ` · ${commonTag}`}
+            {sizeBand === null ? '' : ` · ${SIZE[sizeBand]}`}
           </p>
         </div>
         <p className="peer-figure">
@@ -69,18 +87,34 @@ function Row({ recipient }: { recipient: RecipientSummary }) {
   );
 }
 
-export function RecipientList({ recipients }: { recipients: readonly RecipientSummary[] }) {
+export function RecipientList({
+  recipients,
+  region,
+}: {
+  recipients: readonly RecipientSummary[];
+  region: string | null;
+}) {
   if (recipients.length === 0) return null;
+  const local = recipients.filter((r) => r.inYourRegion > 0).length;
+
   return (
     <>
       <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
         The organisations that received these grants, and who funded them. If your search
         describes your own work, these are the bodies most like yours that have been paid for
         it — and their funders are the ones to look at next.
+        {/* Said, rather than left to be noticed. A list of six counties none
+            of which is yours reads as a search fault; "none of these is in
+            Somerset" is a fact about the record. */}
+        {region === null
+          ? ''
+          : local === 0
+            ? ` None of them is in ${region} — nobody there has been funded for this yet.`
+            : ` ${local} of them ${local === 1 ? 'is' : 'are'} in ${region}.`}
       </p>
       <ul className="funders-grouped">
         {recipients.map((recipient) => (
-          <Row key={recipient.key} recipient={recipient} />
+          <Row key={recipient.key} recipient={recipient} region={region} />
         ))}
       </ul>
     </>

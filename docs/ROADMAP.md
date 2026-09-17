@@ -581,6 +581,19 @@ this cheque before", where no source answers "what is open".
       name because 360Giving publishes no reliable recipient id, and the
       heading states the condition ("if your search describes your own work")
       rather than claiming a similarity model we have no data for
+- [x] **Order the peer list by FIT, not by total raised.** A walk as a Somerset
+      CIC asking £18,000 was led by a body that had raised £2,861,780,
+      "typically £487,710", on a screen headed "organisations like yours".
+      Size band, then repeat funding, then their own area, then total — with
+      every key on the row in words ("about your size"), and no size claim at
+      all until an ask exists
+- [x] **Name the grants when a funder has too few to summarise.** A precise
+      search matches one or two grants per funder, so `canCharacterise`
+      declined and nothing replaced it: fourteen rows reading "1 grant like
+      yours · gave within the last year", nine identical, no amounts anywhere.
+      `funders.ts` already said the figures should be "given as what they are:
+      a couple of grants, named, not a pattern" — written down, never
+      implemented
 - [ ] Let a peer row drill through to that organisation's own grants. The row
       names its funders, which is the actionable part, but "show me those six
       grants" needs a recipient filter in the URL and the facets

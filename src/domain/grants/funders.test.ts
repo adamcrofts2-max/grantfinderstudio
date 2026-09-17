@@ -167,3 +167,73 @@ describe('saying why', () => {
     expect(why.join(' · ')).toContain('outside anything they have given');
   });
 });
+
+const few = (over: Partial<RankableFunder> = {}): RankableFunder => ({
+  funderId: 'f_1',
+  matching: 1,
+  inYourRegion: 0,
+  amounts: {
+    min: 18_860, max: 18_860, lowerQuartile: 18_860, median: 18_860, upperQuartile: 18_860,
+  },
+  lastAwardedOn: '2026-01-01',
+  ...over,
+});
+
+describe('a funder with too few grants to characterise', () => {
+  /**
+   * A walk found fourteen rows reading "1 grant like yours · gave within the
+   * last year", nine of them identical, and not one amount on the screen —
+   * because a precise search matches one or two grants per funder, so
+   * `canCharacterise` declined and nothing replaced it. This module's own doc
+   * comment already said what should happen: "the figures are given as what
+   * they are: a couple of grants, named, not a pattern."
+   */
+  const ctx = { region: null, amountSoughtGbp: 18_000, asOf: '2026-06-01' };
+
+  it('names the one grant’s amount', () => {
+    expect(whyThisFunder(few(), ctx)).toContain('£18,860');
+  });
+
+  it('names the range when there are a few', () => {
+    const why = whyThisFunder(
+      few({
+        matching: 3,
+        amounts: {
+          min: 4_100, max: 42_160, lowerQuartile: 4_100, median: 18_860, upperQuartile: 42_160,
+        },
+      }),
+      ctx,
+    );
+    expect(why).toContain('£4,100 to £42,160');
+  });
+
+  it('still refuses to call any of it typical', () => {
+    // The restraint is the point: naming two grants is a fact, calling them a
+    // pattern is not. No clause about the ask being "a typical size for them".
+    const why = whyThisFunder(few({ matching: 2 }), ctx).join(' · ');
+    expect(why).not.toMatch(/typical/iu);
+    expect(why).not.toMatch(/their range/iu);
+  });
+
+  it('says nothing about money when there is no figure to name', () => {
+    const why = whyThisFunder(
+      few({ amounts: { min: 0, max: 0, lowerQuartile: 0, median: 0, upperQuartile: 0 } }),
+      ctx,
+    );
+    expect(why.join(' · ')).not.toContain('£');
+  });
+
+  it('and a funder above the bar is still summarised, not itemised', () => {
+    const why = whyThisFunder(
+      few({
+        matching: 9,
+        amounts: {
+          min: 4_100, max: 42_160, lowerQuartile: 10_000, median: 18_860, upperQuartile: 25_000,
+        },
+      }),
+      ctx,
+    ).join(' · ');
+    expect(why).toContain('typical size for them');
+    expect(why).not.toContain('£4,100 to £42,160');
+  });
+});

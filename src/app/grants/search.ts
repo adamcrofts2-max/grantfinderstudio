@@ -109,7 +109,7 @@ const found = (awards: readonly AwardResult[]): FoundGrant[] =>
 export async function searchCorpus(
   text: string,
   filters: GrantFilters = NO_FILTERS,
-  options: { region?: string | null } = {},
+  options: { region?: string | null; amountSoughtGbp?: number | null } = {},
 ): Promise<CorpusSearch> {
   const terms = queryTerms(text);
 
@@ -154,7 +154,12 @@ export async function searchCorpus(
         funders: await funderSummaries(tx, scope, filters, {
           region: options.region ?? null,
         }),
-        recipients: await recipientSummaries(tx, scope, filters),
+        recipients: await recipientSummaries(tx, scope, filters, {
+          // The peer view is ordered by fit, so it needs to know what fit
+          // means: what this applicant is asking for, and where they are.
+          amountSoughtGbp: options.amountSoughtGbp ?? null,
+          region: options.region ?? null,
+        }),
       };
     });
     if (result === null) {

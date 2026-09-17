@@ -448,6 +448,20 @@ try {
   // well the rows fit: a text search still matches a large slice of the
   // corpus, so promising "grants like yours" of the whole number was a
   // claim the ranking could not keep.
+  /**
+   * A FUNDER ROW WITH TOO FEW GRANTS TO SUMMARISE STILL NAMES THEM.
+   *
+   * A walk found fourteen rows reading "1 grant like yours · gave within the
+   * last year", nine of them identical, and not one amount on the screen —
+   * because a precise search matches one or two grants per funder, so
+   * `canCharacterise` declined and nothing replaced it. The module's own doc
+   * comment already said the figures should be "given as what they are: a
+   * couple of grants, named, not a pattern".
+   */
+  if (!/£[0-9,]+/u.test(funderView)) {
+    fail('no funder row names an amount');
+  } else ok('a funder row names what it gave, even below the summary bar');
+
   if (!/funders? between them gave/i.test(funderView))
     fail('the count does not describe funders');
   else ok('the count describes funders, not rows');
@@ -564,6 +578,18 @@ try {
   // that tells a CIC who else got funded and not who to ask.
   if (!/Funded by/iu.test(peers)) fail('a peer row does not name who funded them');
   else ok('and each names the funders who backed them');
+  if (!/Closest to your size first/iu.test(peers)) {
+    fail('the peer view does not say how it is ordered');
+  } else ok('and says how the list is ordered');
+  // NO SIZE CLAIM BEFORE THE APPLICANT HAS NAMED A SIZE.
+  //
+  // The project is created further down this walk, so at this point nothing
+  // has been asked for — and a row claiming a grant is "about your size" when
+  // we do not know your size would be an invention. The comparison appears
+  // once there is something to compare with, asserted below.
+  if (/about your size|a different scale|nothing like your ask/iu.test(peers)) {
+    fail('a peer row compares its size with an ask nobody has named yet');
+  } else ok('and claims no size comparison before an ask exists');
   if (!/Wells Youth Collective/u.test(peers)) {
     fail(`the recipient of the stub's grants is not named: ${peers.slice(0, 200)}`);
   } else ok('and names the organisation itself');
@@ -1118,6 +1144,26 @@ try {
       if (lefts.length < 2) fail('not enough bars to check their alignment');
       else if (spread > 1) fail(`the readiness bars are ragged by ${spread}px`);
       else ok(`the ${lefts.length} bars start on the same pixel`);
+
+      // --- and now the peer view HAS something to compare with --------------
+      //
+      // The project above asks for £18,000. Ordering the peer list by total
+      // raised — which is what it did — put a body that had raised £2.9m,
+      // "typically £487,710", at the top of a screen headed "organisations
+      // like yours". Sorting by total sorts by SIZE, which is the opposite of
+      // the question, so every ordering key is on the row in words.
+      // Away and back: everything after this checks the application page, and
+      // leaving the walk somewhere else cost a run — "the application has no
+      // history panel", reported from the grant search.
+      const applicationUrl = page.url();
+      await page.goto(`${B}/grants?q=1&text=youth&view=peers`, { waitUntil: 'networkidle' });
+      const sized = await page.locator('body').innerText();
+      if (!/about your size|a different scale|nothing like your ask/iu.test(sized)) {
+        fail(`a peer row does not compare its size with the £18,000 ask: ${
+          /[^\n]*grants? ·[^\n]*/u.exec(sized)?.[0] ?? '(no peer row found)'
+        }`);
+      } else ok('a peer row says how its size compares with what you asked for');
+      await page.goto(applicationUrl, { waitUntil: 'networkidle' });
 
       // --- the audit trail --------------------------------------------------
       //

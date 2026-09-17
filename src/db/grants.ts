@@ -917,6 +917,21 @@ export interface RecipientSummary {
   lastAwardedOn: string | null;
   /** The label most often attached to their grants. */
   commonTag: string | null;
+  /** Of their matching grants, how many went to the applicant's own area. */
+  inYourRegion: number;
+  /**
+   * How their typical grant compares with what the applicant is asking for.
+   *
+   * 0 — about their size (half to double the ask)
+   * 1 — a different scale (a fifth to five times)
+   * 2 — nothing like it
+   * null — the applicant has not said what they are asking for
+   *
+   * Bands rather than a distance, because the row SAYS which band it is in,
+   * and a number nobody can read off the screen is a ranking nobody can
+   * check.
+   */
+  sizeBand: 0 | 1 | 2 | null;
 }
 
 /** Organisations on one screen. */
@@ -966,11 +981,46 @@ export async function recipientSummaries(
   tx: Queryable,
   text: TextSearch,
   filters: GrantFilters,
-  options: { limit?: number } = {},
+  options: { amountSoughtGbp?: number | null; region?: string | null; limit?: number } = {},
 ): Promise<RecipientSummary[]> {
   const limit = options.limit ?? RECIPIENT_LIMIT;
   const where = buildWhere(text, filters, text.values.length);
-  const values: unknown[] = [...text.values, ...where.values, limit];
+  const values: unknown[] = [...text.values, ...where.values];
+  const bind = (value: unknown): string => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+  const ask =
+    options.amountSoughtGbp != null && options.amountSoughtGbp > 0
+      ? options.amountSoughtGbp
+      : null;
+  const askAt = bind(ask);
+  const region = options.region?.trim() ?? '';
+  // An empty region must count zero, not everything: `ILIKE '%%'` matches
+  // every row, which would tell every applicant that every peer is local.
+  const regionAt = bind(region === '' ? null : `%${escapeLike(region)}%`);
+  const limitAt = bind(limit);
+
+  /**
+   * ORDERED BY FIT, NOT BY SIZE.
+   *
+   * It was `ORDER BY sum(amount_gbp) DESC` — most raised first — and a walk
+   * showed what that means on a screen headed "organisations like yours": a
+   * Somerset CIC asking for £18,000 was shown a body that had raised
+   * £2,861,780, "typically £487,710". Sorting by total raised sorts by SIZE,
+   * which is the opposite of the question. Worse, the figure beside the name
+   * was a number forty times their ask, presented as the typical grant of an
+   * organisation like them.
+   *
+   * Bands first, so that £17,000 and £19,000 do not reorder on noise, then
+   * repeat funding, then their own area, then the total. Every key is on the
+   * row in words, so the ordering can be checked rather than trusted.
+   */
+  const band = `CASE
+         WHEN ${askAt}::numeric IS NULL THEN 0
+         WHEN median BETWEEN ${askAt}::numeric / 2 AND ${askAt}::numeric * 2 THEN 0
+         WHEN median BETWEEN ${askAt}::numeric / 5 AND ${askAt}::numeric * 5 THEN 1
+         ELSE 2 END`;
 
   const { rows } = await tx.query<{
     key: string;
@@ -985,6 +1035,8 @@ export async function recipientSummaries(
     first_awarded_on: string | null;
     last_awarded_on: string | null;
     common_tag: string | null;
+    in_region: number;
+    size_band: number;
   }>(
     `WITH matched AS (
        SELECT a.recipient_name, a.amount_gbp, a.awarded_on, a.region, a.tags,
@@ -999,12 +1051,14 @@ export async function recipientSummaries(
          JOIN funders f ON f.id = a.funder_id
         WHERE ${where.sql}
           AND a.recipient_name IS NOT NULL
-          AND btrim(a.recipient_name) <> '')
-     SELECT key,
+          AND btrim(a.recipient_name) <> ''),
+     grouped AS (
+       SELECT key,
             mode() WITHIN GROUP (ORDER BY recipient_name)                     AS name,
             count(*)::int                                                     AS matching,
             sum(amount_gbp)::text                                             AS total_gbp,
             max(amount_gbp)::text                                             AS largest_gbp,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY amount_gbp)           AS median,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY amount_gbp)::text     AS median_gbp,
             count(DISTINCT funder_id)::int                                    AS funders,
             (array_agg(DISTINCT funder_name))[1:${FUNDERS_PER_ROW}]           AS funder_names,
@@ -1017,15 +1071,17 @@ export async function recipientSummaries(
             -- backticks in here: this is inside a template literal.)
             (SELECT t FROM matched m, unnest(m.tags) AS t
               WHERE m.key = matched.key AND t <> ''
-              GROUP BY t ORDER BY count(*) DESC, t LIMIT 1)                   AS common_tag
+              GROUP BY t ORDER BY count(*) DESC, t LIMIT 1)                   AS common_tag,
+            count(*) FILTER (
+              WHERE ${regionAt}::text IS NOT NULL AND region ILIKE ${regionAt}
+            )::int                                                            AS in_region
        FROM matched
       WHERE key <> ''
-      GROUP BY key
-      -- Most raised first, then most funders. A body that raised more from
-      -- more places is the more instructive example, and both numbers are on
-      -- the row so the ordering can be checked.
-      ORDER BY sum(amount_gbp) DESC, count(DISTINCT funder_id) DESC, key
-      LIMIT $${values.length}`,
+      GROUP BY key)
+     SELECT *, ${band}::int AS size_band
+       FROM grouped
+      ORDER BY ${band}, matching DESC, in_region DESC, total_gbp::numeric DESC, key
+      LIMIT ${limitAt}`,
     values,
   );
 
@@ -1042,6 +1098,8 @@ export async function recipientSummaries(
     firstAwardedOn: row.first_awarded_on,
     lastAwardedOn: row.last_awarded_on,
     commonTag: row.common_tag,
+    inYourRegion: row.in_region,
+    sizeBand: ask === null ? null : (Math.min(2, Math.max(0, row.size_band)) as 0 | 1 | 2),
   }));
 }
 

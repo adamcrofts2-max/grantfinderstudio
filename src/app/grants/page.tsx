@@ -160,7 +160,7 @@ export default async function GrantsPage({
   const text = asked ? str(params['text']) : suggested;
 
   const filters = filtersFromParams(params);
-  const result = await searchCorpus(text, filters, { region });
+  const result = await searchCorpus(text, filters, { region, amountSoughtGbp: ask });
 
   /**
    * Funders or grants.
@@ -367,7 +367,7 @@ export default async function GrantsPage({
           )}
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
             {view === 'peers'
-              ? `${count(recipients.length)} organisation${recipients.length === 1 ? '' : 's'} received ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} close to your search. Most raised first.`
+              ? `${count(recipients.length)} organisation${recipients.length === 1 ? '' : 's'} received ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} close to your search. Closest to your size first.`
               : view === 'funders'
               ? // "grants like yours" oversold the number, and then "grants
                 // mentioning your words" undersold what the search now does.
@@ -428,7 +428,7 @@ export default async function GrantsPage({
           </div>
 
           {view === 'peers' ? (
-            <RecipientList recipients={recipients} />
+            <RecipientList recipients={recipients} region={region} />
           ) : view === 'funders' ? (
             <FunderList
               context={{

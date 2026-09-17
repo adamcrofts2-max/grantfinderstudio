@@ -1010,3 +1010,87 @@ describe('grouping the matches by who received them', () => {
     expect(rows.reduce((n, r) => n + r.matching, 0)).toBe(4);
   });
 });
+
+describe('ordering the peers by fit rather than by size', () => {
+  /**
+   * A walk found this on a screen headed "organisations like yours": a
+   * Somerset CIC asking for £18,000 was led by a body that had raised
+   * £2,861,780, "typically £487,710". Ordering by total raised orders by SIZE,
+   * which is the opposite of the question — and the figure beside the name
+   * was forty times their ask, presented as the typical grant of an
+   * organisation like them.
+   */
+  beforeEach(async () => {
+    await harness.db.exec(`
+      INSERT INTO funders (id, name, source_dataset_id)
+      VALUES ('funder_360g_GB-CHC-9', 'The Ninth Trust', 'ds_x');
+
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES
+        -- Raised far the most, and nothing like this applicant's size.
+        ('big_1', 'funder_360g_GB-CHC-9', 'National Woodland Trust', 900000,
+         '2025-05-01', 'Highland', ARRAY['Environment'], 'ds_x',
+         'Tree nursery programme', 'Growing native trees'),
+        ('big_2', 'funder_360g_GB-CHC-9', 'National Woodland Trust', 800000,
+         '2026-05-01', 'Highland', ARRAY['Environment'], 'ds_x',
+         'Tree nursery programme', 'Growing native trees'),
+        -- Their size, and on their doorstep.
+        ('peer_1', 'funder_360g_GB-CHC-9', 'Wells Tree Group', 18500,
+         '2025-06-01', 'Somerset', ARRAY['Environment'], 'ds_x',
+         'Tree nursery', 'Growing native trees'),
+        -- Their size, elsewhere.
+        ('peer_2', 'funder_360g_GB-CHC-9', 'Kendal Tree Group', 17500,
+         '2025-07-01', 'Cumbria', ARRAY['Environment'], 'ds_x',
+         'Tree nursery', 'Growing native trees');
+    `);
+  });
+
+  const ASK = { amountSoughtGbp: 18_000, region: 'Somerset' };
+
+  it('puts an organisation of the applicant’s size above one that raised more', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['tree', 'nursery']), NO_FILTERS, ASK);
+    const names = rows.map((r) => r.name);
+    expect(names.indexOf('Wells Tree Group')).toBeLessThan(
+      names.indexOf('National Woodland Trust'),
+    );
+    // And the big one is still there, last, rather than hidden.
+    expect(names).toContain('National Woodland Trust');
+  });
+
+  it('prefers their own area between two of the same size', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['tree', 'nursery']), NO_FILTERS, ASK);
+    const names = rows.map((r) => r.name);
+    expect(names.indexOf('Wells Tree Group')).toBeLessThan(names.indexOf('Kendal Tree Group'));
+  });
+
+  it('says which band each one is in, so the ordering can be checked', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['tree', 'nursery']), NO_FILTERS, ASK);
+    const byName = new Map(rows.map((r) => [r.name, r]));
+    expect(byName.get('Wells Tree Group')?.sizeBand).toBe(0);
+    expect(byName.get('National Woodland Trust')?.sizeBand).toBe(2);
+    expect(byName.get('Wells Tree Group')?.inYourRegion).toBe(1);
+    expect(byName.get('Kendal Tree Group')?.inYourRegion).toBe(0);
+  });
+
+  it('falls back to repeat funding when the applicant has named no ask', async () => {
+    // No ask means no bands, so there is nothing to be close to: the most
+    // repeatedly funded comes first, which is the next best evidence.
+    const rows = await recipientSummaries(tx(), await scope(['tree', 'nursery']), NO_FILTERS, {
+      region: 'Somerset',
+    });
+    expect(rows[0]?.name).toBe('National Woodland Trust');
+    expect(rows[0]?.sizeBand).toBeNull();
+    expect(rows[0]?.matching).toBe(2);
+  });
+
+  it('counts nobody as local when the applicant has no area', async () => {
+    // `ILIKE '%%'` matches every row, which would tell every applicant that
+    // every peer is on their doorstep.
+    const rows = await recipientSummaries(tx(), await scope(['tree', 'nursery']), NO_FILTERS, {
+      amountSoughtGbp: 18_000,
+    });
+    expect(rows.every((r) => r.inYourRegion === 0)).toBe(true);
+  });
+});
