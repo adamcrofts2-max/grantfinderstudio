@@ -554,6 +554,16 @@ details[open] > .narrow-summary .chev-toggle::after { content: 'Close'; }
   border-radius: var(--r-lg);
 }
 
+/* An organisation that RECEIVED grants, rather than one that gave them. Same
+   card chrome as a funder, but it does not expand — everything a peer's row is
+   worth saying fits on it, and the actionable part is the funder names. So the
+   padding lives on the card rather than on a summary it has not got. */
+.peer { padding: var(--s-4); }
+.peer-figure {
+  font-size: var(--t-sm); font-weight: 620; white-space: nowrap;
+  font-variant-numeric: tabular-nums; color: var(--ink-soft);
+}
+
 .funder-summary {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3);
   padding: var(--s-4);

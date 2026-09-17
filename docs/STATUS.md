@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,586 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 114 assertions) and `npm run walk`.
+**1,593 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 119 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -3717,6 +3717,92 @@ storage and the render were verified by inserting a review row and driving a
 browser over it, which is not the same thing. Worth naming rather than letting
 it read as covered: every fault found this week lived on a path only
 production, a browser or a screenshot exercised.
+
+## "Who got them" — the search grouped by the organisations that were funded
+
+Also asked for: *"be able to search via similar CIC's and see the past grants
+they've been awarded."* A third view on `/grants`, beside "By funder" and
+"Every grant".
+
+```
+  Old Mill Heritage Group                          typically £487,710
+  £2,861,780 across 6 grants · 6 funders · Cornwall, Derry and Strabane
+  Funded by The Cavendish Charitable Trust, The Dunmore Foundation,
+  The Ellisfield Trust, The Fernwood Charitable Trust and 2 others ·
+  2024–2026 · largest £900,780
+```
+
+### Why this is the strongest version of the question the screen is titled after
+
+A funder's grant list tells you what that funder likes. A PEER'S funder list is
+a plan: it names the next four approaches to make. "This food-bank CIC raised
+£60,000 from three trusts, and here they are" is more actionable than anything
+else on the page, and it was one `GROUP BY` away the whole time.
+
+### What is NOT claimed, and why the heading says so
+
+Not that these organisations are like yours. We hold a name, the regions their
+grants went to, the labels on them, the amounts — no sector, no size, no legal
+form. There is no similarity model and pretending there is one would be the
+same overclaim the count on this page has already been through twice.
+
+So the view states its condition instead of assuming it: *"The organisations
+that received these grants, and who funded them. If your search describes your
+own work, these are the bodies most like yours that have been paid for it."*
+Whether the search describes their work is the one part only the applicant
+knows, so it is the one part the copy asks them to supply.
+
+Third rather than first, for the same reason.
+
+### Names are the join key, and they are messy
+
+360Giving publishes a recipient id inconsistently, so the name is what there
+is. "Wells Youth Collective", "Wells Youth Collective Ltd" and "Wells Youth
+Collective C.I.C." are one body filed three times — grouping on the raw string
+would split it three ways and third every figure. The key is lowercased,
+stripped of punctuation and of one trailing legal suffix; the row displays the
+spelling used most often (`mode() WITHIN GROUP`).
+
+What that cannot do, said plainly: two different bodies with the same name
+merge into one row, a typo splits one body into two, and a second suffix
+("Trust Ltd") only loses the first. All three are visible to whoever reads the
+row, which is the best answer available while the source publishes no stable
+id. A test pins the three-spelling case.
+
+### Two small judgements in the row
+
+`percentile_cont(0.5)` rather than a mean, and only shown as "typically" when
+there is more than one grant — the same restraint `canCharacterise` applies to
+funders, for the same reason: a typical figure over one grant is not a typical
+figure. And ordering is by total raised, then by number of funders, with both
+numbers on the row so the ordering can be checked rather than trusted.
+
+## Two rig faults, and the 418 finally has a mechanism
+
+**`until curl /api/health` does not mean "the server I just started".** The
+build-and-restart ran in the background while the next command waited on
+health — which the OLD server was already answering. So a walk of the new peer
+view reported two tabs and no organisations, against the previous bundle. The
+feature was fine. Twenty minutes went into a bug that did not exist, and the
+same shape has now cost time three times: a stale session against a recreated
+database, a degenerate stub corpus, and now a stale server on the right port.
+A rig that answers is not a rig that is answering about what you changed.
+
+**And the React #418 has a concrete account at last.** The peer walk fired it
+on `/grants`, on a corpus whose load is permanently unfinished — because three
+stub funders fail every time and `isLoading` is `startedAt !== null &&
+finishedAt === null`. So that page renders the corpus-progress panel, and the
+visit itself advances the corpus through `after()`, on a `force-dynamic` page.
+The HTML and the payload the client reconciles against are rendered either side
+of that write. It explains every property: only `/grants` (the only page that
+both shows and advances corpus state), only mid-load, never on a settled
+corpus.
+
+Which surfaces a product bug behind the rig one: **a deployment with a
+publisher that always errors sits in "loading" forever**, showing the panel and
+nudging a step on every visit. That is `finishedAt` semantics in the corpus
+loader rather than anything in the search, so it is on the roadmap with the
+evidence rather than fixed in a search commit.
 
 ## Words are not worth the same, and the search now knows it
 

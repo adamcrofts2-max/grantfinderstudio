@@ -573,6 +573,24 @@ this cheque before", where no source answers "what is open".
       render — two clock readings, server and hydration, so a load straddling a
       minute tick mismatched. The page reads the clock once and passes the
       phrase down; `since()` lives in `src/domain/time/` and takes `now`
+- [x] **Group the search by who RECEIVED the grants** ("Who got them", the
+      third view on `/grants`). Asked for: "search via similar CICs and see the
+      past grants they've been awarded". Each row is an organisation with what
+      it raised, its typical and largest grant, its regions, and THE FUNDERS
+      WHO BACKED IT — which is the actionable part. Grouped on a normalised
+      name because 360Giving publishes no reliable recipient id, and the
+      heading states the condition ("if your search describes your own work")
+      rather than claiming a similarity model we have no data for
+- [ ] Let a peer row drill through to that organisation's own grants. The row
+      names its funders, which is the actionable part, but "show me those six
+      grants" needs a recipient filter in the URL and the facets
+- [ ] `finishedAt` is never set when a publisher fails every time, so
+      `isLoading` stays true forever — a deployment with one permanently
+      broken publisher shows the corpus-loading panel on every visit and
+      nudges a step each time. It is also the mechanism behind the React #418
+      below: `/grants` both renders corpus progress and advances it through
+      `after()`, on a `force-dynamic` page, so the HTML and the payload the
+      client reconciles against fall either side of that write
 - [ ] Reproduce the remaining React #418 on demand. The e2e named it:
       `/grants?q=1&text=youth`, which is `force-dynamic` over the corpus and
       starts a corpus step itself through `after()`. Three sightings, all

@@ -4,11 +4,13 @@ import {
   facetsFor,
   funderSummaries,
   recentAwards,
+  recipientSummaries,
   searchAwards,
   textSearch,
   type AwardResult,
   type Facets,
   type FunderSummary,
+  type RecipientSummary,
 } from '@/db/grants';
 import { NO_FILTERS, type GrantFilters } from '@/domain/grants/facets';
 import { readCorpusProgress, isLoading, loadFraction, type CorpusProgress } from '@/db/corpus';
@@ -51,6 +53,8 @@ export type CorpusSearch =
       facets: Facets;
       /** The same matches, grouped by who gave them. */
       funders: FunderSummary[];
+      /** And by who received them, which is the peer view. */
+      recipients: RecipientSummary[];
     }
   | { state: 'failed'; message: string };
 
@@ -150,6 +154,7 @@ export async function searchCorpus(
         funders: await funderSummaries(tx, scope, filters, {
           region: options.region ?? null,
         }),
+        recipients: await recipientSummaries(tx, scope, filters),
       };
     });
     if (result === null) {
@@ -162,10 +167,13 @@ export async function searchCorpus(
         corpus: state,
         facets: { amount: [], since: [], place: [], topic: [], total: 0, terms: [] },
         funders: [],
+        recipients: [],
       };
     }
-    const { awards, capped, facets, funders } = result;
-    return { state: 'ok', grants: found(awards), capped, corpus: state, facets, funders };
+    const { awards, capped, facets, funders, recipients } = result;
+    return {
+      state: 'ok', grants: found(awards), capped, corpus: state, facets, funders, recipients,
+    };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);
     return {

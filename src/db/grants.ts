@@ -897,6 +897,154 @@ async function funderExamples(
   return byFunder;
 }
 
+export interface RecipientSummary {
+  /** The normalised name rows were grouped on, and the row's identity. */
+  key: string;
+  /** The spelling this organisation uses most often. */
+  name: string;
+  /** Grants of theirs matching the search — not their whole funding history. */
+  matching: number;
+  totalGbp: number;
+  largestGbp: number;
+  medianGbp: number;
+  /** How many different funders backed them. The actionable number. */
+  funders: number;
+  /** A few of those funders by name, most generous first. */
+  funderNames: string[];
+  /** Where their grants went. Usually one place; occasionally several. */
+  regions: string[];
+  firstAwardedOn: string | null;
+  lastAwardedOn: string | null;
+  /** The label most often attached to their grants. */
+  commonTag: string | null;
+}
+
+/** Organisations on one screen. */
+const RECIPIENT_LIMIT = 40;
+/** Funders named inside one row before "and N more". */
+const FUNDERS_PER_ROW = 4;
+
+/**
+ * The matching grants, grouped by WHO RECEIVED THEM.
+ *
+ * ## Why this view exists
+ *
+ * Asked for: "be able to search via similar CICs and see the past grants
+ * they've been awarded." It is the strongest form of the question the whole
+ * screen is titled after — a peer's actual funder list is a template, in a way
+ * that a funder's grant list is not. "Bridgetown Food Partnership raised
+ * £41,000 from four funders, and here they are" tells a food-bank CIC exactly
+ * who to approach next.
+ *
+ * ## What "similar" can honestly mean here
+ *
+ * Not a similarity model. We hold almost nothing about a recipient: a name, the
+ * regions their grants went to, the labels on those grants, the amounts. There
+ * is no sector, no size, no legal form. So this does not claim to find
+ * organisations like yours — it groups the grants your SEARCH matched by who
+ * got them, and the screen says so: if the search describes your work, these
+ * are the bodies funded for it. The condition is stated rather than implied,
+ * because a list headed "organisations like yours" that was really "whoever
+ * turned up" would be the same overclaim as the count this search has already
+ * been through twice.
+ *
+ * ## Names are the join key, and they are messy
+ *
+ * 360Giving publishes a recipient id inconsistently, so the name is what there
+ * is. "Wells Youth Collective" and "Wells Youth Collective Ltd" are one body
+ * filed twice, so grouping on the raw string would split them and halve both
+ * their figures. The key is lowercased, stripped of punctuation and of one
+ * trailing legal suffix, and the row displays the spelling used most often.
+ *
+ * What that cannot do, said plainly: two different bodies with the same name
+ * merge into one row, a typo splits one body into two, and a second suffix
+ * ("Trust Ltd") only loses the first. All three are visible to a reader
+ * looking at the row, which is the best available answer while the source
+ * publishes no stable id.
+ */
+export async function recipientSummaries(
+  tx: Queryable,
+  text: TextSearch,
+  filters: GrantFilters,
+  options: { limit?: number } = {},
+): Promise<RecipientSummary[]> {
+  const limit = options.limit ?? RECIPIENT_LIMIT;
+  const where = buildWhere(text, filters, text.values.length);
+  const values: unknown[] = [...text.values, ...where.values, limit];
+
+  const { rows } = await tx.query<{
+    key: string;
+    name: string;
+    matching: number;
+    total_gbp: string;
+    largest_gbp: string;
+    median_gbp: string;
+    funders: number;
+    funder_names: string[] | null;
+    regions: string[] | null;
+    first_awarded_on: string | null;
+    last_awarded_on: string | null;
+    common_tag: string | null;
+  }>(
+    `WITH matched AS (
+       SELECT a.recipient_name, a.amount_gbp, a.awarded_on, a.region, a.tags,
+              a.funder_id, f.name AS funder_name,
+              -- Punctuation out first, so "C.I.C." becomes "c i c" and the
+              -- suffix pattern can see it.
+              btrim(regexp_replace(
+                regexp_replace(lower(a.recipient_name), '[^a-z0-9 ]', ' ', 'g'),
+                '\\s+(ltd|limited|plc|llp|cic|c i c|community interest company|cio|charitable incorporated organisation)\\s*$',
+                '', 'g')) AS key
+         FROM funder_awards a
+         JOIN funders f ON f.id = a.funder_id
+        WHERE ${where.sql}
+          AND a.recipient_name IS NOT NULL
+          AND btrim(a.recipient_name) <> '')
+     SELECT key,
+            mode() WITHIN GROUP (ORDER BY recipient_name)                     AS name,
+            count(*)::int                                                     AS matching,
+            sum(amount_gbp)::text                                             AS total_gbp,
+            max(amount_gbp)::text                                             AS largest_gbp,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY amount_gbp)::text     AS median_gbp,
+            count(DISTINCT funder_id)::int                                    AS funders,
+            (array_agg(DISTINCT funder_name))[1:${FUNDERS_PER_ROW}]           AS funder_names,
+            array_remove(array_agg(DISTINCT region), NULL)                     AS regions,
+            min(awarded_on)::text                                             AS first_awarded_on,
+            max(awarded_on)::text                                             AS last_awarded_on,
+            -- Correlated on the grouping key rather than aggregating the
+            -- arrays: array_agg over a text array raises on rows whose arrays
+            -- have different lengths, which is most real corpora. (No
+            -- backticks in here: this is inside a template literal.)
+            (SELECT t FROM matched m, unnest(m.tags) AS t
+              WHERE m.key = matched.key AND t <> ''
+              GROUP BY t ORDER BY count(*) DESC, t LIMIT 1)                   AS common_tag
+       FROM matched
+      WHERE key <> ''
+      GROUP BY key
+      -- Most raised first, then most funders. A body that raised more from
+      -- more places is the more instructive example, and both numbers are on
+      -- the row so the ordering can be checked.
+      ORDER BY sum(amount_gbp) DESC, count(DISTINCT funder_id) DESC, key
+      LIMIT $${values.length}`,
+    values,
+  );
+
+  return rows.map((row) => ({
+    key: row.key,
+    name: row.name,
+    matching: row.matching,
+    totalGbp: Number(row.total_gbp),
+    largestGbp: Number(row.largest_gbp),
+    medianGbp: Number(row.median_gbp),
+    funders: row.funders,
+    funderNames: row.funder_names ?? [],
+    regions: row.regions ?? [],
+    firstAwardedOn: row.first_awarded_on,
+    lastAwardedOn: row.last_awarded_on,
+    commonTag: row.common_tag,
+  }));
+}
+
 /** The most recent awards held, for a screen that nobody has typed into yet. */
 export async function recentAwards(tx: Queryable, limit = 40): Promise<AwardResult[]> {
   const { rows } = await tx.query<Row>(

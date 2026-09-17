@@ -547,6 +547,30 @@ try {
     fail(`the count is not the floored set: ${/[0-9]+ grants? close to your search/i.exec(floored)?.[0] ?? 'no count found'}`);
   } else ok('the count over the page is the floored set, not the wider one');
 
+  // --- who got them ---------------------------------------------------------
+  //
+  // Asked for: "search via similar CICs and see the past grants they've been
+  // awarded." A peer's funder list is a plan in a way a funder's grant list is
+  // not — it names the next approaches to make.
+  await page.goto(`${B}/grants?q=1&text=youth&view=peers`, { waitUntil: 'networkidle' });
+  const peers = await page.locator('body').innerText();
+  if (!/organisations? received/iu.test(peers)) {
+    fail('the by-recipient view does not say what it is showing');
+  } else ok('the search can be grouped by who received the grants');
+  const peerCards = await page.locator('.peer').all();
+  if (peerCards.length === 0) fail('no organisations in the by-recipient view');
+  else ok(`${peerCards.length} organisation${peerCards.length === 1 ? '' : 's'} grouped`);
+  // The funder names are the actionable part. A row without them is a row
+  // that tells a CIC who else got funded and not who to ask.
+  if (!/Funded by/iu.test(peers)) fail('a peer row does not name who funded them');
+  else ok('and each names the funders who backed them');
+  if (!/Wells Youth Collective/u.test(peers)) {
+    fail(`the recipient of the stub's grants is not named: ${peers.slice(0, 200)}`);
+  } else ok('and names the organisation itself');
+  // Three views, and the choice is in the URL like every other choice here.
+  if (!page.url().includes('view=peers')) fail('the view is not in the URL');
+  else ok('the third view is in the URL too');
+
   // --- a word that matches nothing says so ----------------------------------
   //
   // The most useful thing a search can tell you and the one thing it never

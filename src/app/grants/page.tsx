@@ -14,6 +14,7 @@ import { searchCorpus, type CorpusState, type FoundGrant } from './search';
 import { GrantSearchForm } from './GrantSearchForm';
 import { Narrow } from './Narrow';
 import { FunderList } from './FunderList';
+import { RecipientList } from './RecipientList';
 
 export const dynamic = 'force-dynamic';
 
@@ -169,14 +170,21 @@ export default async function GrantsPage({
    * is one tap away and unchanged — the choice is in the URL like everything
    * else on this page, so it survives the back button and can be shared.
    */
-  const view = str(params['view']) === 'grants' ? 'grants' : 'funders';
-  const viewHref = (next: 'funders' | 'grants'): string =>
+  const view =
+    str(params['view']) === 'grants'
+      ? 'grants'
+      : str(params['view']) === 'peers'
+        ? 'peers'
+        : 'funders';
+  const viewHref = (next: 'funders' | 'grants' | 'peers'): string =>
     `/grants?${new URLSearchParams({
       q: '1',
       text,
       ...filtersToParams(filters),
-      ...(next === 'grants' ? { view: 'grants' } : {}),
+      ...(next === 'funders' ? {} : { view: next }),
     }).toString()}`;
+
+  const recipients = result.state === 'ok' ? result.recipients : [];
 
   const funders =
     result.state === 'ok'
@@ -358,7 +366,9 @@ export default async function GrantsPage({
             </p>
           )}
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
-            {view === 'funders'
+            {view === 'peers'
+              ? `${count(recipients.length)} organisation${recipients.length === 1 ? '' : 's'} received ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} close to your search. Most raised first.`
+              : view === 'funders'
               ? // "grants like yours" oversold the number, and then "grants
                 // mentioning your words" undersold what the search now does.
                 // A search is ANY of your words — deliberately, so that "youth
@@ -392,6 +402,20 @@ export default async function GrantsPage({
             >
               By funder{funders.length === 0 ? '' : ` (${count(funders.length)})`}
             </a>
+            {/* WHO GOT THEM.
+                Asked for: "search via similar CICs and see the past grants
+                they've been awarded." A peer's funder list is a plan in a way
+                a funder's grant list is not. Third rather than first, because
+                it only makes sense once a search describes your own work. */}
+            <a
+              aria-selected={view === 'peers'}
+              className={view === 'peers' ? 'view view-on' : 'view'}
+              href={viewHref('peers')}
+              rel="nofollow"
+              role="tab"
+            >
+              Who got them{recipients.length === 0 ? '' : ` (${count(recipients.length)})`}
+            </a>
             <a
               aria-selected={view === 'grants'}
               className={view === 'grants' ? 'view view-on' : 'view'}
@@ -403,7 +427,9 @@ export default async function GrantsPage({
             </a>
           </div>
 
-          {view === 'funders' ? (
+          {view === 'peers' ? (
+            <RecipientList recipients={recipients} />
+          ) : view === 'funders' ? (
             <FunderList
               context={{
                 region,

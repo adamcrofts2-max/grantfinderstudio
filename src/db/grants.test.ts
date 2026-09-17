@@ -15,6 +15,7 @@ import {
   facetsFor,
   funderSummaries,
   recentAwards,
+  recipientSummaries,
   searchAwards,
   textSearch,
   type TextSearch,
@@ -897,5 +898,115 @@ describe('grouping the matches by who gave them', () => {
 
   it('returns nothing for an empty search rather than the whole corpus', async () => {
     expect(await textSearch(tx(), [])).toBeNull();
+  });
+});
+
+describe('grouping the matches by who received them', () => {
+  /**
+   * Asked for: "search via similar CICs and see the past grants they've been
+   * awarded." A peer's funder list is a template in a way a funder's grant
+   * list is not.
+   */
+  beforeEach(async () => {
+    await harness.db.exec(`
+      -- Both, in this block. The second funder is created by the by-funder
+      -- block's own setup, which does not run for this one: a test that needs
+      -- more data adds it where it needs it.
+      INSERT INTO funders (id, name, source_dataset_id)
+      VALUES ('funder_360g_GB-CHC-2', 'The Second Trust', 'ds_x'),
+             ('funder_360g_GB-CHC-3', 'The Third Trust', 'ds_x');
+
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES
+        -- One body, three spellings, three different funders. Grouping on the
+        -- raw name would split it three ways and third every figure.
+        ('rc_1', 'funder_360g_GB-CHC-1', 'Bridgetown Food Partnership', 10000,
+         '2025-01-10', 'Somerset', ARRAY['Food poverty'], 'ds_x',
+         'Food pantry', 'A weekly food pantry'),
+        ('rc_2', 'funder_360g_GB-CHC-2', 'Bridgetown Food Partnership Ltd', 20000,
+         '2025-06-10', 'Somerset', ARRAY['Food poverty'], 'ds_x',
+         'Food pantry expansion', 'A weekly food pantry'),
+        ('rc_3', 'funder_360g_GB-CHC-3', 'Bridgetown Food Partnership C.I.C.', 30000,
+         '2026-02-10', 'Somerset', ARRAY['Homelessness'], 'ds_x',
+         'Food pantry staffing', 'A weekly food pantry'),
+        -- A smaller body, so the ordering has something to order.
+        ('rc_4', 'funder_360g_GB-CHC-1', 'Moorside Larder', 4000,
+         '2025-03-10', 'Devon', ARRAY['Food poverty'], 'ds_x',
+         'Food pantry pilot', 'A weekly food pantry');
+    `);
+  });
+
+  it('gathers one organisation’s grants under one row, however it is spelt', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['pantry']), NO_FILTERS);
+    const bridgetown = rows.find((r) => r.name.startsWith('Bridgetown'));
+    expect(bridgetown?.matching).toBe(3);
+    expect(bridgetown?.totalGbp).toBe(60_000);
+    // Three funders, which is the number a peer's history is actually worth
+    // reading for.
+    expect(bridgetown?.funders).toBe(3);
+    expect(bridgetown?.funderNames.toSorted()).toEqual([
+      'The Second Trust', 'The Test Trust', 'The Third Trust',
+    ]);
+  });
+
+  it('shows the spelling they use, not the normalised key', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['pantry']), NO_FILTERS);
+    const bridgetown = rows.find((r) => r.key.includes('bridgetown'));
+    expect(bridgetown?.key).toBe('bridgetown food partnership');
+    expect(bridgetown?.name).toMatch(/^Bridgetown Food Partnership/u);
+  });
+
+  it('reports what they raised, their largest and their typical grant', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['pantry']), NO_FILTERS);
+    const bridgetown = rows.find((r) => r.name.startsWith('Bridgetown'));
+    expect(bridgetown?.largestGbp).toBe(30_000);
+    expect(bridgetown?.medianGbp).toBe(20_000);
+    expect(bridgetown?.firstAwardedOn).toBe('2025-01-10');
+    expect(bridgetown?.lastAwardedOn).toBe('2026-02-10');
+    expect(bridgetown?.regions).toEqual(['Somerset']);
+    expect(bridgetown?.commonTag).toBe('Food poverty');
+  });
+
+  it('puts the organisation that raised the most first', async () => {
+    const rows = await recipientSummaries(tx(), await scope(['pantry']), NO_FILTERS);
+    expect(rows[0]?.name).toMatch(/^Bridgetown/u);
+    expect(rows.at(-1)?.name).toBe('Moorside Larder');
+  });
+
+  it('describes the MATCHING grants, not their whole history', async () => {
+    // "Food pantry staffing" is the only one mentioning staffing, so this
+    // organisation's row must describe that grant alone — the same rule the
+    // by-funder view follows, and the reason both say "matching".
+    const rows = await recipientSummaries(tx(), await scope(['staffing']), NO_FILTERS);
+    const bridgetown = rows.find((r) => r.name.startsWith('Bridgetown'));
+    expect(bridgetown?.matching).toBe(1);
+    expect(bridgetown?.totalGbp).toBe(30_000);
+    expect(bridgetown?.funders).toBe(1);
+  });
+
+  it('respects the filters, so a narrowed search groups the narrowed set', async () => {
+    const rows = await recipientSummaries(
+      tx(),
+      await scope(['pantry']),
+      filters({ places: ['Somerset'] }),
+    );
+    expect(rows.map((r) => r.name.slice(0, 10))).toEqual(['Bridgetown']);
+  });
+
+  it('leaves out a grant with no recipient named', async () => {
+    await harness.db.exec(`
+      INSERT INTO funder_awards
+        (id, funder_id, recipient_name, amount_gbp, awarded_on, region, tags,
+         source_dataset_id, title, description)
+      VALUES ('rc_anon', 'funder_360g_GB-CHC-1', NULL, 9000, '2025-04-10',
+              'Kent', ARRAY['Food poverty'], 'ds_x', 'Food pantry grant',
+              'A weekly food pantry');
+    `);
+    const rows = await recipientSummaries(tx(), await scope(['pantry']), NO_FILTERS);
+    // A row headed by nothing is not an organisation anybody can look up.
+    expect(rows.every((r) => r.name.trim() !== '')).toBe(true);
+    expect(rows.reduce((n, r) => n + r.matching, 0)).toBe(4);
   });
 });
