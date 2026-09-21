@@ -20,6 +20,10 @@
  *
  * ## What it is not
  *
+ * One publisher cannot be read at all and one falls over on its second page,
+ * because both are ordinary and the corpus has to account for each of them
+ * differently.
+ *
  * It is not real data and it is not a fixture for assertions — `npm run e2e`
  * carries its own tiny stub for that, where five grants with known text are
  * what makes a failure legible. This one exists so that a human walking the
@@ -34,6 +38,7 @@
  *   node scripts/stub-360giving.mjs            # serve on 4599
  *   node scripts/stub-360giving.mjs --port 4610
  *   node scripts/stub-360giving.mjs --slow 400 # a load slow enough to watch
+ *   node scripts/stub-360giving.mjs --heal     # no publisher falls over
  *   node scripts/stub-360giving.mjs --print    # the corpus, as statistics
  *
  * Then point the product at it:
@@ -363,9 +368,23 @@ const FUNDERS = [
     themes: ['green_skills', 'community_woodland'],
     regions: ['Somerset', 'Devon', 'Gloucestershire'],
   },
-  // A publisher that cannot be read, so the console has a failure to account
-  // for and "42 of 42 funders read" cannot quietly mean "we have all of it".
+  // A publisher that cannot be read at all, so the console has a failure to
+  // account for and "42 of 42 funders read" cannot quietly mean "we have all
+  // of it".
   { id: 'GB-CHC-1190999', name: 'Silent Trust (unreadable)', grants: 0, broken: true },
+  // And one that serves its first page and then falls over, which is what a
+  // publisher with hundreds of pages actually does on a bad day. Its grants
+  // before the break have to be KEPT: losing a funder's whole record to one
+  // 502 cost 45% of a corpus once.
+  {
+    id: 'GB-CHC-1190998',
+    name: 'Halfway House Foundation',
+    grants: 120,
+    band: [4_000, 40_000],
+    themes: ['tree_nursery', 'community_woodland', 'green_skills'],
+    regions: ['Somerset', 'Devon'],
+    failsAfterPage: 1,
+  },
 ];
 
 /** Three years back from a fixed date, so a run is reproducible. */
@@ -513,7 +532,7 @@ function report() {
  * it. `--slow 400` makes a thirteen-publisher walk take long enough to hold a
  * page open during it.
  */
-function serve(port, slowMs = 0) {
+function serve(port, slowMs = 0, heal = false) {
   const api = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://stub');
     response.setHeader('content-type', 'application/json');
@@ -556,6 +575,12 @@ function serve(port, slowMs = 0) {
       const grants = CORPUS.get(id) ?? [];
       const offset = Number(url.searchParams.get('offset') ?? '0');
       const limit = Math.min(Number(url.searchParams.get('limit') ?? '50'), 100);
+      if (!heal && funder?.failsAfterPage !== undefined && offset >= funder.failsAfterPage * limit) {
+        // Their end, part way through. The pages already served stand.
+        response.statusCode = 503;
+        response.end(JSON.stringify({ detail: 'this publisher fell over mid-walk' }));
+        return;
+      }
       const page = grants.slice(offset, offset + limit);
       const more = offset + limit < grants.length;
       response.end(
@@ -593,5 +618,9 @@ if (args.includes('--print')) {
   serve(
     at === -1 ? 4599 : Number(args[at + 1]),
     slow === -1 ? 0 : Number(args[slow + 1]),
+    // `--heal` serves every page of the publisher that normally falls over,
+    // so a walk can be shown NOT replacing a full record with a cut-short
+    // one: load healthy, break it, and the held grants stand.
+    args.includes('--heal'),
   );
 }

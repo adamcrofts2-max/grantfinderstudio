@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,728 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,733 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5159,3 +5159,51 @@ back and this reasoning has to be redone.
 evidence is that the mechanism explains every sighting and every failure to
 provoke one, plus consecutive clean e2e runs afterwards. If it comes back, the
 next suspect is on the roadmap with it.
+
+## One bad page no longer costs a publisher's whole record
+
+The ingester walked a funder's pages and any error — a 502 on page seven, a
+malformed body, a pagination link pointing elsewhere — propagated out of the
+walk. The caller counted the publisher unreadable and wrote nothing, so the
+pages already fetched went in the bin. On a local corpus that lost three
+publishers of thirteen and 45% of the grants to one bad link; on 360Giving's
+real data, where an active funder has hundreds of pages, any single flaky
+response costs that funder entirely.
+
+Now a failure after the first page stops the walk and reports itself —
+`truncated` was already the word for "we stopped before the data ran out",
+and `stoppedBy` says what stopped us. **The first page still throws**, and
+that distinction is the point: nothing was read, so there is nothing to keep,
+and the operator needs to tell "gave us nothing" apart from "gave us most of
+it".
+
+### The replace-or-merge question, answered by a count
+
+`replaceFunderAwards` deletes a funder's rows and writes what it is given,
+which is right for a complete read and dangerous for a cut-short one. The rule:
+
+> A partial read may fill an empty shelf. It never replaces a fuller one.
+
+The count is the honest comparison — the three-year window means neither set
+is the publisher's whole record, so size is all there is to go on. The funder
+row and the licence are written either way, because the name we just read is
+current whatever happened to the pages.
+
+### Shown in the running product, not just in tests
+
+The stub grew a publisher that serves its first page and then 503s — ordinary
+behaviour, and now exercised on every load:
+
+```
+load (broken)  → Halfway House Foundation: 48 grants kept   (was: 0, publisher lost)
+                 truncated 1 · failed 2 · "Kept the 1 page read before that."
+load (healthy) → 117 grants
+load (broken)  → 117 grants still, awardsWritten 0
+                 "Kept the 117 grants already held, which is more than the 48
+                  this cut-short read returned."
+```
+
+A cut-short publisher is counted twice on purpose — under "records cut short"
+because the record is incomplete, and under "could not be read" because an
+operator re-fetching that list should find them. The console says so rather
+than letting one funder look like two.

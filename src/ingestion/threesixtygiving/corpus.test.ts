@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { advanceCorpus } from './corpus.js';
 import type { HttpClient } from './connector.js';
+import { countFunderAwards, funderIdFor360Giving } from '../../db/awards.js';
 import { claimCorpusStep, readCorpusProgress, startCorpusLoad } from '../../db/corpus.js';
 import { searchAwards, textSearch } from '../../db/grants.js';
 import { createTestDatabase, type TestDatabase } from '../../db/testing/harness.js';
@@ -82,8 +83,16 @@ interface FakeOptions {
   enormous?: string[];
   /** Funders whose grants state no licence. */
   unlicensed?: string[];
-  /** Funders whose grant fetch throws. */
+  /** Funders whose grant fetch throws on the very first page. */
   broken?: string[];
+  /**
+   * Funders who serve one good page and then fail.
+   *
+   * The commonest real failure on a publisher with hundreds of pages, and the
+   * one that used to cost their whole record: the error propagated out of the
+   * walk and the rows already read were discarded with it.
+   */
+  failsMidWalk?: string[];
   /**
    * Funders who publish one recent grant and one from a decade ago.
    *
@@ -127,6 +136,19 @@ function fakeApi(options: FakeOptions): { http: HttpClient; asked: string[] } {
           const old = grantRow(`${orgId}-old`, orgId);
           old.data.awardDate = '2015-05-01';
           return { count: 2, next: null, results: [recent, old] };
+        }
+        if (options.failsMidWalk?.includes(orgId)) {
+          const offset = Number(parsed.searchParams.get('offset') ?? '0');
+          if (offset > 0) throw new Error(`${orgId} fell over on page two`);
+          return {
+            count: 4,
+            next: `${BASE}org/${encodeURIComponent(orgId)}/grants_made/?offset=1`,
+            results: [
+              grantRow(`${orgId}-a`, orgId),
+              grantRow(`${orgId}-b`, orgId),
+              grantRow(`${orgId}-c`, orgId),
+            ],
+          };
         }
         if (options.enormous?.includes(orgId)) {
           // A `next` that never runs out, which is what a publisher with tens
@@ -567,5 +589,112 @@ describe('progress after a restart clears the counters it should', () => {
 
     await runInTransaction((tx) => startCorpusLoad(tx));
     expect((await runInTransaction((tx) => readCorpusProgress(tx))).fundersTruncated).toBe(0);
+  });
+});
+
+/**
+ * A publisher whose walk stops part way through.
+ *
+ * The commonest real failure: a funder with hundreds of pages, one of which
+ * 502s. Everything read before it used to be discarded with the error, so the
+ * publisher landed in "could not be read" with no record at all — which on a
+ * local corpus cost three publishers of thirteen and 45% of the grants, to one
+ * bad pagination link.
+ */
+describe('a walk their end cut short', () => {
+  const held = async (orgId: string): Promise<number> =>
+    runInTransaction((tx) =>
+      countFunderAwards(tx, funderIdFor360Giving(orgId)),
+    );
+
+  it('keeps the pages that were read', async () => {
+    const { http } = fakeApi({
+      funders: ['GB-CHC-PART'],
+      failsMidWalk: ['GB-CHC-PART'],
+    });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.awardsWritten).toBe(3);
+    expect(await held('GB-CHC-PART')).toBe(3);
+  });
+
+  it('counts it short AND counts it failed, and says both', async () => {
+    // Short because the record is incomplete; failed because an operator
+    // re-fetching "could not be read" should find them. And the message says
+    // what was kept, so the row is not read as "gave us nothing".
+    const { http } = fakeApi({
+      funders: ['GB-CHC-PART'],
+      failsMidWalk: ['GB-CHC-PART'],
+    });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.truncated).toBe(1);
+    expect(result.failedOrgIds).toEqual(['GB-CHC-PART']);
+    expect(result.error).toMatch(/fell over on page two/u);
+    expect(result.error).toMatch(/Kept the 1 page read before that/u);
+  });
+
+  it('does not stop the walk reaching the funders after it', async () => {
+    const { http } = fakeApi({
+      funders: ['GB-CHC-PART', 'GB-CHC-2', 'GB-CHC-3'],
+      failsMidWalk: ['GB-CHC-PART'],
+    });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.walked).toBe(3);
+    expect(result.finished).toBe(true);
+    expect(await held('GB-CHC-2')).toBe(1);
+  });
+
+  it('will not replace a fuller record with a cut-short one', async () => {
+    // A publisher who gave us everything last week must not be reduced to
+    // three grants by a walk that fell over this morning.
+    const whole = fakeApi({ funders: ['GB-CHC-PART'] });
+    await advanceCorpus(whole.http, runInTransaction, { baseUrl: BASE });
+    await runInTransaction((tx) => startCorpusLoad(tx));
+    await harness.db.exec(
+      `UPDATE funder_awards SET id = id || '_x' WHERE funder_id = '${funderIdFor360Giving('GB-CHC-PART')}';`,
+    );
+    // Give them a record fuller than the partial read will return.
+    for (const n of [1, 2, 3, 4, 5]) {
+      await harness.db.exec(
+        `INSERT INTO funder_awards (id, funder_id, recipient_name, amount_gbp, awarded_on,
+                                    region, tags, source_dataset_id)
+         SELECT 'extra_${n}', funder_id, recipient_name, amount_gbp, awarded_on,
+                region, tags, source_dataset_id
+           FROM funder_awards
+          WHERE funder_id = '${funderIdFor360Giving('GB-CHC-PART')}'
+          LIMIT 1;`,
+      );
+    }
+    const before = await held('GB-CHC-PART');
+    expect(before).toBeGreaterThan(3);
+
+    const cutShort = fakeApi({
+      funders: ['GB-CHC-PART'],
+      failsMidWalk: ['GB-CHC-PART'],
+    });
+    const result = await advanceCorpus(cutShort.http, runInTransaction, { baseUrl: BASE });
+
+    expect(await held('GB-CHC-PART')).toBe(before);
+    expect(result.awardsWritten).toBe(0);
+    expect(result.error).toMatch(/Kept the \d+ grants already held/u);
+    // Still counted as short and failed: the record IS incomplete, whichever
+    // copy of it we chose to keep.
+    expect(result.truncated).toBe(1);
+    expect(result.failedOrgIds).toEqual(['GB-CHC-PART']);
+  });
+
+  it('still refuses a publisher whose FIRST page fails, with nothing kept', async () => {
+    // Nothing was read, so there is nothing to keep, and "could not be read"
+    // is exactly what happened. The distinction matters: one of these has a
+    // partial record and the other has none.
+    const { http } = fakeApi({ funders: ['GB-CHC-BAD'], broken: ['GB-CHC-BAD'] });
+    const result = await advanceCorpus(http, runInTransaction, { baseUrl: BASE });
+
+    expect(result.awardsWritten).toBe(0);
+    expect(result.truncated).toBe(0);
+    expect(result.failedOrgIds).toEqual(['GB-CHC-BAD']);
+    expect(await held('GB-CHC-BAD')).toBe(0);
   });
 });

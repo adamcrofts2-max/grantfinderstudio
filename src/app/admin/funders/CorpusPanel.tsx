@@ -94,13 +94,23 @@ export function CorpusPanel({
           <dd>{count(progress.fundersUnlicensed)}</dd>
         </div>
         <div>
-          {/* Never silent again. A funder cut short by the page cap has a
-              record we KNOW is incomplete, and every figure drawn from it —
-              the median, the quartiles, the range — is wrong. */}
+          {/* Never silent again. A funder whose record we KNOW is incomplete
+              makes every figure drawn from it — the median, the quartiles,
+              the range — wrong.
+
+              TWO CAUSES, one counter. Our page cap stops some publishers;
+              others stop themselves, a page part way through failing. Both
+              leave a partial record, which is what this number is about, and
+              the second kind is also counted under "could not be read"
+              because an operator re-fetching that list should find them. So
+              the copy names both rather than leaving one funder looking like
+              two. */}
           <dt>Records cut short</dt>
           <dd>
             {count(progress.fundersTruncated)}
-            {progress.fundersTruncated === 0 ? '' : ' — more grants than we fetch per funder'}
+            {progress.fundersTruncated === 0
+              ? ''
+              : ' — more grants than we fetch per funder, or a page of theirs that failed'}
           </dd>
         </div>
         <div>
@@ -113,6 +123,13 @@ export function CorpusPanel({
             {progress.failedOrgIds.length === 0
               ? ''
               : ` — most recently ${progress.failedOrgIds.slice(0, 3).join(', ')}`}
+            {/* Some of these have part of their record, some none: a
+                publisher who failed on page one gave us nothing, one who
+                failed on page seven gave us six pages. The last problem
+                below says which, and says what was kept. */}
+            {progress.fundersTruncated === 0 || progress.fundersFailed === 0
+              ? ''
+              : '. Some of them gave us part of their record — see below'}
           </dd>
         </div>
         <div>

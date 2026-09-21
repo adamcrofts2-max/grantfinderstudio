@@ -90,6 +90,25 @@ export async function upsertFunder(tx: Queryable, funder: IngestedFunder): Promi
  * part way through leaves the previous data intact rather than a funder with
  * no awards at all.
  */
+/**
+ * How many awards we currently hold for one funder.
+ *
+ * For the one decision a partial read needs: whether writing it would be an
+ * improvement or a loss. A publisher whose walk stopped on page seven has
+ * something worth keeping when the shelf is empty, and nothing worth keeping
+ * if the shelf already holds a fuller record from a walk that finished.
+ */
+export async function countFunderAwards(
+  tx: Queryable,
+  funderId: string,
+): Promise<number> {
+  const { rows } = await tx.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM funder_awards WHERE funder_id = $1',
+    [funderId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
 export async function replaceFunderAwards(
   tx: Queryable,
   funderId: string,

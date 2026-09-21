@@ -52,6 +52,7 @@ import { ThreeSixtyGivingConnector, IngestionError, type HttpClient } from './co
 import { datasetIdFor } from './ingest.js';
 import type { SourceDataset } from './types.js';
 import {
+  countFunderAwards,
   funderIdFor360Giving,
   replaceFunderAwards,
   upsertFunder,
@@ -254,6 +255,19 @@ export async function advanceCorpus(
         // truncated and unlicensed and the record is incomplete either way.
         if (fetched.truncated) truncated += 1;
 
+        /**
+         * A walk their end cut short, rather than our page cap.
+         *
+         * Counted as a failure as well as truncated — an operator re-fetching
+         * "could not be read" should find them — and the message names the
+         * partial record so the row is not mistaken for a publisher who gave
+         * us nothing.
+         */
+        if (fetched.stoppedBy !== null) {
+          failedOrgIds.push(funder.orgId);
+          error = `${funder.orgId}: ${fetched.stoppedBy.message} Kept the ${fetched.pagesFetched} page${fetched.pagesFetched === 1 ? '' : 's'} read before that.`;
+        }
+
         if (fetched.licence === null) {
           // No licence stated, so nothing is stored. Counted, not hidden: a
           // rule that silently drops part of the corpus is one nobody can
@@ -292,6 +306,33 @@ export async function advanceCorpus(
             jurisdiction: null,
             sourceDatasetId: dataset.id,
           });
+
+          /**
+           * A PARTIAL READ MAY FILL AN EMPTY SHELF, NOT REPLACE A FULL ONE.
+           *
+           * `replaceFunderAwards` deletes the funder's rows and writes what it
+           * is given, which is right for a complete read and dangerous for a
+           * cut-short one: a publisher who gave us 40 of their 900 grants this
+           * morning must not overwrite the 900 a finished walk stored last
+           * week. The count is the honest proxy for "is this at least as good
+           * as what we hold" — the window means neither set is the publisher's
+           * whole record, so there is nothing better to compare than size.
+           *
+           * The funder row and the dataset above are written either way: the
+           * name and the licence we just read are current whatever happened to
+           * the pages.
+           */
+          if (fetched.stoppedBy !== null) {
+            const held = await countFunderAwards(tx, funderId);
+            if (recent.kept.length < held) {
+              error =
+                `${funder.orgId}: ${fetched.stoppedBy.message} Kept the ${held} grants ` +
+                `already held, which is more than the ${recent.kept.length} this ` +
+                `cut-short read returned.`;
+              return 0;
+            }
+          }
+
           return replaceFunderAwards(tx, funderId, recent.kept, dataset.id);
         });
       } catch (caught) {

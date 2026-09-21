@@ -309,13 +309,18 @@ export class ThreeSixtyGivingConnector {
     funderName: string | null;
     pagesFetched: number;
     truncated: boolean;
+    /**
+     * Why the walk stopped short, when it was their end rather than our page
+     * cap. Null when the record is whole, or when the cap is what stopped it.
+     */
+    stoppedBy: Error | null;
   }> {
     if (funderId.trim() === '') throw new IngestionError('A funder id is required.');
     const start = new URL(
       `org/${encodeURIComponent(funderId)}/grants_made/`,
       this.baseUrl,
     ).toString();
-    const { rows, pagesFetched, truncated } = await this.walkGrants(start);
+    const { rows, pagesFetched, truncated, stoppedBy } = await this.walkGrants(start);
     const { awards, rejected } = normaliseGrants(rows.map((row) => row.raw));
     // The first row that states one. A publisher's licence is per source file,
     // so every grant of theirs carries the same; taking the first that has one
@@ -329,35 +334,89 @@ export class ThreeSixtyGivingConnector {
       funderName: rows.find((row) => row.funderName !== null)?.funderName ?? null,
       pagesFetched,
       truncated,
+      stoppedBy,
     };
   }
 
-  /** Follow pagination from one address, reading every row the same way. */
-  private async walkGrants(
-    start: string,
-  ): Promise<{ rows: CorpusGrant[]; pagesFetched: number; truncated: boolean }> {
+  /**
+   * Follow pagination from one address, reading every row the same way.
+   *
+   * ## A page that fails does not throw away the pages that worked
+   *
+   * It used to. Any error — a 502 on page seven, a malformed body, a
+   * pagination link pointing somewhere else — propagated out of here, and the
+   * caller counted the whole publisher as unreadable and wrote nothing. On a
+   * local corpus that lost three publishers of thirteen, 45% of the grants,
+   * to one bad link; on 360Giving's real data, where an active funder has
+   * hundreds of pages, it means any single flaky response costs that funder
+   * entirely, and they land in "could not be read" with no partial record at
+   * all.
+   *
+   * So a failure AFTER the first page stops the walk and reports itself:
+   * `truncated` is already the word for "we stopped before the data ran out",
+   * and `stoppedBy` says what stopped us. The rows read so far are returned.
+   *
+   * The FIRST page is different and still throws. Nothing was read, so there
+   * is nothing to keep, and "this publisher could not be read" is exactly
+   * what happened — the caller needs to be able to tell that apart from a
+   * publisher who gave us most of their record.
+   */
+  private async walkGrants(start: string): Promise<{
+    rows: CorpusGrant[];
+    pagesFetched: number;
+    truncated: boolean;
+    stoppedBy: Error | null;
+  }> {
     const rows: CorpusGrant[] = [];
     let url: string | null = start;
     let pagesFetched = 0;
     let truncated = false;
+    let stoppedBy: Error | null = null;
 
     while (url !== null) {
       if (pagesFetched >= this.maxPages) {
         truncated = true;
         break;
       }
-      // eslint-disable-next-line no-await-in-loop
-      const payload: unknown = await this.http.getJson(url);
-      const { grants, next } = readPage(payload);
-      for (const entry of grants) {
+      let payload: unknown;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        payload = await this.http.getJson(url);
+      } catch (caught) {
+        if (pagesFetched === 0) throw caught;
+        truncated = true;
+        stoppedBy = caught instanceof Error ? caught : new Error(String(caught));
+        break;
+      }
+
+      let page: { grants: RawGrant[]; next: string | null };
+      try {
+        page = readPage(payload);
+        // The link is validated here rather than at the top of the next turn,
+        // so a bad one is caught by the same guard as a bad body.
+        page = {
+          grants: page.grants,
+          next:
+            page.next === null
+              ? null
+              : assertSameOrigin(page.next, this.baseUrl).toString(),
+        };
+      } catch (caught) {
+        if (pagesFetched === 0) throw caught;
+        truncated = true;
+        stoppedBy = caught instanceof Error ? caught : new Error(String(caught));
+        break;
+      }
+
+      for (const entry of page.grants) {
         const row = readGrantRow(entry);
         if (row !== null) rows.push(row);
       }
       pagesFetched += 1;
-      url = next === null ? null : assertSameOrigin(next, this.baseUrl).toString();
+      url = page.next;
     }
 
-    return { rows, pagesFetched, truncated };
+    return { rows, pagesFetched, truncated, stoppedBy };
   }
 
   /**

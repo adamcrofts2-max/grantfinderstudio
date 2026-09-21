@@ -749,11 +749,16 @@ this cheque before", where no source answers "what is open".
 - [x] Recency chips narrowed to 1 and 2 years, both inside the window. A
       five-year chip would have selected the whole corpus and read as a filter
       that does nothing, which teaches people the counts are decoration
-- [ ] A publisher whose page 137 fails writes NOTHING, discarding the 136
-      pages already read. Defensible on a re-walk — a partial set would replace
-      a complete one — and wrong on a first load, where there is nothing to
-      preserve and the corpus simply loses a publisher. Needs the
-      replace-versus-merge decision, not a quick patch
+- [x] **A publisher whose page 137 fails keeps the 136 pages already read.**
+      The error used to propagate out of the walk and take the rows with it,
+      so one 502 cost a funder's entire record and put them in "could not be
+      read" with nothing to show. Now a failure AFTER the first page stops the
+      walk, marks it truncated and reports what stopped it; the first page
+      still throws, because nothing was read and "could not be read" is then
+      exactly what happened. The replace-versus-merge question is answered by
+      a count: a cut-short read may fill an empty shelf but never replaces a
+      fuller record — demonstrated live, a healthy walk storing 117 grants and
+      a broken re-walk keeping them rather than dropping to 48
 - [ ] Readiness reads 83% on an application with one of three questions
       answered. The average is over the parts that apply, and three of the four
       counted parts were fully satisfiable without writing anything: budget,
