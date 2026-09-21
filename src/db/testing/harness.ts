@@ -134,6 +134,15 @@ async function seedFixtures(db: PGlite): Promise<void> {
       ('aud_a', '${ORG_A}', 'user_a', 'answer.saved', 'answer', 'q_a', 'app_a'),
       ('aud_b', '${ORG_B}', 'user_b', 'answer.saved', 'answer', 'q_b', 'app_b');
 
+    -- One share each. The table holds the one key that lets somebody outside
+    -- the organisation read its work, so "a tenant sees only its own rows" is
+    -- asserted here rather than assumed from the policy.
+    INSERT INTO application_shares
+      (id, organisation_id, application_id, token_hash, reviewer_name, expires_at)
+    VALUES
+      ('shr_a', '${ORG_A}', 'app_a', 'hash_a', 'Alpha reviewer', now() + interval '14 days'),
+      ('shr_b', '${ORG_B}', 'app_b', 'hash_b', 'Beta reviewer',  now() + interval '14 days');
+
     INSERT INTO source_datasets
       (id, name, publisher, licence, attribution, retrieved_at)
     VALUES

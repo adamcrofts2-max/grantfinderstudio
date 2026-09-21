@@ -211,14 +211,36 @@ marketplace built first is a bet; built last it is an obvious extension.
       `application_id` as a column so a reviewer given one application cannot
       be shown the organisation's others. Read on the application page, folded
       away, newest first
-- [ ] Share an application read-only for review: answers, the evidence behind
-      every claim, unsupported-claim flags, the eligibility verdict
+- [x] **Share an application read-only for review** (migrations 0023/0024,
+      `src/db/shares.ts`, `/review/[token]`). The reviewer's page carries the
+      four things named here — the answers, the fact behind each claim, the
+      unsupported-claim flags, and the eligibility verdict phrased for a
+      reader rather than for the applicant. It shows nothing else of the
+      organisation: not its other applications, not its fact base, not its
+      documents, and it carries no form, so a leaked link can only read the
+      one application it names
+- [x] **Scoped, time-boxed, revocable, audited access.** One application. An
+      expiry required by the column as well as the form, chosen from 7/14/30
+      days with no "never". Withdrawal in one click, taking effect on the next
+      request, keeping the row as the applicant's own record. And every read
+      recorded: on the share row every time, in the audit trail once per visit
+      so a reviewer refreshing cannot push the application's own history off
+      the screen. Only the token's SHA-256 is stored, so the table is not a set
+      of working links and a lost link is replaced rather than recovered —
+      which the panel says. 0024 is the other half: `FORCE ROW LEVEL SECURITY`
+      binds the table owner too, so a reviewer's lookup reads the one row whose
+      token it is holding, by putting that hash in `app.share_token_hash` for
+      one transaction, and nothing else
 - [ ] Structured comments a reviewer can leave against a specific answer
-- [ ] Scoped, time-boxed, revocable, audited access — a named outsider reading
-      tenant data is a deliberate GDPR processor relationship, not a toggle
 - [ ] Decide whether a reviewer's sign-off is recorded as provenance or stays
       advisory (leaning: recorded — a reviewer's judgement is the strongest
       provenance the product could carry)
+- [ ] Show the reviewer what has happened to the application, as the applicant
+      sees it. The trail is already selectable by application and already
+      tenant-scoped; what stops it is that its actor column says "by you" or
+      "by a colleague", and a reviewer is neither
+- [ ] Let the applicant extend a live share rather than withdraw it and make
+      another (the second link is a second thing to keep track of)
 
 **Step 3 — curated referral (revenue, no platform liability)**
 - [ ] A short list of vetted bid writers; they contract directly with the CIC

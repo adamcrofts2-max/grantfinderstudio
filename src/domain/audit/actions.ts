@@ -52,6 +52,13 @@ export const AUDIT_ACTIONS = {
   // Review
   'review.read': 'Application read by the critic',
 
+  // Sharing it read-only with somebody outside the organisation. All three
+  // are here because the share is only lawful if it is audited: who was given
+  // access, when it was taken away, and every visit they made.
+  'share.created': 'Shared read-only for review',
+  'share.revoked': 'Review link withdrawn',
+  'share.viewed': 'Read by the reviewer',
+
   // The organisation's own record
   'fact.added': 'Fact added',
   'fact.confirmed': 'Fact confirmed',
@@ -178,6 +185,28 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
     }
     case 'document.uploaded':
       return str('filename') ?? '';
+    case 'share.created': {
+      // The reviewer's name as the APPLICANT WROTE IT — their own label for
+      // their own share, so that "withdrawn" three lines later is legible as
+      // being about the same person. Not an address and not verified.
+      const who = str('reviewerName');
+      const days = num('days');
+      return [who, days === null ? null : `${days} days`]
+        .filter((part) => part !== null)
+        .join(' · ');
+    }
+    case 'share.revoked':
+      return str('reviewerName') ?? '';
+    case 'share.viewed': {
+      const who = str('reviewerName');
+      const visit = num('visit');
+      // "Read by the reviewer · Jan, our treasurer" on the first visit, and
+      // the visit number after that — a reviewer who came back is a different
+      // fact from one who read it once.
+      return [who, visit === null || visit <= 1 ? null : `visit ${visit}`]
+        .filter((part) => part !== null)
+        .join(' · ');
+    }
     default:
       return '';
   }

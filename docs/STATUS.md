@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-17
+**Last updated:** 2026-09-21
 
 ## What exists
 
-**1,603 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
+**1,644 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -4688,3 +4688,115 @@ fault, not the product's: it draws from fifteen work descriptions, so most
 grants really are near-identical. Real 360Giving prose would spread much
 further. Worth saying rather than claiming resolution the measurement does not
 show.
+
+## Showing it to somebody, without giving them an account
+
+Phase 9 Step 2. The roadmap's own bar, and the reason it is not a toggle: *a
+named outsider reading tenant data is a deliberate GDPR processor
+relationship*. So the share is scoped to one application, time-boxed with no
+"never expires", revocable in one click, and audited — which is why the audit
+trail was built first.
+
+`/review/[token]` is the only page in the product with no session. Everywhere
+else `requireOrganisationId()` is the gate; here the TOKEN establishes the
+tenant, so exactly one query runs on the owner connection — `resolveShare`,
+which turns a hash into an organisation and an application id and nothing
+else — and every read afterwards goes through `withTenant` with the
+organisation that token named. A reviewer sits inside the same policy a member
+does; only the way the organisation was established differs.
+
+What it shows is the four things the roadmap names: the answers, the fact
+behind each claim, the unsupported-claim flags, and the eligibility verdict.
+What it does not show is the organisation's other applications, its fact base
+as a whole, its documents or its tracker — and it carries no form at all, so
+a leaked link can read one application and do nothing.
+
+### The fault only a walk could find
+
+Every valid link answered **404**, and 1,640 unit tests were green.
+
+0023 put `FORCE ROW LEVEL SECURITY` on `application_shares`, which is right —
+and which binds the TABLE OWNER, the role the admin connection runs as. So the
+one query that has to run before any tenant context exists matched zero rows:
+the policy asks for `app.organisation_id`, and a reviewer arriving with a link
+has none. The tests could not see it because they connect as a superuser, and a
+superuser bypasses RLS entirely.
+
+The repairs that suggest themselves are all worse than the problem. Dropping
+FORCE exempts the owner from every policy on the table holding the one key
+that lets an outsider in. A `SECURITY DEFINER` function owned by the table
+owner is exempt from nothing — FORCE applies to it too. A `BYPASSRLS` role
+does not exist on managed Postgres.
+
+So migration 0024 states the permission as what it actually is: **you may read
+the one row whose token you are holding.**
+
+```sql
+CREATE POLICY share_token_lookup ON application_shares
+  FOR SELECT
+  USING (token_hash = current_setting('app.share_token_hash', true));
+```
+
+`resolveShare` sets that for the length of its transaction and nothing else
+can be read. Unset, `current_setting(…, true)` is NULL, the comparison is NULL
+and no row matches — it fails closed, the same property the tenant policy has,
+and `rls.test.ts` now asserts all four cases under the unprivileged role
+rather than the superuser.
+
+The view write moved with it. It was on the owner connection on the reasoning
+that a request with no session has no tenant — but by then the token HAS
+established one, and a read-only policy would not have covered a write anyway.
+It now runs in the same tenant transaction as the audit line it belongs with.
+
+### A visit, not a page load
+
+Every read is counted on the share row — `views`, `first_viewed_at`,
+`last_viewed_at`, and `first_viewed_at` never moves, so "opened once, three
+weeks ago" stays distinguishable from "opened eleven times, last night". Only
+the AUDIT LINE is collapsed, to one per visit (30 minutes, `isNewVisit`),
+because the trail is forty lines long and a reviewer who reloads while reading
+would push the application's own history off the bottom of it.
+
+That needed the value the write destroys. `RETURNING` hands back the row as it
+now is, so `recordShareView` reads the previous `last_viewed_at` from a CTE
+taken before the update and returns it.
+
+### Three faults the screenshots found
+
+| what | why it was wrong |
+|---|---|
+| "Jan, our treasurer was given this link by whoever is writing the application" | On a page headed "You are reading, not editing", addressed to Jan. It read as a note about Jan to somebody else |
+| the share row sat between the copy notice and the "Who is it for" field | With no heading over either, the record read as part of the form below it. Both now have one, and the submit button no longer repeats its own heading |
+| the reviewer's read showed in the trail as "automatically" | A null user id normally means the system acted unprompted. A reviewer is a named outsider the applicant let in, and the entire point of the line is that somebody did it. `share.viewed` now reads "by your reviewer" |
+
+### The verdict, re-phrased for a reader
+
+`eligibilityDetail` says "You meet all 4 criteria this funder publishes" and
+"Your own details are not in yet". Read by the treasurer the applicant asked
+to check it over, every one of those pronouns is false — and "you do not meet
+this funder's criteria" tells a reviewer something untrue about themselves. So
+`verdictForReviewer` phrases the same three verdicts for a reader, and keeps
+the distinction a reviewer can act on: a rule the FUNDER left vague is not a
+gap in the application, and only one of the two is worth raising with them.
+
+### Rig lessons, a third time
+
+Two hours went to the harness rather than the feature, both variants of the
+same mistake: **a rig that answers is not a rig answering about what you
+changed.**
+
+- `next start` was left running through two `npm run build`s. The server
+  answers, the health check is green, and the pages it serves come from chunks
+  that no longer exist — which showed up as a walk failing to find a textarea
+  that was definitely on the page.
+- The e2e reported 23 failures of 117. Two were the rig's leftovers (an admin
+  account from a previous run, which removes the claim flow the sign-in check
+  needs) and the rest followed from a corpus loaded by a DIFFERENT stub on a
+  different port: "the over-£500,000 band was expected to match nothing"
+  is a corpus talking about someone else's fixtures. Recreated the database,
+  pointed `THREESIXTYGIVING_BASE_URL` at the e2e's own stub on 4599, and the
+  same code reported **clean — 123 checks**.
+- `pkill -f 'next-server'` and `grep -E "[n]pm run start" | kill` both killed
+  the shell running them, twice, exactly as noted last time. The pattern text
+  is in the shell's own command line. Read the pid from `ps -eo pid,args` and
+  kill that.

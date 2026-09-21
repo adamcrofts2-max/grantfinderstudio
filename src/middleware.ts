@@ -25,7 +25,14 @@ export function middleware(request: NextRequest) {
   // A console has no business in a search index. Belt and braces alongside the
   // per-page robots metadata: this covers the routes and any error page they
   // render.
-  if (request.nextUrl.pathname.startsWith('/admin')) {
+  // Neither the console nor a shared application belongs in a search index.
+  // A review URL holds somebody's funding application behind nothing but the
+  // token in it, so an indexed one is a leak with a search result. Belt and
+  // braces alongside the per-page robots metadata.
+  if (
+    request.nextUrl.pathname.startsWith('/admin') ||
+    request.nextUrl.pathname.startsWith('/review')
+  ) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
   return response;

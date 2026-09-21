@@ -47,6 +47,7 @@ const TENANT_TABLES = [
   'budget_lines',
   'outcomes',
   'audit_logs',
+  'application_shares',
   'ai_generations',
 ] as const;
 

@@ -63,6 +63,22 @@ export function TrailPanel({
   const actors = new Set(trail.map((row) => row.userId));
   const showActor = actors.size > 1 || !actors.has(viewerId);
 
+  /**
+   * Who did it, in the two or three words the line has room for.
+   *
+   * A null user id normally means the system acted unprompted — which is why
+   * it read "automatically", and why a REVIEWER's read read "automatically"
+   * too. It is not: it is a named outsider the applicant let in, and the
+   * whole point of recording it is that somebody did it. A reviewer is not a
+   * user of this organisation, so the id stays null and the sentence changes
+   * instead.
+   */
+  const actorOf = (row: AuditRow): string => {
+    if (row.userId === viewerId) return 'by you';
+    if (row.userId !== null) return 'by a colleague';
+    return row.action === 'share.viewed' ? 'by your reviewer' : 'automatically';
+  };
+
   return (
     <details className="card paste">
       <summary className="paste-summary">
@@ -81,15 +97,7 @@ export function TrailPanel({
               <li className="trail-line" key={row.id}>
                 <span className="trail-what">{auditLabel(row.action)}</span>
                 <span className="trail-when">{whenByRow[row.id] ?? 'earlier'}</span>
-                {showActor ? (
-                  <span className="trail-who">
-                    {row.userId === null
-                      ? 'automatically'
-                      : row.userId === viewerId
-                        ? 'by you'
-                        : 'by a colleague'}
-                  </span>
-                ) : null}
+                {showActor ? <span className="trail-who">{actorOf(row)}</span> : null}
                 {detail === '' ? null : <span className="trail-detail">{detail}</span>}
               </li>
             );

@@ -51,6 +51,10 @@ const ROUTES = [
   '/opportunities/add', '/tracker', '/applications', '/documents',
   '/admin', '/admin/sign-in', '/admin/funders', '/admin/catalogue',
   '/admin/accounts', '/admin/admins', '/admin/sandbox', '/admin/settings',
+  // The reviewer's page, with a token nobody issued: a 404 is the right
+  // answer and a 500 is the fault worth catching. It is the one route that
+  // renders with no session at all, so nothing else here would exercise it.
+  '/review/not-a-real-token',
   '/api/health', '/api/corpus', '/api/corpus/step',
 ];
 

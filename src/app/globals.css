@@ -1960,3 +1960,75 @@ summary:focus-visible {
 .logic-row p:not(.eyebrow) { margin-top: var(--s-1); }
 .logic-model > li > .hint { margin-top: var(--s-3); }
 .logic-model > li > form { margin-top: var(--s-3); }
+
+/* ---------- Review shares -------------------------------------------------
+   The applicant's list of links, and the reviewer's own page.
+
+   The list is a grid for the reason the trail is: four facts per row — who,
+   whether it works, how long it has left, what it has been used for — that
+   are scanned down a column rather than read across as a sentence. */
+
+.shares { list-style: none; margin: 0; padding: 0; }
+.share {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 2px var(--s-3);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+.share:first-child { border-top: 0; padding-top: 0; }
+.share-who { font-weight: 620; }
+.share-when { color: var(--ink-faint); white-space: nowrap; }
+.share-reads { grid-column: 1 / -1; color: var(--ink-soft); }
+.share form { grid-column: 3; justify-self: end; }
+@media (max-width: 560px) {
+  .share { grid-template-columns: 1fr auto; }
+  .share form { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* The link itself, once. Monospaced and breaking anywhere, because somebody
+   whose browser blocked the clipboard has to select it by hand — and a
+   64-character token that overflows its card cannot be selected at all. */
+.sharelink {
+  display: block;
+  margin: var(--s-3) 0;
+  padding: var(--s-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* What one answer stands on: the claim, its value, where it came from, and
+   the quoted span where there is one. */
+.evidence { list-style: none; margin: var(--s-3) 0 0; padding: 0; }
+.evidence > li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--s-3);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+.evidence > li:first-child { border-top: 0; padding-top: 0; }
+.evidence-claim { font-weight: 620; }
+.evidence-value { text-align: right; white-space: nowrap; }
+.evidence-source { grid-column: 1 / -1; color: var(--ink-faint); font-size: var(--t-xs); }
+.evidence-span { grid-column: 1 / -1; color: var(--ink-soft); font-style: italic; }
+@media (max-width: 560px) {
+  .evidence > li { grid-template-columns: 1fr; }
+  .evidence-value { text-align: left; white-space: normal; }
+}
+
+.unanswered {
+  /* The position is printed with each question, so the list must not number
+     them a second time. */
+  list-style: none;
+  margin: 0; padding-left: var(--s-4); color: var(--ink-soft);
+}
+.unanswered li { margin-bottom: var(--s-2); }

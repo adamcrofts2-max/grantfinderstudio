@@ -52,6 +52,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const pathname = (await headers()).get('x-pathname') ?? '';
   const isConsole = pathname === '/admin' || pathname.startsWith('/admin/');
 
+  // A review link is read by somebody who is not a customer — often not a
+  // member of the organisation at all. The shell's navigation goes nine places
+  // they have no access to, and worse, if the reader happens to be signed in
+  // to their OWN account it would frame somebody else's application in their
+  // organisation's chrome. So the review page carries no shell either way.
+  const isReview = pathname === '/review' || pathname.startsWith('/review/');
+
   // The shell is for signed-in people. Every link in it goes somewhere that
   // requires a session, so showing it to a visitor offers a product they
   // cannot reach — and reads as a locked door rather than a front door.
@@ -67,13 +74,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Null means we could not tell, and then the menu is shown — hiding it from
   // somebody who has finished would be far worse than showing it to somebody
   // who has not.
-  const progress = isConsole ? null : await readSetupProgress();
+  const progress = isConsole || isReview ? null : await readSetupProgress();
   const stillSettingIn = progress !== null && !progress.complete;
 
   return (
     <html lang="en-GB" className={display.variable}>
       <body>
-        {isConsole || session === null ? (
+        {isConsole || isReview || session === null ? (
           children
         ) : (
           <>

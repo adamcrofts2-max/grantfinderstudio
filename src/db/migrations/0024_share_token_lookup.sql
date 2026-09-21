@@ -1,0 +1,40 @@
+-- How a reviewer holding a link is allowed to read the row that names them.
+--
+-- WHAT WENT WRONG
+--
+-- 0023 put `FORCE ROW LEVEL SECURITY` on `application_shares`, which is
+-- correct and which also binds the TABLE OWNER — the role the admin
+-- connection runs as. So `resolveShare`, the one query that has to run before
+-- any tenant context exists, matched zero rows: the policy asks for
+-- `app.organisation_id`, and a reviewer arriving with a link has none. Every
+-- valid review link answered 404, which the share walk found in one page
+-- load and no unit test could, because tests connect as a superuser and a
+-- superuser bypasses RLS entirely.
+--
+-- WHY A POLICY RATHER THAN A WAY ROUND ONE
+--
+-- The obvious repairs are all worse. Dropping FORCE would exempt the owner
+-- from every policy on this table, which is the table holding the one key
+-- that lets an outsider read an organisation's work. A `SECURITY DEFINER`
+-- function owned by the table owner is exempt from nothing — FORCE applies to
+-- it too. A role with `BYPASSRLS` is not available on managed Postgres and
+-- would be a far bigger grant than the problem.
+--
+-- So the permission is expressed as what it actually is: you may read the one
+-- row whose token you are holding. The caller puts the token's SHA-256 into
+-- `app.share_token_hash` for the length of one transaction, and this policy
+-- lets exactly that row through. Unset, `current_setting(..., true)` is NULL,
+-- the comparison is NULL, and no row matches — it fails closed, which
+-- `src/db/rls.test.ts` asserts along with the rest.
+--
+-- SELECT ONLY, deliberately. A holder of a link may read the row that
+-- describes their own access. Revoking, extending or deleting it belongs to
+-- the organisation, and that stays on `tenant_isolation` alone. The reviewer
+-- path writes its view count through the TENANT connection, with the
+-- organisation the token just named — see `src/db/shares.ts`.
+--
+-- Permissive, so it is OR'd with `tenant_isolation` rather than narrowing it:
+-- a member reading their own organisation's shares is unaffected.
+CREATE POLICY share_token_lookup ON application_shares
+  FOR SELECT
+  USING (token_hash = current_setting('app.share_token_hash', true));

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { recordAudit } from '@/db/audit';
@@ -8,6 +9,9 @@ import { addQuestions, loadApplication, loadFacts, saveAnswer, type NewQuestion 
 import { addBudgetLine, deleteBudgetLine } from '@/db/budget';
 import { addOutcome, deleteOutcome } from '@/db/outcomes';
 import { saveReview } from '@/db/reviews';
+import { createShare, revokeShare } from '@/db/shares';
+import { createShareToken, hashShareToken } from '@/auth/token';
+import { isShareLength, SHARE_DAYS, shareExpiry } from '@/domain/review/share';
 import { isCostCategory } from '@/domain/budget/categories';
 import { rethrowControlFlow } from '@/app/control-flow';
 import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
@@ -28,11 +32,13 @@ import {
   EMPTY_DRAFT,
   EMPTY_EDIT,
   EMPTY_REVIEW,
+  EMPTY_SHARE,
   EMPTY_WRITE,
   type AddState,
   type DraftState,
   type EditState,
   type ReviewState,
+  type ShareFormState,
   type WriteState,
 } from './state';
 
@@ -697,5 +703,161 @@ export async function reviewApplicationAction(
     rethrowControlFlow(error);
     console.error('[grantfinderstudio] the review could not be completed:', error);
     return { ...EMPTY_REVIEW, ok: false, message: 'The review could not be completed. Nothing has changed.' };
+  }
+}
+
+/**
+ * The absolute URL to hand somebody.
+ *
+ * A reviewer is outside the product and may be outside the organisation, so a
+ * path is no use to them — it goes into an email. The host comes from the
+ * request rather than from configuration because this deploys behind a proxy
+ * that sets it, and because a hardcoded host is wrong on every preview
+ * deployment and in development.
+ *
+ * `x-forwarded-host` before `host`: behind a proxy the latter is the internal
+ * one. A forged header can only produce a link that does not work for the
+ * person who forged it — the token is already in their hand — so this is not
+ * a trust boundary, only a convenience.
+ */
+async function absoluteUrl(path: string): Promise<string> {
+  const jar = await headers();
+  const host = jar.get('x-forwarded-host') ?? jar.get('host');
+  if (host === null || host.trim() === '') return path;
+  const proto = jar.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+  return `${proto}://${host}${path}`;
+}
+
+/**
+ * Share one application, read-only, with somebody the applicant names.
+ *
+ * The token is minted here, hashed before it is stored, and returned to the
+ * caller exactly once — this response. Nothing can show it again, which is
+ * the property that makes the stored table useless to steal.
+ */
+export async function createShareAction(
+  _previous: ShareFormState,
+  formData: FormData,
+): Promise<ShareFormState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const reviewerName = String(formData.get('reviewerName') ?? '').trim().slice(0, 120);
+  const posted = Number(formData.get('days'));
+  // Anything not on the list becomes the default rather than an error, and
+  // certainly not whatever was posted — see `shareExpiry`.
+  const days = isShareLength(posted) ? posted : SHARE_DAYS;
+
+  if (applicationId === '') {
+    return { ...EMPTY_SHARE, message: 'No application to share.' };
+  }
+  if (reviewerName === '') {
+    return {
+      ...EMPTY_SHARE,
+      message: 'Say who this is for, so you can tell your links apart later.',
+      field: 'reviewerName',
+    };
+  }
+
+  const database = await getDatabase();
+  const token = createShareToken();
+  const now = new Date();
+
+  try {
+    const created = await database.withTenant(organisationId, async (tx) => {
+      // The application has to be this organisation's. RLS already guarantees
+      // it, and checking here means an id from somewhere else is a message
+      // rather than a foreign-key error.
+      const application = await loadApplication(tx, applicationId);
+      if (application === null) return null;
+      const share = await createShare(tx, organisationId, {
+        applicationId,
+        reviewerName,
+        tokenHash: hashShareToken(token),
+        expiresAt: shareExpiry(now, days),
+        createdBy: userId,
+      });
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'share.created',
+        entityId: share.id,
+        applicationId,
+        // The name the applicant typed and the length they chose. Not the
+        // token, and not its hash: a trail is read by the reviewer too.
+        metadata: { reviewerName, days },
+      });
+      return share;
+    });
+
+    if (created === null) {
+      return { ...EMPTY_SHARE, message: 'That application no longer exists.' };
+    }
+
+    revalidatePath(`/applications/${applicationId}`);
+    return {
+      ok: true,
+      message: `Ready for ${reviewerName}. Copy the link now — we cannot show it again.`,
+      link: await absoluteUrl(`/review/${token}`),
+    };
+  } catch (error) {
+    rethrowControlFlow(error);
+    console.error('[grantfinderstudio] the share could not be created:', error);
+    return {
+      ...EMPTY_SHARE,
+      message: 'We could not create that link. Nothing has been shared — please try again.',
+    };
+  }
+}
+
+/**
+ * Withdraw a share.
+ *
+ * Takes effect on the reviewer's next request; there is no session to end,
+ * because a share never had one. The row stays — it is the applicant's own
+ * record of who was given access and when it stopped.
+ */
+export async function revokeShareAction(
+  _previous: ShareFormState,
+  formData: FormData,
+): Promise<ShareFormState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const shareId = String(formData.get('shareId') ?? '');
+  const reviewerName = String(formData.get('reviewerName') ?? '').trim().slice(0, 120);
+  if (applicationId === '' || shareId === '') {
+    return { ...EMPTY_SHARE, message: 'Nothing to withdraw.' };
+  }
+
+  const database = await getDatabase();
+  try {
+    const withdrawn = await database.withTenant(organisationId, async (tx) => {
+      const gone = await revokeShare(tx, applicationId, shareId);
+      if (gone) {
+        await recordAudit(tx, organisationId, {
+          userId,
+          action: 'share.revoked',
+          entityId: shareId,
+          applicationId,
+          metadata: reviewerName === '' ? {} : { reviewerName },
+        });
+      }
+      return gone;
+    });
+    revalidatePath(`/applications/${applicationId}`);
+    return withdrawn
+      ? {
+          ok: true,
+          link: null,
+          message: `Withdrawn. ${reviewerName === '' ? 'That link' : reviewerName} cannot open it again.`,
+        }
+      : { ...EMPTY_SHARE, message: 'That link had already stopped working.' };
+  } catch (error) {
+    rethrowControlFlow(error);
+    console.error('[grantfinderstudio] the share could not be withdrawn:', error);
+    return {
+      ...EMPTY_SHARE,
+      message: 'We could not withdraw that link. It is still live — please try again.',
+    };
   }
 }

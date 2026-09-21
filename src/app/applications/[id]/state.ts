@@ -124,3 +124,21 @@ export const FINDING_LABEL: Record<string, string> = {
 export function findingLabel(kind: string): string {
   return FINDING_LABEL[kind] ?? kind.replace(/_/gu, ' ');
 }
+
+/**
+ * The result of creating or withdrawing a review share.
+ *
+ * `link` is the ONE and only time the full URL exists anywhere we can show
+ * it: the table stores a SHA-256, so a link that is not copied off this
+ * response cannot be recovered, only replaced. The panel says so.
+ */
+export interface ShareFormState {
+  ok: boolean;
+  message: string;
+  /** The full review URL, on the one response that created it. */
+  link: string | null;
+  /** Which field to blame, so the form can point rather than shrug. */
+  field?: string;
+}
+
+export const EMPTY_SHARE: ShareFormState = { ok: false, message: '', link: null };

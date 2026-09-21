@@ -31,3 +31,16 @@ export function tokensMatch(a: string, b: string): boolean {
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
 }
+
+/**
+ * A review-share token, and its hash.
+ *
+ * The same construction as a session token, named separately so a call site
+ * reads correctly: a share is not a session, it is an opaque bearer token
+ * handed to somebody outside the organisation. The security properties it
+ * needs are identical — 32 bytes of CSPRNG output, only the SHA-256 stored —
+ * so sharing the implementation is the honest option, and aliasing it rather
+ * than copying it means there is one thing to get right.
+ */
+export const createShareToken = createSessionToken;
+export const hashShareToken = hashSessionToken;

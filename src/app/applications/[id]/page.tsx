@@ -6,9 +6,11 @@ import { loadBudgetLines } from '@/db/budget';
 import { loadOutcomes } from '@/db/outcomes';
 import { answersEditedSince, loadLatestReview } from '@/db/reviews';
 import { loadAuditTrail } from '@/db/audit';
+import { loadShares } from '@/db/shares';
 import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { since } from '@/domain/time/since';
+import { daysLeft, shareStanding } from '@/domain/review/share';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { validateBudget } from '@/domain/budget/validate';
@@ -20,6 +22,7 @@ import { ReviewPanel } from './ReviewPanel';
 import { BudgetPanel } from './BudgetPanel';
 import { OutcomesPanel } from './OutcomesPanel';
 import { TrailPanel } from './TrailPanel';
+import { SharePanel, type ShareView } from './SharePanel';
 import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +70,10 @@ export default async function ApplicationPage({
     // confirmed, a document uploaded — belong to the organisation and not to
     // whatever application happens to be open.
     const trail = await loadAuditTrail(tx, organisationId, { applicationId: id });
+    // Every link ever made for this application, live or not. The withdrawn
+    // ones are the applicant's record of who had access and when it stopped,
+    // so the panel lists them rather than hiding them.
+    const shares = await loadShares(tx, id);
 
     const questions: QuestionView[] = [];
     for (const q of application.questions) {
@@ -99,14 +106,14 @@ export default async function ApplicationPage({
     }
     return {
       application, facts, questions, budgetLines, outcomes, criteria, review,
-      answersEdited, organisation, project, trail,
+      answersEdited, organisation, project, trail, shares,
     };
   });
 
   if (!page) notFound();
   const {
     application, facts, questions, budgetLines, outcomes, criteria, review,
-    answersEdited, organisation, project, trail,
+    answersEdited, organisation, project, trail, shares,
   } = page;
 
   // ONE clock reading, here, for every relative time on this page. Read while
@@ -115,6 +122,23 @@ export default async function ApplicationPage({
   // fault `ReviewPanel` shipped with.
   const now = Date.now();
   const whenByRow = Object.fromEntries(trail.map((row) => [row.id, since(row.createdAt, now)]));
+
+  // The share panel is a client component, so every relative time it shows is
+  // phrased here, off the same one clock reading — the rule `TrailPanel`
+  // explains, applied to the other panel that talks about the past.
+  const shareViews: ShareView[] = shares.map((share) => {
+    const state = { expiresAt: share.expiresAt, revokedAt: share.revokedAt };
+    return {
+      id: share.id,
+      reviewerName: share.reviewerName,
+      standing: shareStanding(state, new Date(now)),
+      daysLeft: daysLeft(state, new Date(now)),
+      views: share.views,
+      firstViewed: share.firstViewedAt === null ? null : since(share.firstViewedAt, now),
+      lastViewed: share.lastViewedAt === null ? null : since(share.lastViewedAt, now),
+      created: since(share.createdAt, now),
+    };
+  });
 
   const confirmed = usableFacts(facts);
   const answered = questions.filter((q) => q.answer !== null && q.answer !== '').length;
@@ -364,6 +388,17 @@ export default async function ApplicationPage({
           </div>
         </section>
       ) : null}
+
+      {/* Folded away like the trail, and for the same reason: it is something
+          you do once, not something you read while writing. Below the copy
+          button deliberately — showing it to a colleague and pasting it into
+          the portal are the two ways an application leaves here, and they
+          belong next to each other. */}
+      <SharePanel
+        answered={answered}
+        applicationId={application.id}
+        shares={shareViews}
+      />
 
       {/* Last, and folded away. A history is a reference rather than a task,
           and forty lines of it above the answer boxes would be the page

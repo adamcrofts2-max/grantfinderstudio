@@ -32,6 +32,10 @@ const TENANT_TABLES = [
   // sees only its own rows" is a property to assert here rather than assume
   // from the policy list in 0001.
   'audit_logs',
+  // The table holding the one key that lets somebody outside the organisation
+  // read its work. A leak here is worse than a leak of the data itself: it is
+  // a leak of a way in.
+  'application_shares',
 ] as const;
 
 describe('reads', () => {
@@ -258,5 +262,54 @@ describe('schema constraints', () => {
         );
       }),
     ).rejects.toThrow(/amount_is_positive/);
+  });
+});
+
+/**
+ * The one row an outsider may read, and how.
+ *
+ * A reviewer holding a review link has no session and therefore no
+ * organisation context, and `FORCE ROW LEVEL SECURITY` binds the table owner
+ * as well — so without migration 0024 the lookup matched nothing and every
+ * valid link answered 404. The permission is expressed as what it is: you may
+ * read the one row whose token you are holding.
+ *
+ * Asserted here rather than in `shares.test.ts`, which resets to the
+ * superuser and so bypasses every policy in the database.
+ */
+describe('a review token', () => {
+  const visible = (hash: string | null) =>
+    t.asNoTenant(async () => {
+      if (hash !== null) {
+        await t.db.query('SELECT set_config($1, $2, false)', ['app.share_token_hash', hash]);
+      }
+      return t.db.query<{ id: string; organisation_id: string }>(
+        'SELECT id, organisation_id FROM application_shares',
+      );
+    });
+
+  it('shows the one share it names, with no tenant context at all', async () => {
+    const r = await visible('hash_a');
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]?.id).toBe('shr_a');
+    expect(r.rows[0]?.organisation_id).toBe(ORG_A);
+  });
+
+  it('shows nothing for a token nobody issued', async () => {
+    expect((await visible('hash_of_nothing')).rows).toEqual([]);
+  });
+
+  it('shows nothing when the holder has not said what it holds', async () => {
+    // `current_setting(..., true)` is NULL unset, so the comparison is NULL
+    // and no row matches. It fails closed.
+    await t.asNoTenant(() => t.db.exec('RESET app.share_token_hash;'));
+    expect((await visible(null)).rows).toEqual([]);
+  });
+
+  it('does not let a token read anything but its own row', async () => {
+    // One token, one share. Holding ORG_A's does not widen to ORG_A's other
+    // rows, let alone ORG_B's.
+    const r = await visible('hash_b');
+    expect(r.rows.map((row) => row.id)).toEqual(['shr_b']);
   });
 });
