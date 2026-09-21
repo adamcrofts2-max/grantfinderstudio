@@ -10,17 +10,38 @@
  *
  * ## What it needs
  *
- * A production build served on :3000, `THREESIXTYGIVING_BASE_URL` pointing at
- * this script's own stub (`http://127.0.0.1:4599/api/v1/`),
- * `ADMIN_CLAIM_SECRET` set, and **a database whose corpus has not been
- * touched in the last two minutes**. The first block asserts that a page visit
- * alone fills the record, and a visit-triggered step is refused while the
- * lease from the previous one is still held — so an earlier run, or
- * `npm run smoke` against the same database, will make this report a fault
- * that is not there. Clear `admin_accounts`, `admin_sessions` and `corpus_load`
- * between runs.
+ * `npm run build`, and `DATABASE_URL` pointing at a Postgres on this machine.
+ * Nothing else: it starts its own stub publisher, resets the state it depends
+ * on, starts its own server on its own port with its own environment, and
+ * stops both afterwards.
+ *
+ * ## Why it provisions itself
+ *
+ * Because it did not, and the cost was paid three sessions running. The
+ * assertions need a corpus that only its own stub has written, a database with
+ * no admin account (the first block signs in through the claim flow, which
+ * disappears once one exists) and a corpus lease that is not still held from
+ * a previous run. None of that was enforced — it was a paragraph in this
+ * comment asking a human to clear three tables — so a second run in the same
+ * afternoon reported 23 failures of 117, every one of them the rig describing
+ * itself. A harness that reports faults that are not there is worse than no
+ * harness: it trains you to disbelieve it, and the one real failure in the
+ * list goes unread.
+ *
+ * It also starts its own SERVER, on port 3100 rather than 3000, for the
+ * neighbouring fault: a `next start` left running through a rebuild serves
+ * chunks that no longer exist, and a server on the right port pointed at the
+ * WRONG stub answers every request perfectly while testing nothing. Owning
+ * the process means owning its environment — the stub URL and the admin claim
+ * secret are set by this script, so neither can be missing or stale.
+ *
+ * `BASE_URL` still points it at a server somebody else is running — a deployed
+ * preview, say. Then it touches neither the database nor any process, because
+ * it no longer knows whose they are.
  */
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
@@ -83,8 +104,30 @@ async function reachField(page, name, { reload = `${B}/onboarding`, tries = 12 }
   return false;
 }
 
-const B = 'http://127.0.0.1:3000';
-const API_PORT = 4599;
+/**
+ * Its own port, not 3000.
+ *
+ * A dev server on the usual port is the likeliest thing in the way, and an
+ * e2e that quietly runs against whatever answers there is an e2e that can
+ * pass while testing the wrong build. 3100 unless something else is told to
+ * it.
+ */
+const PORT = Number(process.env['E2E_PORT'] ?? 3100);
+/** Somebody else's server, if they gave us one. Then we own nothing. */
+const GIVEN = process.env['BASE_URL'];
+const OWN_SERVER = GIVEN === undefined || GIVEN === '';
+const B = OWN_SERVER ? `http://127.0.0.1:${PORT}` : GIVEN;
+const API_PORT = Number(process.env['E2E_API_PORT'] ?? 4599);
+
+/**
+ * The secret the console's claim flow asks for.
+ *
+ * Generated here and handed to the server this script starts, so the run
+ * never depends on an operator having exported one — and so the value is
+ * different every time rather than sitting in a shell history.
+ */
+const CLAIM_SECRET =
+  process.env['ADMIN_CLAIM_SECRET'] ?? randomBytes(32).toString('base64url');
 
 const FUNDERS = [
   'GB-CHC-STUB-1',
@@ -205,7 +248,216 @@ const api = createServer((req, res) => {
   res.statusCode = 404;
   res.end('{}');
 });
-await new Promise((r) => api.listen(API_PORT, '127.0.0.1', r));
+/**
+ * Bind the stub, and say plainly when something already has that port.
+ *
+ * Unhandled, this came out as a twenty-line Node stack trace about
+ * EADDRINUSE with no mention of what the port is for or what to do — the same
+ * class of fault as the ones this script exists to stop reporting.
+ */
+await new Promise((resolve, reject) => {
+  api.once('error', (error) => {
+    reject(
+      error.code === 'EADDRINUSE'
+        ? new Error(
+            `Something is already serving 127.0.0.1:${API_PORT}, which this walk needs for ` +
+              `its stub publisher. Stop it, or run with E2E_API_PORT set to a free port.`,
+          )
+        : error,
+    );
+  });
+  api.listen(API_PORT, '127.0.0.1', resolve);
+});
+
+/* ------------------------------------------------------------------ *
+ * Our own database state, and our own server.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Whether this connection string points at this machine.
+ *
+ * The only guard on the reset below, and it is the one that matters: the
+ * production database is somewhere else. A script that deletes tables must
+ * not be one command-line argument away from doing it to a customer's data,
+ * and "is it local" is a question with an answer rather than a judgement.
+ */
+function isLocal(connectionString) {
+  try {
+    const { hostname } = new URL(connectionString);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put the database back to the state these assertions describe.
+ *
+ * Three tables, and each one is a fault this script has actually reported as
+ * if it were the product's:
+ *
+ *   - `admin_accounts` / `admin_sessions`. The console is reached through the
+ *     claim flow, which exists only until the first admin does. A second run
+ *     in the same database met a sign-in form it had no password for and
+ *     reported seven failures about the corpus panel.
+ *   - `corpus_load`. Its lease refuses a visit-triggered step within
+ *     `VISIT_MIN_SECONDS`, so a previous run — or `npm run smoke` against the
+ *     same database — made "a page visit did not cause the record to fill"
+ *     appear while the product worked exactly as designed. Deleting the row
+ *     clears the lease and the counters together.
+ *   - `funder_awards`. The counts below are counts of THIS stub's corpus. A
+ *     corpus left by a different one made eight assertions fail with numbers
+ *     that were perfectly correct about somebody else's fixtures.
+ *
+ * Funders left with no awards go too, but only where nothing points at them:
+ * an opportunity somebody's application is attached to keeps its funder.
+ * Tenant rows are not touched at all — each run signs up a new account, so
+ * they are inert, and deleting an organisation's work is not this script's
+ * business even in a scratch database.
+ */
+async function resetDatabase(connectionString) {
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM admin_sessions');
+    await client.query('DELETE FROM admin_accounts');
+    await client.query('DELETE FROM corpus_load');
+    await client.query('DELETE FROM funder_awards');
+    await client.query(
+      `DELETE FROM funders f
+        WHERE NOT EXISTS (SELECT 1 FROM opportunities o WHERE o.funder_id = f.id)`,
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Start the server this run will talk to, and wait for it to be able to
+ * answer about the database.
+ *
+ * `/api/health` rather than any 200: a Next server accepts connections before
+ * it can reach Postgres, and a run that starts against a server in that state
+ * fails in the first block for a reason that has nothing to do with the code.
+ */
+async function startServer(env) {
+  // ITS OWN PROCESS GROUP, so it can be killed as one.
+  //
+  // `npx next start` is a wrapper around a wrapper: killing the child kills
+  // `npx` and leaves `next-server` holding the port. The second consecutive
+  // run of this script found that out the hard way — it spawned a server that
+  // could not bind, then health-checked the ORPHAN from the run before,
+  // signed in against its claim secret rather than its own, and reported four
+  // failures about the admin console. A server that answers is not the server
+  // you started.
+  const server = spawn('npx', ['next', 'start', '-p', String(PORT)], {
+    env: { ...process.env, ...env, NODE_ENV: 'production' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  });
+  const log = [];
+  server.stdout.on('data', (d) => log.push(String(d)));
+  server.stderr.on('data', (d) => log.push(String(d)));
+  server.log = log;
+
+  const deadline = Date.now() + 90_000;
+  for (;;) {
+    if (Date.now() > deadline) {
+      stopServer(server);
+      throw new Error(`the server never became healthy:\n${log.join('').slice(-2000)}`);
+    }
+    try {
+      const health = await (await fetch(`${B}/api/health`)).json();
+      if (health.database === 'ok') return server;
+    } catch {
+      // Not up yet.
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+/** Stop the server AND its children — see the note in `startServer`. */
+function stopServer(server) {
+  if (server === null || server.pid === undefined) return;
+  try {
+    process.kill(-server.pid, 'SIGTERM');
+  } catch {
+    // Already gone, or never grouped. Fall back to the child itself.
+    server.kill();
+  }
+}
+
+/**
+ * Whether anything is already answering on the port we are about to take.
+ *
+ * Checked BEFORE starting, because the failure it prevents is silent: a stale
+ * server from an earlier run holds the port, the new one cannot bind, and the
+ * health check passes against the wrong process.
+ */
+async function portIsBusy() {
+  try {
+    await fetch(`${B}/api/health`, { signal: AbortSignal.timeout(2000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let server = null;
+if (OWN_SERVER) {
+  const connectionString = process.env['DATABASE_URL'] ?? '';
+  if (connectionString === '') {
+    console.error(
+      'DATABASE_URL is not set. This walk needs a real Postgres — the corpus, the lease\n' +
+        'and the isolation it asserts are all database behaviour.',
+    );
+    api.close();
+    process.exit(2);
+  }
+  if (!isLocal(connectionString)) {
+    console.error(
+      'DATABASE_URL does not point at this machine, and this script resets three tables\n' +
+        'before it runs. Point it at a local Postgres, or set BASE_URL to run against a\n' +
+        'deployment without touching anything.',
+    );
+    api.close();
+    process.exit(2);
+  }
+  if (!existsSync('.next')) {
+    console.error('No .next build found. Run `npm run build` first — this walks the real build.');
+    api.close();
+    process.exit(2);
+  }
+
+  if (await portIsBusy()) {
+    console.error(
+      `Something is already answering on ${B}. This walk starts its own server so that the\n` +
+        'build under test is the build you just made — it will not run against a process it\n' +
+        'does not own. Stop it, or set E2E_PORT to a free port.',
+    );
+    api.close();
+    process.exit(2);
+  }
+
+  await resetDatabase(connectionString);
+  console.log(`reset the corpus, the lease and the console account · serving on :${PORT}`);
+  server = await startServer({
+    // ITS OWN STUB, set here rather than hoped for in the environment. A
+    // server on the right port pointed at the wrong publisher answers every
+    // request and tests nothing.
+    THREESIXTYGIVING_BASE_URL: `http://127.0.0.1:${API_PORT}/api/v1/`,
+    ADMIN_CLAIM_SECRET: CLAIM_SECRET,
+    PORT: String(PORT),
+  });
+} else {
+  console.log(`using the server at ${B} — not touching its database or its processes`);
+}
 
 const executablePath = chromiumPath();
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -307,9 +559,12 @@ try {
   const admin = await browser.newPage();
   admin.on('pageerror', (e) => fail(`admin client exception at ${admin.url()}: ${e.message}`));
   await admin.goto(`${B}/admin/sign-in`, { waitUntil: 'domcontentloaded' });
-  const secret = process.env.ADMIN_CLAIM_SECRET ?? '';
+  const secret = OWN_SERVER ? CLAIM_SECRET : (process.env.ADMIN_CLAIM_SECRET ?? '');
   if (secret === '') {
-    fail('ADMIN_CLAIM_SECRET is not set, so the first admin cannot be claimed.');
+    fail(
+      'ADMIN_CLAIM_SECRET is not set, and this run does not own the server, so the first ' +
+        'admin cannot be claimed.',
+    );
   }
   await admin.fill('input[type="email"]', `admin-${Date.now()}@example.org`);
   await admin.fill('input[name="password"]', password);
@@ -1239,6 +1494,9 @@ try {
 } finally {
   await browser.close();
   api.close();
+  // Ours to stop, group and all. Left running, it holds the port and — worse
+  // — serves a build that the next `npm run build` has already replaced.
+  stopServer(server);
 }
 
 if (failures.length > 0) {

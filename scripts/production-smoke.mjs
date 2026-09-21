@@ -37,7 +37,17 @@
 import { spawn } from 'node:child_process';
 
 const OWN_SERVER = process.env['BASE_URL'] === undefined;
-const B = process.env['BASE_URL'] ?? 'http://localhost:3000';
+/**
+ * Its own port when it starts its own server.
+ *
+ * Not 3000. A dev server, or a `next start` left over from something else,
+ * answers every request here perfectly — and `reachable()` cannot tell that
+ * apart from the server this script just spawned, so the whole run would pass
+ * against a build nobody meant to test. The e2e hit exactly that twice in one
+ * afternoon.
+ */
+const PORT = Number(process.env['SMOKE_PORT'] ?? 3200);
+const B = process.env['BASE_URL'] ?? `http://127.0.0.1:${PORT}`;
 
 /**
  * Every route, and the worst status each may legitimately return.
@@ -77,15 +87,41 @@ async function statusOf(route) {
   }
 }
 
+/**
+ * Refuse a port somebody else is already answering on.
+ *
+ * Checked BEFORE spawning, because the failure it prevents is silent: the new
+ * server cannot bind, `reachable()` succeeds against the old one, and every
+ * route passes while testing a build nobody meant to test.
+ */
+async function portIsBusy() {
+  try {
+    await fetch(`${B}/api/health`, { signal: AbortSignal.timeout(2000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let server;
 if (OWN_SERVER) {
   if ((process.env['DATABASE_URL'] ?? '') === '') {
     console.error('DATABASE_URL is required: the point of this check is a real Postgres.');
     process.exit(2);
   }
-  server = spawn('npm', ['start'], {
-    env: { ...process.env, NODE_ENV: 'production' },
+  if (await portIsBusy()) {
+    console.error(
+      `Something is already answering on ${B}. This check starts its own server so that\n` +
+        'the build under test is the build you just made. Stop it, or set SMOKE_PORT.',
+    );
+    process.exit(2);
+  }
+  server = spawn('npx', ['next', 'start', '-p', String(PORT)], {
+    env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Its own process group: `npx` is a wrapper, and killing it leaves
+    // `next-server` holding the port for whatever runs next.
+    detached: true,
   });
   // Kept, and printed only on failure: a server-side exception's stack is the
   // whole value of running this, and Next prints it here rather than in the
@@ -94,6 +130,16 @@ if (OWN_SERVER) {
   server.stdout.on('data', (d) => log.push(String(d)));
   server.stderr.on('data', (d) => log.push(String(d)));
   server.serverLog = log;
+}
+
+/** Stop the server and its children. See the note on `detached`. */
+function stop(child) {
+  if (!child || child.pid === undefined) return;
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    child.kill();
+  }
 }
 
 const reachable = async () => {
@@ -111,7 +157,7 @@ while (!(await reachable())) {
   if (Date.now() > deadline) {
     console.error('The server never came up.');
     if (server) console.error((server.serverLog ?? []).join('').slice(-4000));
-    server?.kill();
+    stop(server);
     process.exit(1);
   }
   await new Promise((r) => setTimeout(r, 1000));
@@ -147,7 +193,7 @@ if (broken > 0 && server) {
   console.error((server.serverLog ?? []).join('').slice(-6000));
 }
 
-server?.kill();
+stop(server);
 const healthy = health.status === 'ok' && broken === 0;
 console.log(`\n${healthy ? 'PRODUCTION SMOKE: clean' : `PRODUCTION SMOKE: ${broken} route(s) failing`}`);
 process.exit(healthy ? 0 : 1);

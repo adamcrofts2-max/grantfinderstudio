@@ -33,6 +33,7 @@
  *
  *   node scripts/stub-360giving.mjs            # serve on 4599
  *   node scripts/stub-360giving.mjs --port 4610
+ *   node scripts/stub-360giving.mjs --slow 400 # a load slow enough to watch
  *   node scripts/stub-360giving.mjs --print    # the corpus, as statistics
  *
  * Then point the product at it:
@@ -503,10 +504,28 @@ function report() {
  * The API, in the shape the connector reads.
  * ------------------------------------------------------------------ */
 
-function serve(port) {
+/**
+ * Optional latency, in milliseconds per request.
+ *
+ * Because some faults only exist while the corpus is being written: the
+ * `/grants` hydration mismatch is documented as living inside a load, and a
+ * stub that answers instantly closes that window before anything can look at
+ * it. `--slow 400` makes a thirteen-publisher walk take long enough to hold a
+ * page open during it.
+ */
+function serve(port, slowMs = 0) {
   const api = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://stub');
     response.setHeader('content-type', 'application/json');
+    if (slowMs > 0) {
+      // Delay the WHOLE reply, headers included, so the client waits rather
+      // than reading a body that is merely late.
+      const end = response.end.bind(response);
+      response.end = (...args) => {
+        setTimeout(() => end(...args), slowMs);
+        return response;
+      };
+    }
 
     if (url.pathname === '/api/v1/org/funder/') {
       const offset = Number(url.searchParams.get('offset') ?? '0');
@@ -570,5 +589,9 @@ if (args.includes('--print')) {
   report();
 } else {
   const at = args.indexOf('--port');
-  serve(at === -1 ? 4599 : Number(args[at + 1]));
+  const slow = args.indexOf('--slow');
+  serve(
+    at === -1 ? 4599 : Number(args[at + 1]),
+    slow === -1 ? 0 : Number(args[slow + 1]),
+  );
 }

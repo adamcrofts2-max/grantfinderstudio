@@ -692,7 +692,35 @@ this cheque before", where no source answers "what is open".
         renders corpus progress AND advances it through `after()` on a
         `force-dynamic` route, so the HTML and the payload the client
         reconciles against fall either side of that write
-- [ ] Reproduce the remaining React #418 on demand. The e2e named it:
+- [x] **The e2e provisions itself.** It reported 23 failures of 117 this week,
+      every one of them the rig describing itself — an admin account from the
+      previous run (which removes the claim flow the console check needs), a
+      corpus written by a different stub, and a lease still held. All of it was
+      documented as a paragraph asking a human to clear three tables. It now
+      resets them in a transaction, refusing any `DATABASE_URL` that is not on
+      this machine; starts its own server on :3100 with its own stub URL and a
+      claim secret it generates; refuses to run against a port that is already
+      answering, or without a `.next` build; and kills its server's whole
+      process GROUP afterwards — `npx next start` leaves `next-server` holding
+      the port otherwise, which the second consecutive run found by
+      health-checking the orphan from the first
+- [x] **The React #418 has a mechanism and a fix, on reasoning rather than on
+      a reproduction.** Only one code path revalidated `/grants`: the admin's
+      corpus step, which chains — and every e2e run that produced the error
+      was one where that action fired, while three deliberate attempts to
+      provoke it (≈130 navigations, corpus written concurrently by other
+      means, production build and dev build) never saw it. `/grants` is
+      `force-dynamic`, so revalidating it buys nothing; what it does is
+      invalidate the client router cache of anybody holding the page, which
+      makes a client re-fetch the payload for a page it is mid-hydration on
+      and reconcile HTML from one moment of a load against a payload from
+      another. The call is gone and `grants-dynamic.test.ts` holds the premise
+      it rested on
+      - [ ] Watch it. The evidence is circumstantial — consecutive clean e2e
+        runs, not a reproduction — so if #418 returns, the next suspect is the
+        page rendering corpus progress it is itself advancing through
+        `after()`, and the fix there is to stop rendering a number the same
+        request is changing The e2e named it:
       `/grants?q=1&text=youth`, which is `force-dynamic` over the corpus and
       starts a corpus step itself through `after()`. Three sightings, all
       inside a load; zero in ~130 navigations on a settled one. React recovers

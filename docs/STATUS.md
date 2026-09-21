@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,714 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
+**1,728 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5011,3 +5011,151 @@ tree-nursery grants 38, from 7 funders
 ```
 
 A ranking measured on a degenerate corpus always looks correct.
+
+## Two clocks, because one of them was lying
+
+`isLoading` was `startedAt !== null && finishedAt === null`. Two states, where
+the truth has four — and the consequence was on the applicant's search screen,
+in the present tense:
+
+> **We are building the grant record now.** … That started the moment you
+> arrived and continues in the background. Come back in a few minutes and
+> there will be more.
+
+Shown for as long as a load had started and not finished. If the walk could
+never finish — the API unreachable, every step dying before it reads a
+publisher — that sentence was permanent.
+
+### Why the obvious signal does not work
+
+`updated_at` looks like the answer and is not. `claimCorpusStep` writes it
+BEFORE the work, deliberately: a step that dies still holds the interval off,
+so a crash loop cannot become a request loop. And an ordinary page visit
+claims a step. So on any deployment with traffic it is always fresh, whether
+the load is moving or not — it answers "was a step attempted", which is a
+different question.
+
+Migration 0026 adds `progressed_at`, written only when a step read a funder or
+wrote a grant:
+
+```sql
+progressed_at = CASE WHEN $4::int > 0 OR $5::int > 0 THEN now() ELSE progressed_at END
+```
+
+`corpusStanding` reads the pair as `never_started | filling | stalled |
+complete`, falling back to the attempt clock for a record written before 0026
+(which the migration deliberately does not backfill — inventing a progress
+time would be inventing the very fact the column exists to carry), and to the
+start time for a load kicked off seconds ago whose first step is still in
+flight.
+
+**Thirty-six hours** is the line, and it is set by the deployment rather than
+by taste: `vercel.json` runs the scheduled step daily, because that is what
+the hosting plan allows, so a healthy untrafficked deployment legitimately
+progresses once every twenty-four hours. Anything tighter calls it stalled
+every morning.
+
+### Demonstrated rather than reasoned about
+
+With the corpus half-walked, the stub publisher was killed:
+
+```
+step  → {"ran":true,"walked":0,"awardsWritten":0,"error":"Could not reach … fetch failed"}
+state → standing: stalled · done: 5/13 · progressedAt: three days ago
+```
+
+A step ran, refreshed the attempt clock, achieved nothing — and the record
+correctly stayed **stalled**. The old code would have said "loading". Bringing
+the publisher back:
+
+```
+step  → {"ran":true,"walked":8,"awardsWritten":201,"finished":true}
+state → standing: complete · done: 13/13
+```
+
+The applicant's banner now says what is held and stops promising more; the
+console gets the one state on it that is a job rather than a reading, dated,
+with the error beside the button that retries. Two things fell out of reading
+those screens: the progress timestamps were emitted with a `+00` offset that
+some engines refuse, on an endpoint that serves them to clients; and
+`notice-negative` had been used by the sign-in form for months with no CSS
+rule behind it.
+
+## The e2e now owns its world
+
+`npm run e2e` reported **23 failures of 117** this week, every one of them the
+rig describing itself: an admin account left by the previous run (the console
+is reached through a claim flow that disappears once one exists), a corpus
+written by a different stub (so eight assertions failed with numbers that were
+perfectly correct about somebody else's fixtures), and a corpus lease still
+held (so "a page visit did not cause the record to fill" appeared while the
+product worked exactly as designed).
+
+All of that was documented — as a paragraph asking a human to clear three
+tables between runs. A harness that reports faults that are not there is worse
+than no harness: it trains you to disbelieve it, and the one real failure in
+the list goes unread.
+
+It now does the work itself:
+
+| | before | after |
+|---|---|---|
+| database state | "clear three tables between runs" | resets them, in a transaction, refusing any `DATABASE_URL` that is not on this machine |
+| the server | assumed on :3000, with the right env | starts its own on :3100, with the stub URL and a generated claim secret it sets itself |
+| the build | whatever was on the port | refuses to run without `.next`, and kills its server afterwards so the next build is not served by the old process |
+| a busy port | a twenty-line EADDRINUSE stack trace | one sentence naming the port, what it is for, and `E2E_API_PORT` |
+
+`BASE_URL` still points it at somebody else's server — a deployed preview —
+and then it touches neither their database nor their processes, because it no
+longer knows whose they are.
+
+The port matters as much as the reset. Two of today's false failures were a
+`next start` left running through a rebuild, serving chunks that no longer
+existed; owning the process is what makes "the build I just made" and "the
+build under test" the same thing.
+
+## The React #418, argued rather than caught
+
+It had been on the roadmap for a while: an intermittent hydration error on
+`/grants`, about one e2e run in two, always inside a corpus load, never
+reproduced. Two earlier attempts missed the window. This session made three
+more:
+
+| attempt | setup | result |
+|---|---|---|
+| dev build, slow stub | 30 navigations while the corpus filled | nothing |
+| production build | 70 navigations, including back-navigation, 4 rounds inside a live load | nothing |
+| production build, concurrent writer | 60 navigations while `/api/corpus/step` ran continuously | nothing |
+
+Three failures to reproduce are themselves evidence, once you ask what the
+failing runs had that the attempts did not. **The admin action.** Only one
+code path revalidated `/grants`:
+
+```ts
+const result = await advanceCorpus(…);
+revalidatePath('/admin/funders');
+revalidatePath('/grants');        // ← this
+```
+
+— and every e2e run that produced the error is one where the console pressed
+"Run one step now", which chains further steps and fires that call in bursts.
+None of the reproduction attempts called it, because a server action cannot be
+posted over raw HTTP.
+
+`/grants` is `force-dynamic`. It is never cached, so revalidating it cannot
+make an applicant's search fresher — the next request renders the new grants
+regardless. What it does do is invalidate the CLIENT ROUTER CACHE of everybody
+holding that page. A client that re-fetches the payload for a page it is in
+the middle of hydrating reconciles HTML rendered at one moment of a load
+against a payload rendered at another, and React throws away the tree. Which
+is exactly the shape of the symptom: intermittent, only during a load, and
+nothing a user sees ever breaks.
+
+So the call is gone, and `grants-dynamic.test.ts` holds the premise it rested
+on — if `/grants` ever stops being force-dynamic, the revalidation has to come
+back and this reasoning has to be redone.
+
+**Said plainly: this is a fix on reasoning, not on a reproduction.** The
+evidence is that the mechanism explains every sighting and every failure to
+provoke one, plus consecutive clean e2e runs afterwards. If it comes back, the
+next suspect is on the roadmap with it.
