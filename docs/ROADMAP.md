@@ -638,7 +638,39 @@ this cheque before", where no source answers "what is open".
       `funders.ts` already said the figures should be "given as what they are:
       a couple of grants, named, not a pattern" — written down, never
       implemented
-- [ ] Let a peer row drill through to that organisation's own grants. The row
+- [x] **The first search is asked about the WORK, not the beneficiary list.**
+      Walked as a community tree nursery in Somerset, the product's own opening
+      question was "young people older people Somerset" — the only boxes the
+      onboarding list offers an environmental CIC — so it led with a youth
+      trust and the woodland funder that had made seventeen tree-nursery
+      grants was absent. `defaultSearchText` takes the project's own name and
+      its most-repeated description words, and keeps the groups as the fallback
+      for a project that describes itself thinly
+- [x] **"Funded your kind of work" reads the grant text, not only its label.**
+      The same fault one layer down: `matchesCause` compared 360Giving
+      classification labels against beneficiary groups, and every
+      environmental grant in a corpus carries the single word "Environment",
+      which no applicant calls themselves. Award title and description now
+      come with the awards, a description match is tracked separately from a
+      label match (`workAwards`), and it outranks one inside a tier — a funder
+      whose grants ARE the work above one that shares a category. Two words
+      are required, because one was a coincidence: "grow" alone promoted a
+      food-growing funder into a tree nursery's strongest prospects
+- [x] **Pagination follows the origin it was given, not a hardcoded https.**
+      `FORCE`-style strictness with nothing to show for it: against an `http`
+      base — which the setting exists for, "a mirror or a staging copy" — every
+      publisher with more than one page failed on its `next` link AND the rows
+      already read were discarded, so three of thirteen publishers wrote
+      nothing and were counted "could not be read". 45% of a local corpus,
+      silently. The downgrade refusal is unchanged where the base is https,
+      and the multi-page hop is now proved over a real socket
+- [x] **A peer row drills through to that organisation's own grants.** The
+      view named the funders who had backed an organisation like yours and
+      gave no way to see what they actually paid for, which is the question
+      the view exists for. `?recipient=` scopes the grant list by the same
+      folded name the peer view groups by (one `recipientKey`, so a row always
+      links to its own grants), the page says whose record it is showing, and
+      the way back drops the scope. The row
       names its funders, which is the actionable part, but "show me those six
       grants" needs a recipient filter in the URL and the facets
 - [ ] `finishedAt` is never set when a publisher fails every time, so
@@ -661,13 +693,13 @@ this cheque before", where no source answers "what is open".
       applicant's OWN region earns a bonus. Ties keep the SQL order so nothing
       is visibly wrong today, but "dorset youth" cannot put a Dorset grant
       above a youth-titled one anywhere else
-- [ ] Move the realistic 360Giving stub into the repo. It lives in a scratchpad
-      and gets rebuilt from memory every session, and twice now it has been
-      quietly degenerate: a seed keyed on `orgId.length` (constant across every
-      funder) gave 471 grants holding fifteen distinct ones, and `pick(a, i*k)`
-      with `k` sharing a factor with `a.length` reached 3 of 15 recipients and
-      3 of 9 amount bands. A ranking measured on a degenerate corpus always
-      looks correct
+- [x] **Moved the realistic 360Giving stub into the repo**
+      (`scripts/stub-360giving.mjs`). 13 funders, 486 grants, 33 recipients,
+      12 themes with their own prose, £500–£395,000, 16 grants outside the
+      window and one publisher that cannot be read. Every field is drawn from
+      its own stream of a per-grant FNV-1a seed — never a length, never
+      `i * k` — and `--print` reports the distribution, so the degeneracy that
+      twice made a ranking look correct is visible rather than inferred
 - [ ] Materialise the text-matched set once inside `facetsFor`. It re-evaluates
       the text predicate about ten times, one per facet option, which is 251 of
       the 470 ms — and now that each term carries its own floor, an eight-term
@@ -677,6 +709,27 @@ this cheque before", where no source answers "what is open".
 - [x] Recency chips narrowed to 1 and 2 years, both inside the window. A
       five-year chip would have selected the whole corpus and read as a filter
       that does nothing, which teaches people the counts are decoration
+- [ ] A publisher whose page 137 fails writes NOTHING, discarding the 136
+      pages already read. Defensible on a re-walk — a partial set would replace
+      a complete one — and wrong on a first load, where there is nothing to
+      preserve and the corpus simply loses a publisher. Needs the
+      replace-versus-merge decision, not a quick patch
+- [ ] Readiness reads 83% on an application with one of three questions
+      answered. The average is over the parts that apply, and three of the four
+      counted parts were fully satisfiable without writing anything: budget,
+      outcomes and word limits ("every answer so far is within its limit" —
+      deliberately, and it scores 1 on a single answer). A percentage that says
+      83% beside "2 questions still to answer" is the same card saying two
+      things. Weighting Questions, or capping the headline while answers are
+      missing, is a product judgement rather than a bug fix
+- [ ] The beneficiary list has nothing for an environmental CIC. A tree nursery
+      ticks "young people" and "the general community" because there is no
+      other box, and those are then what the eligibility matcher and the
+      funder tiers work from. The work words patch over it for search; the
+      underlying model still has no notion of what an organisation DOES
+- [ ] "See the grants behind this" on /funders shows the funder's matching
+      grants but not which of them matched on the description rather than the
+      label — the distinction the ordering now turns on
 - [ ] Re-fetch the funders whose records were cut short, once the first pass is
       done, so their figures stop being wrong
 - [ ] Re-fetch the funders in `failed_org_ids` too, for the same reason

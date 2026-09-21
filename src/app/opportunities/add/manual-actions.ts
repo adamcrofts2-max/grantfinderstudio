@@ -48,6 +48,9 @@ export async function addOwnFundAction(
     return { saved: false, message: 'Check the highlighted fields.', errors, values };
   }
 
+  // Set inside the transaction below and carried into the result, so the
+  // screen can offer the fund it has just created.
+  let opportunityId: string | null = null;
   try {
     // Funders are shared reference data: the tenant role reads them and does
     // not write them, so this one insert takes the operator path, as the
@@ -69,7 +72,7 @@ export async function addOwnFundAction(
       return ensureFunderNamed(tx, fund.funderName, `funder_typed_${organisationId}`);
     });
     const database = await getDatabase();
-    await database.withTenant(organisationId, (tx) =>
+    opportunityId = await database.withTenant(organisationId, (tx) =>
       insertManualFund(tx, fund, funderId, organisationId),
     );
   } catch (error) {
@@ -91,5 +94,6 @@ export async function addOwnFundAction(
     errors: {},
     // Cleared on success: ready for the next fund.
     values: NO_VALUES,
+    opportunityId,
   };
 }

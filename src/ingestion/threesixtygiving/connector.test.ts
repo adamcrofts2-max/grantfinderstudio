@@ -154,7 +154,33 @@ describe('assertSameOrigin', () => {
   it('rejects a downgrade to http', () => {
     expect(() =>
       assertSameOrigin('http://api.threesixtygiving.org/api/v1/x', THREESIXTYGIVING_BASE_URL),
-    ).toThrow(/must use https/);
+    ).toThrow(/expected https/u);
+  });
+
+  it('follows a link on an http base, because the base decides', () => {
+    // The base URL is configurable so a deployment can be pointed at a mirror
+    // or a staging copy. Demanding https outright meant that against an http
+    // one, every publisher with more than one page failed on its `next` link
+    // and the rows already read were discarded with it — three of thirteen
+    // publishers wrote nothing and were counted "could not be read".
+    const base = 'http://127.0.0.1:4599/api/v1/';
+    expect(assertSameOrigin(`${base}org/GB-1/grants_made/?offset=50`, base).host).toBe(
+      '127.0.0.1:4599',
+    );
+  });
+
+  it('still refuses another host on an http base', () => {
+    expect(() =>
+      assertSameOrigin('http://169.254.169.254/latest/', 'http://127.0.0.1:4599/api/v1/'),
+    ).toThrow(/points to 169.254.169.254/u);
+  });
+
+  it('refuses an https link when the base is http, too', () => {
+    // Not a downgrade, but not the origin we asked for either: the rule is
+    // the same origin, in both directions.
+    expect(() =>
+      assertSameOrigin('https://127.0.0.1:4599/api/v1/x', 'http://127.0.0.1:4599/api/v1/'),
+    ).toThrow(/expected http/u);
   });
 
   it('rejects a non-URL', () => {

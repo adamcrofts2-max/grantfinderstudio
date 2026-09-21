@@ -27,6 +27,20 @@ export interface Award {
   region: string | null;
   /** Free-form classification labels as published by the funder. */
   tags: readonly string[];
+  /**
+   * What the funder said the grant was for.
+   *
+   * Optional because a publisher may leave either out, and because the amount
+   * statistics this module computes never needed them. They are here for
+   * matching: a grant's CLASSIFICATION is a label from a short list — for
+   * hundreds of environmental grants it is the single word "Environment" —
+   * and the sentence beside it says "community tree nursery growing native
+   * saplings from locally collected seed". Judging whether a funder gives to
+   * work like yours from the label alone is what put a youth trust at the top
+   * of a tree nursery's list of prospects.
+   */
+  title?: string | null;
+  description?: string | null;
 }
 
 /**

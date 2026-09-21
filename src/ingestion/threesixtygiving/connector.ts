@@ -196,6 +196,21 @@ export function readGrantRow(entry: unknown): CorpusGrant | null {
  *
  * Without this, a compromised or hostile response could walk the ingester onto
  * an internal address.
+ *
+ * ## The SAME origin, not a hardcoded https
+ *
+ * This demanded `https:` outright, which is right for the live API and wrong
+ * as a rule: the base URL is configurable precisely so a deployment can be
+ * pointed at a mirror or a staging copy, and against an `http://` one every
+ * publisher with more than one page failed — the `next` link was refused, the
+ * error aborted that funder, and the rows already read were thrown away with
+ * it. Found by loading a local corpus: the three biggest publishers of
+ * thirteen wrote nothing at all and were counted "could not be read".
+ *
+ * Comparing against the base URL's own protocol keeps the property that
+ * mattered. In production the base is `https://api.threesixtygiving.org`, so
+ * an `http` link is still a downgrade and still refused; the check is now
+ * "the origin we asked" rather than a guess at what that origin is.
  */
 export function assertSameOrigin(candidate: string, baseUrl: string): URL {
   let url: URL;
@@ -205,8 +220,11 @@ export function assertSameOrigin(candidate: string, baseUrl: string): URL {
     throw new IngestionError(`Pagination link is not a valid URL: ${candidate}`);
   }
   const base = new URL(baseUrl);
-  if (url.protocol !== 'https:') {
-    throw new IngestionError(`Pagination link must use https: ${candidate}`);
+  if (url.protocol !== base.protocol) {
+    throw new IngestionError(
+      `Pagination link uses ${url.protocol.replace(':', '')}, expected ` +
+        `${base.protocol.replace(':', '')}: ${candidate}`,
+    );
   }
   if (url.host !== base.host) {
     throw new IngestionError(

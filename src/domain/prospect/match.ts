@@ -81,6 +81,18 @@ export interface ProspectApplicant {
   /** County or city, as the applicant describes it. */
   region: string | null;
   beneficiaryGroups: readonly string[];
+  /**
+   * The words the applicant used for the work itself.
+   *
+   * Because the beneficiary groups are not what most organisations DO. A
+   * community tree nursery ticks "young people" and "the general community" —
+   * the onboarding list has nothing else for it — and on the groups alone the
+   * strongest prospect on offer was a youth trust, while the woodland funder
+   * with seventeen tree-nursery grants was filed under "for other kinds of
+   * work". Optional so that a caller with no project still gets the old
+   * behaviour rather than an error. See `defaultSearchText`.
+   */
+  workWords?: readonly string[];
   /** What they are seeking, for amount fit. Null when not yet decided. */
   amountSoughtGbp: number | null;
 }
@@ -100,6 +112,16 @@ export interface Prospect {
   totalAwards: number;
   /** Awards matching both area and cause. */
   matchingAwards: Award[];
+  /**
+   * Of those, the ones whose own text is the work the applicant described.
+   *
+   * The strongest evidence this module can offer, and separate from
+   * `matchingAwards` because a label match and a description match are not
+   * equal: "Children and young people" is a category, "a community tree
+   * nursery growing native saplings" is the same work. The ordering uses it,
+   * and the card can say so.
+   */
+  workAwards: Award[];
   /** How the project's amount sits against this funder's usual range. */
   amountFit: AmountFit;
   /** Null when there are too few awards to characterise. */
@@ -156,9 +178,79 @@ export function regionsMatch(a: string | null, b: string | null): boolean {
   return left === right || left.includes(right) || right.includes(left);
 }
 
-function matchesCause(award: Award, groups: readonly string[]): boolean {
-  if (groups.length === 0) return false;
+/**
+ * Whether this grant is for the kind of work the applicant does.
+ *
+ * Two ways of being so, and either is enough:
+ *
+ *   - Its CLASSIFICATION overlaps one of their beneficiary groups. This was
+ *     the only test, and it is the weaker one: the labels are a short
+ *     published list, so every environmental grant in the corpus says
+ *     "Environment" — a word no applicant describes themselves with.
+ *   - Its own TEXT contains one of the words they used for their work.
+ *     "Community tree nursery" against "a community tree nursery growing
+ *     native saplings from locally collected seed" is the match a person
+ *     would make in a second, and the label could never make.
+ *
+ * A single work word is enough, for the reason `labelsOverlap` is loose: the
+ * applicant sees the grants behind the claim and can dismiss a bad match at a
+ * glance, where a missed match costs them a funder they wanted. The words are
+ * already the applicant's own most-repeated few rather than every word in
+ * their description, which is what keeps "community" from matching the whole
+ * corpus on its own — it is one of five, and the tier is only the first of
+ * three orderings.
+ */
+function matchesLabel(award: Award, groups: readonly string[]): boolean {
   return award.tags.some((tag) => groups.some((group) => labelsOverlap(tag, group)));
+}
+
+/**
+ * The stronger of the two: the funder's own words for this grant describe the
+ * work the applicant described.
+ *
+ * Kept separate from the label match rather than folded in, because the two
+ * are not equal evidence and the ordering needs to know which is which. A
+ * youth trust whose grants are labelled "Children and young people"
+ * legitimately matches a tree nursery that ticked "young people" — and
+ * seventeen such grants outranked the four grants that were literally
+ * community tree nurseries until this was pulled apart.
+ *
+ * ## TWO words, not one
+ *
+ * One word is a coincidence; two are a description. On "community tree
+ * nursery, we grow native trees", a single word was enough to call a
+ * food-growing funder's grants "the work you described" — their market garden
+ * project says "growing", and that is all it took. A tree nursery grant says
+ * tree AND nursery AND usually native or seed; a food project says grow and
+ * nothing else of ours. The applicant's own words are already reduced to
+ * their most-used few and filtered against the corpus, so requiring two of
+ * them is a low bar for a real match and an impossible one for an accident.
+ *
+ * An applicant whose description yields fewer than two usable words matches
+ * nothing here, which is honest: they have not told us enough to match on,
+ * and the beneficiary labels remain what they always were.
+ */
+export const MIN_WORK_MATCHES = 2;
+
+function matchesWorkText(award: Award, workWords: readonly string[]): boolean {
+  if (workWords.length < MIN_WORK_MATCHES) return false;
+  const text = `${award.title ?? ''} ${award.description ?? ''}`.toLowerCase();
+  if (text.trim() === '') return false;
+  let hits = 0;
+  for (const word of workWords) {
+    const needle = word.trim().toLowerCase();
+    if (needle.length > 2 && text.includes(needle)) hits += 1;
+    if (hits >= MIN_WORK_MATCHES) return true;
+  }
+  return false;
+}
+
+function matchesCause(
+  award: Award,
+  groups: readonly string[],
+  workWords: readonly string[] = [],
+): boolean {
+  return matchesLabel(award, groups) || matchesWorkText(award, workWords);
 }
 
 /** An award in the applicant's own county or city. The stronger claim. */
@@ -229,6 +321,7 @@ export function assessProspect(
       ...base,
       tier: 'not_characterised',
       matchingAwards: [],
+      workAwards: [],
       amountFit: 'unknown',
       medianAwardGbp: null,
       amounts: null,
@@ -261,7 +354,10 @@ export function assessProspect(
           ? 'above_typical'
           : 'within_typical';
 
-  const causeAwards = awards.filter((a) => matchesCause(a, applicant.beneficiaryGroups));
+  const causeAwards = awards.filter((a) =>
+    matchesCause(a, applicant.beneficiaryGroups, applicant.workWords ?? []),
+  );
+  const workMatches = awards.filter((a) => matchesWorkText(a, applicant.workWords ?? []));
   const areaAwards = awards.filter((a) => matchesArea(a, applicant));
   const bothAwards = causeAwards.filter((a) => areaAwards.includes(a));
 
@@ -281,10 +377,27 @@ export function assessProspect(
     // grant made 80 miles away is the kind of small dishonesty that costs trust
     // the moment someone opens the list and looks.
     const inRegion = bothAwards.filter((a) => matchesRegion(a, applicant));
+    // "For the work you described" where the funder's own sentences match it,
+    // and "work like yours" where only the classification does. The reader can
+    // open both, and the difference is why one funder is above another.
+    const strong = (list: readonly Award[]): boolean =>
+      list.length > 0 && list.every((a) => matchesWorkText(a, applicant.workWords ?? []));
+    // BOTH NUMBERS when they differ, because the ordering uses the wider one.
+    // This said "4 grants for the work you described, in your area" while
+    // sorting on the seventeen such grants the funder had made across the
+    // nation — so a funder above another on evidence the card did not show.
+    // The module's rule is that every key is visible on the card.
+    const elsewhere = bothAwards.length - inRegion.length;
     reasons.push(
       inRegion.length > 0
-        ? `${plural(inRegion.length, 'grant', 'grants')} to work like yours, in your area.`
-        : `${plural(bothAwards.length, 'grant', 'grants')} to work like yours, elsewhere in your nation.`,
+        ? `${plural(inRegion.length, 'grant', 'grants')} ${
+            strong(inRegion) ? 'for the work you described' : 'to work like yours'
+          }, in your area${
+            elsewhere > 0 ? `, and ${elsewhere} more elsewhere in your nation` : ''
+          }.`
+        : `${plural(bothAwards.length, 'grant', 'grants')} ${
+            strong(bothAwards) ? 'for the work you described' : 'to work like yours'
+          }, elsewhere in your nation.`,
     );
   } else if (causeAwards.length > 0) {
     reasons.push(
@@ -323,10 +436,21 @@ export function assessProspect(
     );
   }
 
+  const matchingAwards =
+    bothAwards.length > 0 ? bothAwards : causeAwards.length > 0 ? causeAwards : areaAwards;
+
   return {
     ...base,
     tier,
-    matchingAwards: bothAwards.length > 0 ? bothAwards : causeAwards.length > 0 ? causeAwards : areaAwards,
+    matchingAwards,
+    // Only the ones actually on the card, so a count the reader cannot open
+    // never drives the order.
+    workAwards: (() => {
+      // A Set, because `includes` over the matching list is quadratic and a
+      // funder with thousands of awards is ordinary.
+      const strongEnough = new Set(workMatches);
+      return matchingAwards.filter((a) => strongEnough.has(a));
+    })(),
     amountFit,
     medianAwardGbp,
     amounts,
@@ -347,6 +471,17 @@ export function byRelevance(a: Prospect, b: Prospect): number {
 
   // A funder that may have stopped giving reads after one that clearly has not.
   if (a.mayBeDormant !== b.mayBeDormant) return a.mayBeDormant ? 1 : -1;
+
+  // THE STRONGER EVIDENCE FIRST.
+  //
+  // Inside a tier this was the raw count of matching grants, and on a tree
+  // nursery's list that put a youth trust with seventeen label matches above
+  // the woodland funder with four grants that were literally community tree
+  // nurseries. A grant whose own words are the applicant's work is better
+  // evidence than a grant sharing a category with them, so it is compared
+  // first — and both counts are on the card.
+  const work = b.workAwards.length - a.workAwards.length;
+  if (work !== 0) return work;
 
   const evidence = b.matchingAwards.length - a.matchingAwards.length;
   if (evidence !== 0) return evidence;

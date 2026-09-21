@@ -236,7 +236,21 @@ export function ManualFundForm({
           role={state.saved ? 'status' : 'alert'}
         >
           {state.saved ? null : <span aria-hidden="true">⚠</span>}
-          <span>{state.message}</span>
+          <span>
+            {state.message}
+            {/* THE WAY ON. The message named the fund and offered nothing:
+                what anybody wants next is the fund's own page — its
+                eligibility, what applying would cost, and the button that
+                starts the application. */}
+            {state.saved && state.opportunityId ? (
+              <>
+                {' '}
+                <a href={`/opportunities/${state.opportunityId}`}>
+                  Open it<span aria-hidden="true"> →</span>
+                </a>
+              </>
+            ) : null}
+          </span>
         </p>
       )}
     </form>

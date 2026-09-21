@@ -4,6 +4,7 @@ import { requireOrganisationId } from '@/app/session';
 import { loadAllFunderAwards, loadOrganisation, loadProject } from '@/db/queries';
 
 import { findProspects, type Prospect, type ProspectTier } from '@/domain/prospect/match';
+import { distinctiveWords, workWords } from '@/domain/grants/keywords';
 import { gbp } from '@/app/components';
 import { DistributionBar } from '@/app/viz/DistributionBar';
 
@@ -173,6 +174,21 @@ export default async function FundersPage() {
             jurisdiction: organisation.profile.jurisdiction,
             region: organisation.profile.region,
             beneficiaryGroups: project?.beneficiaryGroups ?? [],
+            // What they said the work IS. Without it, "funded your kind of
+            // work" is decided by classification labels alone, and an
+            // environmental CIC has no label of its own to match.
+            //
+            // Filtered against the corpus in hand, because one word that
+            // describes half the sector undoes the matching: on "community
+            // tree nursery", the word "community" alone promoted a
+            // food-poverty funder into "funded your kind of work" for a tree
+            // nursery. See `distinctiveWords`.
+            workWords: distinctiveWords(
+              workWords(`${project?.name ?? ''} ${project?.description ?? ''}`, 5),
+              page.funders.flatMap((funder) =>
+                funder.awards.map((award) => `${award.title ?? ''} ${award.description ?? ''}`),
+              ),
+            ),
             amountSoughtGbp: project?.amountSoughtGbp ?? null,
           },
           asOf,

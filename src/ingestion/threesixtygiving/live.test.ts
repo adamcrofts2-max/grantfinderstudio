@@ -146,27 +146,67 @@ describe('the whole chain, over a socket', () => {
     expect(summary.behaviour.tags[0]?.value).toBe('Children and young people');
   });
 
-  it('refuses an http pagination link even back to the host it is talking to', async () => {
-    // Not a limitation of the test — the property. The stub here IS the origin,
-    // and the link still has to be https, because a downgrade to plain http is
-    // exactly how a paginating client gets walked somewhere in the middle.
-    //
-    // It does mean pagination cannot be followed over a plain socket, so the
-    // multi-page path is covered in ingest.test.ts against a fake client and
-    // the hop itself is proved by the real API on first use.
+  it('follows a pagination link back to the origin it was given', async () => {
+    /**
+     * This asserted the opposite — that an `http` link is refused even back to
+     * the host the client is talking to, on the reasoning that a downgrade to
+     * plaintext is how a paginating client gets walked somewhere in the
+     * middle. The downgrade case is still refused (`connector.test.ts`, and
+     * the next test here), but as a blanket rule it was wrong in a way a walk
+     * found: against an `http` base — which is what the setting exists for,
+     * "a mirror or a staging copy" — every publisher with more than one page
+     * failed on its `next` link, the rows already read were discarded with
+     * it, and the console counted the publisher as unreadable. Three of
+     * thirteen publishers, 45% of a local corpus, silently absent.
+     *
+     * The property kept is the one that matters: the SAME origin as the base
+     * URL. In production the base is `https://api.threesixtygiving.org`, so
+     * an http link is a downgrade and still refused. And because pagination
+     * can now be followed over a plain socket, the multi-page hop is proved
+     * here, end to end, rather than deferred to the real API on first use.
+     */
+    respond = (path) =>
+      path.includes('page2')
+        ? {
+            status: 200,
+            body: JSON.stringify({
+              count: 2,
+              next: null,
+              results: [grant('g2', 8000, '2024-02-01')],
+            }),
+          }
+        : {
+            status: 200,
+            body: JSON.stringify({
+              count: 2,
+              next: `${baseUrl}page2/`,
+              results: [grant('g1', 5000, '2024-01-01')],
+            }),
+          };
+
+    const outcome = await ingestFunder(fastClient(), request, runInTransaction, { baseUrl });
+    expect(outcome.awardsWritten).toBe(2);
+    expect(outcome.pagesFetched).toBe(2);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toContain('page2');
+  });
+
+  it('refuses a pagination link that changes the scheme it was given', async () => {
+    // The base here is http, so an https link is not the origin we asked for
+    // either. The rule is the same origin, in both directions — and on a
+    // production base of https, this is the downgrade refusal.
     respond = () => ({
       status: 200,
       body: JSON.stringify({
         count: 2,
-        next: `${baseUrl}page2/`,
+        next: baseUrl.replace('http://', 'https://') + 'page2/',
         results: [grant('g1', 5000, '2024-01-01')],
       }),
     });
 
     await expect(
       ingestFunder(fastClient(), request, runInTransaction, { baseUrl }),
-    ).rejects.toThrow(/must use https/);
-    // One request made, and no second page fetched.
+    ).rejects.toThrow(/expected http/u);
     expect(asked).toHaveLength(1);
   });
 

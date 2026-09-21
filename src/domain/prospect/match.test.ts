@@ -209,6 +209,7 @@ const prospect = (over: Partial<Prospect>): Prospect =>
     tier: 'cause',
     totalAwards: 10,
     matchingAwards: [],
+    workAwards: [],
     amountFit: 'unknown',
     medianAwardGbp: 10_000,
     lastAwardedOn: '2026-01-01',
@@ -319,7 +320,18 @@ describe('area wording is as precise as the evidence', () => {
       award({ region: 'Devon' }),
     ];
     const result = assessProspect(funder(mixed), applicant(), ASOF);
-    expect(result.reasons[0]).toBe('2 grants to work like yours, in your area.');
+    // Two local, and the three in Devon named as well — because the ordering
+    // compares the whole matching set, and every key it uses has to be
+    // readable on the card.
+    expect(result.reasons[0]).toBe(
+      '2 grants to work like yours, in your area, and 3 more elsewhere in your nation.',
+    );
+  });
+
+  it('says nothing about elsewhere when there is nowhere else', () => {
+    const local = [award({ region: 'Somerset' }), award({ region: 'Somerset' })];
+    const result = assessProspect(funder([...local, ...five({ region: 'Somerset' })]), applicant(), ASOF);
+    expect(result.reasons[0]).toBe('7 grants to work like yours, in your area.');
   });
 });
 
@@ -349,5 +361,248 @@ describe('a funder that publishes nothing', () => {
       upperQuartile: 25_000,
       max: 30_000,
     });
+  });
+});
+
+/**
+ * The tree-nursery case, which the walk found.
+ *
+ * A community tree nursery in Somerset ticks "young people" and "the general
+ * community" during onboarding, because the beneficiary list offers nothing
+ * else for an environmental CIC. On the labels alone, a woodland funder that
+ * had given seventeen tree-nursery grants was filed under "funded in your
+ * area, for other kinds of work", and a youth trust was the closest match.
+ */
+describe('what counts as your kind of work', () => {
+  const treeGrants = (): Award[] =>
+    Array.from({ length: 5 }, (_, i) =>
+      award({
+        id: `tree_${i}`,
+        tags: ['Environment'],
+        title: 'Community tree nursery',
+        description:
+          'Establishing a community tree nursery growing native saplings from locally collected seed.',
+      }),
+    );
+
+  const nursery = (over: Partial<ProspectApplicant> = {}) =>
+    applicant({
+      beneficiaryGroups: ['young people', 'the general community'],
+      workWords: ['community', 'tree', 'nursery', 'native', 'saplings'],
+      amountSoughtGbp: 18_000,
+      ...over,
+    });
+
+  it('counts a grant whose text is the work, not only its label', () => {
+    const p = assessProspect(funder(treeGrants(), 'Greenwood Trust'), nursery(), ASOF);
+    expect(p.tier).toBe('area_and_cause');
+    expect(p.matchingAwards).toHaveLength(5);
+    expect(p.workAwards).toHaveLength(5);
+    // And it SAYS which kind of evidence it is: the funder's own sentences
+    // describe this work, rather than merely sharing a category with it.
+    expect(p.reasons.join(' ')).toMatch(/for the work you described, in your area/u);
+  });
+
+  it('is the old behaviour when nothing describes the work', () => {
+    // No work words: an "Environment" label and a youth beneficiary group do
+    // not overlap, and the funder is area-only. This is what the walk saw.
+    const p = assessProspect(
+      funder(treeGrants(), 'Greenwood Trust'),
+      nursery({ workWords: [] }),
+      ASOF,
+    );
+    expect(p.tier).toBe('area');
+    expect(p.reasons.join(' ')).toMatch(/for other kinds of work/u);
+  });
+
+  it('still prefers the funder whose grants are the work over one whose label matches', () => {
+    const youth = funder(
+      Array.from({ length: 5 }, (_, i) =>
+        award({
+          id: `y_${i}`,
+          tags: ['Children and young people'],
+          title: 'Youth club and training',
+          description: 'Evening skills sessions for young people at risk of exclusion.',
+        }),
+      ),
+      'Southwest Youth Trust',
+    );
+    const trees = { ...funder(treeGrants(), 'Greenwood Trust'), funderId: 'f2' };
+    const ranked = findProspects([youth, trees], nursery(), ASOF);
+    // Both are area_and_cause now — the youth trust legitimately matches the
+    // group they ticked — so this asserts the tree funder is no longer BELOW
+    // it, which is what the bug did.
+    expect(ranked.map((p) => p.funderName)).toContain('Greenwood Trust');
+    expect(ranked[0]?.tier).toBe('area_and_cause');
+    expect(
+      ranked.find((p) => p.funderName === 'Greenwood Trust')?.tier,
+    ).toBe('area_and_cause');
+  });
+
+  it('does not match on a word too short to mean anything', () => {
+    const p = assessProspect(
+      funder(treeGrants(), 'Greenwood Trust'),
+      nursery({ beneficiaryGroups: [], workWords: ['in', 'a'] }),
+      ASOF,
+    );
+    expect(p.tier).toBe('area');
+  });
+
+  it('matches a grant with no label at all, from its text', () => {
+    const p = assessProspect(
+      funder(
+        Array.from({ length: 5 }, (_, i) =>
+          award({ id: `n_${i}`, tags: [], title: 'Tree nursery expansion', description: null }),
+        ),
+        'Greenwood Trust',
+      ),
+      nursery({ beneficiaryGroups: [] }),
+      ASOF,
+    );
+    expect(p.tier).toBe('area_and_cause');
+  });
+});
+
+describe('which evidence outranks which', () => {
+  const treeAward = (i: number): Award =>
+    award({
+      id: `t_${i}`,
+      tags: ['Environment'],
+      title: 'Community tree nursery',
+      description: 'A community tree nursery growing native saplings from local seed.',
+    });
+  const youthAward = (i: number): Award =>
+    award({
+      id: `y_${i}`,
+      tags: ['Children and young people'],
+      title: 'Youth club and training',
+      description: 'Evening sessions for young people at risk of exclusion.',
+    });
+
+  it('puts the funder whose grants ARE the work above one that shares a category', () => {
+    // FOUND BY WALKING: a tree nursery's strongest prospect was a youth trust,
+    // because it had seventeen grants labelled "Children and young people"
+    // against the woodland funder's four actual tree nurseries, and inside a
+    // tier the order was the raw count.
+    const youth: FunderAwards = {
+      funderId: 'youth',
+      funderName: 'Southwest Youth Trust',
+      awards: Array.from({ length: 17 }, (_, i) => youthAward(i)),
+    };
+    const trees: FunderAwards = {
+      funderId: 'trees',
+      funderName: 'Greenwood Trust',
+      // Four tree nurseries among ten grants, which is the shape the walk
+      // found: a funder with plenty of history, a few of it this work. Below
+      // MIN_AWARDS_TO_CHARACTERISE in total they would not be characterised
+      // at all and would sort last whatever they had funded.
+      awards: [
+        ...Array.from({ length: 4 }, (_, i) => treeAward(i)),
+        ...Array.from({ length: 6 }, (_, i) =>
+          award({
+            id: `o_${i}`,
+            tags: ['Heritage'],
+            title: 'Village hall restoration',
+            description: 'Rewiring and a new accessible entrance.',
+          }),
+        ),
+      ],
+    };
+    const ranked = findProspects([youth, trees], {
+      jurisdiction: 'england',
+      region: 'Somerset',
+      beneficiaryGroups: ['young people'],
+      workWords: ['tree', 'nursery', 'saplings'],
+      amountSoughtGbp: 18_000,
+    }, ASOF);
+    expect(ranked.map((p) => p.funderName)).toEqual([
+      'Greenwood Trust',
+      'Southwest Youth Trust',
+    ]);
+    expect(ranked[0]?.workAwards).toHaveLength(4);
+    expect(ranked[1]?.workAwards).toHaveLength(0);
+  });
+
+  it('falls back to the plain count when neither has work evidence', () => {
+    const many = prospect({ funderName: 'Many', matchingAwards: [award(), award(), award()] });
+    const few = prospect({ funderName: 'Few', matchingAwards: [award()] });
+    expect([few, many].toSorted(byRelevance).map((p) => p.funderName)).toEqual(['Many', 'Few']);
+  });
+});
+
+describe('one word is a coincidence, two are a description', () => {
+  /** A food-growing grant. Shares exactly one word with a tree nursery. */
+  const foodAward = (i: number): Award =>
+    award({
+      id: `f_${i}`,
+      tags: ['Food and poverty'],
+      title: 'Growing and cooking together',
+      description: 'Market garden and cooking project supplying a pay-what-you-can food club.',
+    });
+
+  const nurseryWords = ['nursery', 'tree', 'grow', 'native', 'seed'];
+
+  it('does not call a food project the work a tree nursery described', () => {
+    // FOUND BY WALKING: "grow" alone put a food funder second on the list,
+    // under the heading "4 grants for the work you described".
+    const food: FunderAwards = {
+      funderId: 'food',
+      funderName: 'Fair Food Alliance',
+      awards: Array.from({ length: 6 }, (_, i) => foodAward(i)),
+    };
+    const p = assessProspect(food, {
+      jurisdiction: 'england',
+      region: 'Somerset',
+      beneficiaryGroups: [],
+      workWords: nurseryWords,
+      amountSoughtGbp: 18_000,
+    }, ASOF);
+    expect(p.workAwards).toHaveLength(0);
+    expect(p.tier).toBe('area');
+  });
+
+  it('still recognises the work when two of the words are there', () => {
+    const trees: FunderAwards = {
+      funderId: 'trees',
+      funderName: 'Greenwood Trust',
+      awards: Array.from({ length: 6 }, (_, i) =>
+        award({
+          id: `t_${i}`,
+          tags: ['Environment'],
+          title: 'Community tree nursery',
+          description: 'Growing native saplings from locally collected seed.',
+        }),
+      ),
+    };
+    const p = assessProspect(trees, {
+      jurisdiction: 'england',
+      region: 'Somerset',
+      beneficiaryGroups: [],
+      workWords: nurseryWords,
+      amountSoughtGbp: 18_000,
+    }, ASOF);
+    expect(p.workAwards).toHaveLength(6);
+    expect(p.tier).toBe('area_and_cause');
+  });
+
+  it('matches nothing at all on a single usable word', () => {
+    // Not a failure mode to paper over: an applicant who has given us one
+    // word has not described their work, and inventing a match from it is how
+    // the food funder got in.
+    const trees: FunderAwards = {
+      funderId: 'trees',
+      funderName: 'Greenwood Trust',
+      awards: Array.from({ length: 6 }, (_, i) =>
+        award({ id: `t_${i}`, tags: [], title: 'Community tree nursery', description: null }),
+      ),
+    };
+    const p = assessProspect(trees, {
+      jurisdiction: 'england',
+      region: 'Somerset',
+      beneficiaryGroups: [],
+      workWords: ['tree'],
+      amountSoughtGbp: 18_000,
+    }, ASOF);
+    expect(p.workAwards).toHaveLength(0);
   });
 });

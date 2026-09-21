@@ -159,7 +159,16 @@ export function Narrow({
     askBands.length === filters.bands.length &&
     askBands.every((band) => filters.bands.includes(band));
   const askHref = searchHref(base, { ...filters, bands: askActive ? [] : askBands });
-  const clearHref = searchHref(base, { bands: [], since: null, places: [], topics: [] });
+  // Clearing the narrowing KEEPS the recipient scope. "Show me all of this
+  // organisation's grants" is where the reader came from, not a filter they
+  // applied, and dropping it would throw them back to the whole corpus.
+  const clearHref = searchHref(base, {
+    bands: [],
+    since: null,
+    places: [],
+    topics: [],
+    recipient: filters.recipient,
+  });
   const active = filterCount(filters);
 
   return (

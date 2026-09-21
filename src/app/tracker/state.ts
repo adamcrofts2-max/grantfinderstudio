@@ -19,7 +19,12 @@ export const STATE_LABEL = {
   overdue: { label: 'Deadline passed', className: 'badge badge-negative', mark: '✕' },
   start_now: { label: 'Start now', className: 'badge badge-negative', mark: '!' },
   behind: { label: 'Behind', className: 'badge badge-caution', mark: '⚠' },
-  effort_unknown: { label: 'Size unknown', className: 'badge badge-caution', mark: '?' },
+  // "Size unknown" read as the size of the GRANT — which the applicant has
+  // usually just typed in — where it means the size of the WORK: nobody has
+  // pasted the funder's questions yet, so there is nothing to schedule back
+  // from the deadline. The row's own sentence says so; the badge is what gets
+  // scanned.
+  effort_unknown: { label: 'Effort unknown', className: 'badge badge-caution', mark: '?' },
   on_track: { label: 'On track', className: 'badge badge-positive', mark: '✓' },
   no_clock: { label: 'No deadline', className: 'badge badge-neutral', mark: '·' },
   submitted: { label: 'Submitted', className: 'badge badge-accent', mark: '✓' },

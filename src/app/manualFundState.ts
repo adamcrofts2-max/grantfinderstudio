@@ -42,6 +42,16 @@ export interface ManualFundFormState {
   errors: Record<string, string>;
   /** What was typed, so a rejected form is not handed back empty. */
   values: FormValues;
+  /**
+   * The fund that was just added, so the screen can offer it.
+   *
+   * Without it the success line named the fund and went nowhere: the next
+   * thing anybody wants is the fund's own page — eligibility, what it would
+   * cost, and the button that starts an application — and the only route to
+   * it was to guess at the tracker. Null on failure and before anything is
+   * saved.
+   */
+  opportunityId?: string | null;
 }
 
 export const EMPTY_MANUAL_FUND: ManualFundFormState = {
@@ -49,4 +59,5 @@ export const EMPTY_MANUAL_FUND: ManualFundFormState = {
   message: '',
   errors: {},
   values: NO_VALUES,
+  opportunityId: null,
 };

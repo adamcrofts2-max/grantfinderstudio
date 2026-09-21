@@ -4,7 +4,13 @@ import { getDatabase } from '@/db';
 import { requireSession } from '@/app/session';
 import { loadOrganisation, loadProject } from '@/db/queries';
 import { rankGrants } from '@/domain/grants/query';
-import { filtersFromParams, filtersToParams, hasFilters } from '@/domain/grants/facets';
+import { defaultSearchText } from '@/domain/grants/keywords';
+import {
+  filterCount,
+  filtersFromParams,
+  filtersToParams,
+  hasFilters,
+} from '@/domain/grants/facets';
 import { rankFunders } from '@/domain/grants/funders';
 import { gbp } from '@/app/components';
 import { nudgeCorpusOnVisit } from '@/app/corpus-autostart';
@@ -155,8 +161,21 @@ export default async function GrantsPage({
   // A first visit searches for what they do, so the screen is useful before
   // anybody types. Once the form has been used, `q` is present and their words
   // win — including an empty box, which means "I am starting again".
+  //
+  // FROM THE WORK, not from the beneficiary list. This was
+  // `[...groups, region].join(' ')`, which for a community tree nursery in
+  // Somerset made the product's own opening question "young people older
+  // people Somerset" — those being the only boxes the onboarding list offers
+  // an environmental CIC — so it led with a youth trust while the woodland
+  // funder that had made seventeen tree-nursery grants was absent. See
+  // `defaultSearchText`.
   const asked = 'q' in params;
-  const suggested = [...groups, region].filter((part): part is string => Boolean(part)).join(' ');
+  const suggested = defaultSearchText({
+    projectName: context.project?.name ?? null,
+    projectDescription: context.project?.description ?? null,
+    beneficiaryGroups: groups,
+    region,
+  });
   const text = asked ? str(params['text']) : suggested;
 
   const filters = filtersFromParams(params);
@@ -184,7 +203,36 @@ export default async function GrantsPage({
       ...(next === 'funders' ? {} : { view: next }),
     }).toString()}`;
 
+  /**
+   * The same search with no organisation scoped.
+   *
+   * `viewHref` carries every filter, which is right for the three view tabs
+   * and wrong for the way out of a scope: "back to the organisations" landed
+   * on the peer list still filtered to the one organisation the reader was
+   * trying to leave, so the list had a single row on it.
+   */
+  const unscopedHref = (next: 'funders' | 'grants' | 'peers'): string =>
+    `/grants?${new URLSearchParams({
+      q: '1',
+      text,
+      ...filtersToParams({ ...filters, recipient: null }),
+      ...(next === 'funders' ? {} : { view: next }),
+    }).toString()}`;
+
+  /**
+   * One organisation's own grants, from a peer row.
+   *
+   * The grant view, because that is where the words and the amounts are — the
+   * funder grouping of one recipient's grants would be a list of names again.
+   * The text stays, so "back" returns to the same search rather than to the
+   * whole corpus; the other narrowing is dropped, because somebody asking to
+   * see everything an organisation was given means everything.
+   */
+  const recipientHref = (key: string): string =>
+    `/grants?${new URLSearchParams({ q: '1', text, view: 'grants', recipient: key }).toString()}`;
+
   const recipients = result.state === 'ok' ? result.recipients : [];
+  const scopedTo = result.state === 'ok' ? result.scopedTo : null;
 
   const funders =
     result.state === 'ok'
@@ -330,12 +378,25 @@ export default async function GrantsPage({
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
             {result.corpus.awards === 0
               ? 'There are no grants here to search yet — the record is still being built, as above.'
-              : hasFilters(filters)
+              : /* A SCOPE THAT NAMES NOBODY, before the generic filter
+                   message. A hand-edited or stale `recipient` link produced
+                   "remove one of the filters above" over a panel whose only
+                   filter was invisible, which is advice nobody can act on. */
+              filters.recipient !== null && scopedTo === null
+                ? 'That link names an organisation we hold no grants for — the name may have been edited, or their publisher may have withdrawn the record.'
+                : hasFilters(filters)
                 ? 'Your words match grants, but not once the filters above are applied. Remove one and the counts will show you what is there.'
                 : unmatched.length > 0
                   ? `No grant among the ${count(result.corpus.awards)} held mentions ${unmatched.join(' or ')}${unmatched.length === queryWords ? '' : ', and the rest of your words matched nothing close enough to count'}. Try plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`
                   : `No grant among the ${count(result.corpus.awards)} held is a close enough match for those words. Try fewer of them, or plainer ones — funders write "young people" more often than "youth engagement". Only ${RECENT_WINDOW_LABEL} are held, so an older programme will not be here.`}
           </p>
+          {filters.recipient === null ? null : (
+            <p style={{ marginTop: 'var(--s-4)' }}>
+              <a className="btn btn-secondary" href={unscopedHref('peers')}>
+                Back to the organisations
+              </a>
+            </p>
+          )}
         </section>
       ) : (
         <>
@@ -365,6 +426,38 @@ export default async function GrantsPage({
               </span>
             </p>
           )}
+          {/* WHOSE GRANTS THESE ARE.
+              A scope is not a filter chip: the reader clicked an organisation
+              and everything below is that organisation's record, so the page
+              says so in its own line, with the way back to the search they
+              came from. Without this the grant list looks like a search that
+              has gone strangely narrow. */}
+          {scopedTo === null ? null : (
+            <p className="notice notice-neutral" style={{ marginTop: 'var(--s-5)' }}>
+              <span aria-hidden="true">◎</span>
+              <span>
+                <strong>{scopedTo.name}</strong> — every grant we hold for them
+                {scopedTo.grants > result.facets.total
+                  ? `, of which ${count(result.facets.total)} ${
+                      result.facets.total === 1 ? 'matches' : 'match'
+                    } your words`
+                  : ''}
+                . Their funders are the ones to look at next.{' '}
+                <a href={unscopedHref('peers')}>Back to the organisations</a>.
+              </span>
+            </p>
+          )}
+
+          {filters.recipient !== null && scopedTo === null ? (
+            <p className="notice notice-caution" style={{ marginTop: 'var(--s-5)' }}>
+              <span aria-hidden="true">⚠</span>
+              <span>
+                That link names an organisation we do not hold any grants for. Showing the
+                search without it — <a href={unscopedHref('grants')}>start again</a>.
+              </span>
+            </p>
+          ) : null}
+
           <p className="hint" style={{ marginTop: 'var(--s-5)' }}>
             {view === 'peers'
               ? `${count(recipients.length)} organisation${recipients.length === 1 ? '' : 's'} received ${count(result.facets.total)} grant${result.facets.total === 1 ? '' : 's'} close to your search. Closest to your size first.`
@@ -384,7 +477,11 @@ export default async function GrantsPage({
               : result.facets.total > ranked.length
                 ? `Showing ${count(ranked.length)} of ${count(result.facets.total)} grants close to your search, the closest to your work first.`
                 : `${count(ranked.length)} grant${ranked.length === 1 ? '' : 's'} close to your search, the closest to your work first.`}
-            {hasFilters(filters) ? ' Narrowed by your filters above.' : ''}
+            {/* The CHIPS, not the scope: an organisation-scoped view says so
+                on its own line above, and "narrowed by your filters above"
+                over an empty narrowing panel sends the reader looking for a
+                filter to remove. */}
+            {filterCount(filters) > 0 ? ' Narrowed by your filters above.' : ''}
             {/* Said on the results themselves, not only on the empty state. A
                 funder who last gave in 2019 is simply absent here, and there
                 is nothing on a list of results to tell you that a silence
@@ -428,7 +525,11 @@ export default async function GrantsPage({
           </div>
 
           {view === 'peers' ? (
-            <RecipientList recipients={recipients} region={region} />
+            <RecipientList
+              hrefFor={(key) => recipientHref(key)}
+              recipients={recipients}
+              region={region}
+            />
           ) : view === 'funders' ? (
             <FunderList
               context={{

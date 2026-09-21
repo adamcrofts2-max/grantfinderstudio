@@ -108,20 +108,46 @@ export interface GrantFilters {
   places: readonly string[];
   /** Publisher classification labels, matched exactly. */
   topics: readonly string[];
+  /**
+   * One organisation's own grants, by the folded recipient key.
+   *
+   * Not a facet and not a chip: it is a SCOPE, arrived at by clicking a peer
+   * in the "who got them" view, and the page says whose grants it is showing
+   * with a way back out. A facet list of two hundred recipient names would be
+   * unusable, and the question this answers — "how has an organisation like
+   * mine been funded" — is asked about one of them at a time.
+   */
+  recipient: string | null;
 }
 
-export const NO_FILTERS: GrantFilters = { bands: [], since: null, places: [], topics: [] };
+export const NO_FILTERS: GrantFilters = {
+  bands: [],
+  since: null,
+  places: [],
+  topics: [],
+  recipient: null,
+};
 
 export function hasFilters(filters: GrantFilters): boolean {
   return (
     filters.bands.length > 0 ||
     filters.since !== null ||
     filters.places.length > 0 ||
-    filters.topics.length > 0
+    filters.topics.length > 0 ||
+    filters.recipient !== null
   );
 }
 
-/** How many separate choices are in force, for a "clear all (3)" affordance. */
+/**
+ * How many CHIPS are in force, for a "clear all (3)" affordance.
+ *
+ * The recipient scope is deliberately not counted. The narrowing panel's
+ * whole vocabulary is chips — "tap a filter again to remove it", "clear 1
+ * filter" — and there is no chip for an organisation: it is a scope with its
+ * own line and its own way out. Counting it made the panel say "narrowed by 1
+ * filter" with nothing selected in it, and offer to clear a filter it does
+ * not hold.
+ */
 export function filterCount(filters: GrantFilters): number {
   return (
     filters.bands.length +
@@ -168,6 +194,7 @@ export function filtersFromParams(
     since: since !== null && recencyById(since) !== null ? since : null,
     places: readMany(params['place']),
     topics: readMany(params['topic']),
+    recipient: readMany(params['recipient'])[0] ?? null,
   };
 }
 
@@ -178,6 +205,7 @@ export function filtersToParams(filters: GrantFilters): Record<string, string> {
   if (filters.since !== null) params['since'] = filters.since;
   if (filters.places.length > 0) params['place'] = filters.places.join('~');
   if (filters.topics.length > 0) params['topic'] = filters.topics.join('~');
+  if (filters.recipient !== null) params['recipient'] = filters.recipient;
   return params;
 }
 

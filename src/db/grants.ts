@@ -435,6 +435,14 @@ function buildWhere(
     clauses.push(`a.tags && ${bind(filters.topics)}::text[]`);
   }
 
+  if (filters.recipient !== null && filters.recipient.trim() !== '') {
+    // ONE organisation's grants, from a peer row. Compared on the same fold
+    // the peer view groups by — see `recipientKey` — because a row that links
+    // to a filter which normalises differently answers "no grants" for grants
+    // the page has just counted.
+    clauses.push(`${recipientKey('a.recipient_name')} = ${bind(filters.recipient.trim())}`);
+  }
+
   // No `TRUE` fallback. There used to be one, for the case where no clause
   // applied, and a search for `%` reached it and returned the entire corpus as
   // a result. The text clauses above are unconditional now, so the case cannot
@@ -977,6 +985,49 @@ const FUNDERS_PER_ROW = 4;
  * looking at the row, which is the best available answer while the source
  * publishes no stable id.
  */
+/**
+ * A recipient's name, folded to one key.
+ *
+ * ONE definition, used by the peer grouping and by the recipient filter,
+ * because they have to agree: the peer view links to `?recipient=<key>`, and a
+ * filter that normalised differently would answer "no grants" for a row the
+ * same page had just drawn. Punctuation goes first so that "C.I.C." becomes
+ * "c i c" and the suffix pattern can see it; the suffix itself goes because
+ * "Sowing Roots CIC" and "Sowing Roots Community Interest Company" are one
+ * organisation, spelled two ways, in the same corpus.
+ */
+const recipientKey = (column: string): string =>
+  `btrim(regexp_replace(
+     regexp_replace(lower(${column}), '[^a-z0-9 ]', ' ', 'g'),
+     '\\s+(ltd|limited|plc|llp|cic|c i c|community interest company|cio|charitable incorporated organisation)\\s*$',
+     '', 'g'))`;
+
+/**
+ * The display name a key stands for, and how many grants it has.
+ *
+ * `mode()` for the same reason the peer row uses it: several spellings of one
+ * organisation, and the commonest is the one to show. Null when the key
+ * matches nothing at all, so a stale or hand-edited link says so rather than
+ * heading a page with an empty name.
+ */
+export async function recipientByKey(
+  tx: Queryable,
+  key: string,
+): Promise<{ name: string; grants: number } | null> {
+  const trimmed = key.trim();
+  if (trimmed === '') return null;
+  const { rows } = await tx.query<{ name: string | null; grants: number }>(
+    `SELECT mode() WITHIN GROUP (ORDER BY a.recipient_name) AS name,
+            count(*)::int AS grants
+       FROM funder_awards a
+      WHERE ${recipientKey('a.recipient_name')} = $1`,
+    [trimmed],
+  );
+  const row = rows[0];
+  if (row === undefined || row.name === null || row.grants === 0) return null;
+  return { name: row.name, grants: row.grants };
+}
+
 export async function recipientSummaries(
   tx: Queryable,
   text: TextSearch,
@@ -1041,12 +1092,11 @@ export async function recipientSummaries(
     `WITH matched AS (
        SELECT a.recipient_name, a.amount_gbp, a.awarded_on, a.region, a.tags,
               a.funder_id, f.name AS funder_name,
-              -- Punctuation out first, so "C.I.C." becomes "c i c" and the
-              -- suffix pattern can see it.
-              btrim(regexp_replace(
-                regexp_replace(lower(a.recipient_name), '[^a-z0-9 ]', ' ', 'g'),
-                '\\s+(ltd|limited|plc|llp|cic|c i c|community interest company|cio|charitable incorporated organisation)\\s*$',
-                '', 'g')) AS key
+              -- The shared fold (recipientKey in this file, and NO BACKTICKS
+              -- in here: this is inside a template literal). The filter behind
+              -- the peer rows uses the same one, so a row always links to its
+              -- own grants.
+              ${recipientKey('a.recipient_name')} AS key
          FROM funder_awards a
          JOIN funders f ON f.id = a.funder_id
         WHERE ${where.sql}

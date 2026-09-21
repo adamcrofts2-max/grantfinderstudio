@@ -181,6 +181,8 @@ interface AwardRow {
   recipient_name: string | null;
   jurisdiction: Award['jurisdiction'];
   region: string | null;
+  title?: string | null;
+  description?: string | null;
 }
 
 export async function loadAwards(tx: Queryable, funderId: string): Promise<Award[]> {
@@ -350,10 +352,15 @@ export async function loadAllFunderAwards(
     // `website` was stored by the ingest from the first day and rendered
     // nowhere, so a matched funder was a dead end: the product told you who
     // funds work like yours and gave you no way to go and look.
+    // The TITLE and DESCRIPTION come with it, because "do they fund work like
+    // mine" is answered by what the funder wrote about the grant and not by
+    // its classification label — hundreds of environmental grants carry the
+    // single word "Environment", which matches nothing an applicant would
+    // call themselves.
     `SELECT f.id AS funder_id, f.name AS funder_name, f.website AS funder_website,
             a.id AS award_id, a.amount_gbp::text AS amount_gbp,
             a.awarded_on::text AS awarded_on, a.recipient_name,
-            a.jurisdiction, a.region, a.tags
+            a.jurisdiction, a.region, a.tags, a.title, a.description
      FROM funders f
      LEFT JOIN funder_awards a ON a.funder_id = f.id
      ORDER BY f.name, a.awarded_on`,
@@ -379,6 +386,8 @@ export async function loadAllFunderAwards(
         jurisdiction: row.jurisdiction,
         region: row.region,
         tags: row.tags ?? [],
+        title: row.title ?? null,
+        description: row.description ?? null,
       });
     }
     byFunder.set(row.funder_id, entry);

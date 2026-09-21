@@ -4,6 +4,7 @@ import {
   facetsFor,
   funderSummaries,
   recentAwards,
+  recipientByKey,
   recipientSummaries,
   searchAwards,
   textSearch,
@@ -55,6 +56,12 @@ export type CorpusSearch =
       funders: FunderSummary[];
       /** And by who received them, which is the peer view. */
       recipients: RecipientSummary[];
+      /**
+       * Whose grants these are, when a peer row scoped the search to one
+       * organisation. Null when nothing is scoped; the NAME rather than the
+       * key, because the key is a fold nobody should have to read.
+       */
+      scopedTo: { name: string; grants: number } | null;
     }
   | { state: 'failed'; message: string };
 
@@ -160,6 +167,10 @@ export async function searchCorpus(
           amountSoughtGbp: options.amountSoughtGbp ?? null,
           region: options.region ?? null,
         }),
+        // On the same connection as everything else: a scoped search has a
+        // name to show, and it is one row.
+        scopedTo:
+          filters.recipient === null ? null : await recipientByKey(tx, filters.recipient),
       };
     });
     if (result === null) {
@@ -173,11 +184,19 @@ export async function searchCorpus(
         facets: { amount: [], since: [], place: [], topic: [], total: 0, terms: [] },
         funders: [],
         recipients: [],
+        scopedTo: null,
       };
     }
-    const { awards, capped, facets, funders, recipients } = result;
+    const { awards, capped, facets, funders, recipients, scopedTo } = result;
     return {
-      state: 'ok', grants: found(awards), capped, corpus: state, facets, funders, recipients,
+      state: 'ok',
+      grants: found(awards),
+      capped,
+      corpus: state,
+      facets,
+      funders,
+      recipients,
+      scopedTo,
     };
   } catch (error) {
     console.error('[grantfinderstudio] grant search failed:', error);

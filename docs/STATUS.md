@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,676 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
+**1,714 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -4863,3 +4863,151 @@ reviewer can read back is not an improvement.
   prose — so what you typed did not look like what they saw.
 - The box's label sat flush against the "just now" of the comment above it,
   so the form read as part of the record rather than as a control.
+
+## Walked as Future Forests CIC, a community tree nursery
+
+The aim, in the user's words: *find other organisations that operate similar
+CICs, see how they have been funded, and then apply for similar funding.* So:
+a fresh account, a real profile (Future Forests CIC, CIC limited by guarantee,
+Somerset, incorporated 2022), a real project (community tree nursery, £18,000,
+18 months) and 470 grants of fictional-but-realistic 360Giving data behind it.
+
+Four faults, each found by looking at a screen rather than by a test.
+
+### 1. Nearly half the corpus never loaded
+
+`assertSameOrigin` demanded `https:` on every pagination link. The stub
+publisher — like any local mirror, and the setting exists for "a mirror or a
+staging copy" — serves `http`, so the `next` link threw, the throw aborted
+that publisher, and **the rows already read were discarded with it**. Three of
+the thirteen publishers wrote nothing at all and were counted "could not be
+read": the three biggest, 211 of 470 grants.
+
+The rule is now the origin the base URL names, in both directions. On
+production's `https://api.threesixtygiving.org` an http link is still a
+downgrade and still refused; the live test that asserted the old blanket rule
+now proves the multi-page hop over a real socket instead, which it previously
+said it could not do.
+
+That a publisher's read pages are thrown away on a later failure is a separate
+question, now on the roadmap: defensible on a re-walk, wrong on a first load.
+
+### 2. The product's own first question was about the wrong thing
+
+    Searched for "young people older people Somerset" from your own details.
+
+A tree nursery. The default search was `[...beneficiaryGroups, region]`, and
+the beneficiary list — ten options, all of them groups of people — has nothing
+for an environmental CIC, so they had ticked the two nearest boxes. The
+consequences ran through the whole product:
+
+| | before | after |
+|---|---|---|
+| default search | young people older people Somerset | community tree nursery grow native Somerset |
+| first funder offered | Southwest Youth Trust | **Greenwood Trust** — 15 matching grants, 4 in Somerset |
+| the woodland funder with 17 tree-nursery grants | absent | first |
+
+`defaultSearchText` takes the project's own name first (their most deliberate
+words), then the description's most-repeated ones, capped at five because
+every term carries its own relevance floor and its own cost. The beneficiary
+groups stay as the fallback for a project that says little about itself, and
+because they are a fallback rather than a component, the auto-search no longer
+contains a word matching nothing — "No grant we hold mentions older" was the
+product blaming the user for its own query.
+
+### 3. "Funded your kind of work" was decided by a label
+
+The same fault one layer down, and worse because `/funders` is the screen that
+says it is worked out from your own details. `matchesCause` compared 360Giving
+classification labels against beneficiary groups. Every environmental grant in
+the corpus carries the single word **Environment**, which no applicant
+describes themselves with — so a youth trust was the "✓ Closest match" for a
+tree nursery, and the woodland funder was filed under "funded in your area,
+for other kinds of work".
+
+Fixing it took three passes, each found by re-walking:
+
+1. **Match the grant's own text.** Title and description now travel with the
+   award. A youth trust still matches legitimately — they ticked "young
+   people" — so the tree funder merely joined the top tier.
+2. **Then it was ranked below**, because inside a tier the order was the raw
+   count of matches: seventeen label matches beat four actual tree nurseries.
+   A description match is now tracked separately (`workAwards`) and compared
+   first, and the card says which it is: *"4 grants for the work you
+   described, in your area"* against *"8 grants to work like yours"*.
+3. **Then a food funder appeared second**, on one word: their market garden
+   project says "growing", ours says "grow". Measured shares in the corpus:
+
+   ```
+   woodland 40%   community 39%   tree 26%   trees 14%
+   grow 10%       food 10%        nursery 8.5%   native 5.3%
+   ```
+
+   A tighter rarity threshold is the obvious move and the wrong one — at 15%
+   it throws away *tree*, the single most useful word a tree nursery has,
+   while keeping *grow*. So the ceiling is set where sector-wide words sit (a
+   third), and the discrimination is done by requiring **two** words: one is a
+   coincidence, two are a description.
+
+Final order for Future Forests: Greenwood Trust, Tarka Rivers Fund (both "for
+the work you described, in your area"), then the label matches. And the card
+now carries both numbers where they differ, because the ordering compares the
+nation-wide count while the sentence quoted only the local one.
+
+### 4. The peer view was a dead end
+
+The view that answers the user's actual question — "who like us has been
+funded, and by whom" — named the funders and gave no way to see what they had
+paid for. Every row now carries *"See all 10 grants they were awarded →"*.
+
+`?recipient=` scopes the grant list by the same folded name the peer grouping
+uses, through ONE `recipientKey` expression, because a filter that normalised
+differently would answer "no grants" for a row the page had just drawn. Three
+more faults in that one screen, each from the walk: "back to the organisations"
+kept the scope, so the peer list came back with one row on it; the narrowing
+panel counted the scope as a chip and offered to clear a filter it did not
+hold; and a hand-edited key produced "remove one of the filters above" over an
+empty panel. A scope is not a filter: it has its own line, its own name, and
+its own way out.
+
+### What the walk confirms works
+
+The peer view, once it could be reached, is the product at its best:
+
+> **Rooted Community Trees CIC** — £425,200 across 8 grants · 6 funders · all
+> in Somerset · about your size, typically £10,125. Funded by Greenwood Trust,
+> Quantock Hills Trust, Tarka Rivers Fund, The Ashworth Foundation and 2
+> others · 2025–2026 · largest £325,000. *See all 8 grants they were awarded →*
+
+That is the answer the question deserves: not "who might fund trees" but three
+Somerset tree CICs, their funders, their sizes and every grant behind the
+claim. From there: add the fund, start the application, paste the funder's
+three questions, write an answer, build a £18,000 budget in four lines that
+the engine checks against the ask, define an outcome — 83% ready, with "2
+questions still to answer" as the blocker.
+
+That 83% is the last finding, and it is a judgement rather than a bug: three
+of the four counted parts can be fully satisfied without writing anything, so
+the headline number is high while the application is a third written. On the
+roadmap with the numbers.
+
+### The stub is in the repository now
+
+`scripts/stub-360giving.mjs` — 13 funders, 486 grants, 33 recipients, 12
+themes with their own prose, one publisher that 502s. It exists because the
+version that was not in the repository was rebuilt from memory every session
+and twice shipped degenerate: a seed keyed on `orgId.length` gave 471 grants
+holding fifteen distinct ones. Every field here draws from its own stream of an
+FNV-1a seed over the funder id and the grant index, and `--print` reports the
+distribution:
+
+```
+grants            486 across 13 funders
+distinct titles   128
+recipients        33 of 33 reached
+amounts           £500 – £395,000, median £10,500
+outside 3 years   16 (the window has something to drop)
+tree-nursery grants 38, from 7 funders
+```
+
+A ranking measured on a degenerate corpus always looks correct.

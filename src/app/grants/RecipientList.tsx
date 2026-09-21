@@ -37,7 +37,16 @@ const SIZE: Record<0 | 1 | 2, string> = {
   2: 'nothing like your ask',
 };
 
-function Row({ recipient, region }: { recipient: RecipientSummary; region: string | null }) {
+function Row({
+  recipient,
+  region,
+  href,
+}: {
+  recipient: RecipientSummary;
+  region: string | null;
+  /** Where their own grants are, or null when this view cannot link out. */
+  href: string | null;
+}) {
   const {
     name, matching, totalGbp, largestGbp, medianGbp, funders, funderNames,
     regions, firstAwardedOn, lastAwardedOn, commonTag, inYourRegion, sizeBand,
@@ -83,6 +92,20 @@ function Row({ recipient, region }: { recipient: RecipientSummary; region: strin
           : `–${year(lastAwardedOn)}`}
         {largestGbp === medianGbp ? '' : ` · largest ${gbp(largestGbp)}`}
       </p>
+
+      {/* THE WAY IN.
+          The view was a dead end: it named the funders who had backed an
+          organisation like yours and gave you no way to see what they
+          actually paid for — which is the question the whole view is for.
+          Every grant, its words and its amount, one tap away. */}
+      {href === null ? null : (
+        <p style={{ marginTop: 'var(--s-3)' }}>
+          <a href={href}>
+            See {matching === 1 ? 'the grant' : `all ${matching} grants`} they were awarded
+            <span aria-hidden="true"> →</span>
+          </a>
+        </p>
+      )}
     </li>
   );
 }
@@ -90,9 +113,12 @@ function Row({ recipient, region }: { recipient: RecipientSummary; region: strin
 export function RecipientList({
   recipients,
   region,
+  hrefFor,
 }: {
   recipients: readonly RecipientSummary[];
   region: string | null;
+  /** Their own grants, by folded key. The page owns the URL shape. */
+  hrefFor?: (key: string) => string;
 }) {
   if (recipients.length === 0) return null;
   const local = recipients.filter((r) => r.inYourRegion > 0).length;
@@ -114,7 +140,12 @@ export function RecipientList({
       </p>
       <ul className="funders-grouped">
         {recipients.map((recipient) => (
-          <Row key={recipient.key} recipient={recipient} region={region} />
+          <Row
+            href={hrefFor === undefined ? null : hrefFor(recipient.key)}
+            key={recipient.key}
+            recipient={recipient}
+            region={region}
+          />
         ))}
       </ul>
     </>
