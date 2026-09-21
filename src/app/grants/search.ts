@@ -14,7 +14,13 @@ import {
   type RecipientSummary,
 } from '@/db/grants';
 import { NO_FILTERS, type GrantFilters } from '@/domain/grants/facets';
-import { readCorpusProgress, isLoading, loadFraction, type CorpusProgress } from '@/db/corpus';
+import {
+  corpusStanding,
+  readCorpusProgress,
+  loadFraction,
+  type CorpusProgress,
+  type CorpusStanding,
+} from '@/db/corpus';
 import { queryTerms } from '@/domain/grants/query';
 
 export interface FoundGrant {
@@ -39,6 +45,14 @@ export interface CorpusState {
   awards: number;
   funders: number;
   loading: boolean;
+  /**
+   * What the record is doing, which "loading" alone could not say.
+   *
+   * A load that has stopped is not a load in progress, and the screen must
+   * not tell an applicant to come back in a few minutes for more when nothing
+   * is coming. See `corpusStanding`.
+   */
+  standing: CorpusStanding;
   fraction: number | null;
   progress: CorpusProgress;
 }
@@ -128,10 +142,13 @@ export async function searchCorpus(
     const state = await withAdmin(async (tx) => {
       const size = await corpusSize(tx);
       const progress = await readCorpusProgress(tx);
+      // One clock reading for the whole answer.
+      const standing = corpusStanding(progress, new Date());
       return {
         awards: size.awards,
         funders: size.funders,
-        loading: isLoading(progress),
+        loading: standing === 'filling',
+        standing,
         fraction: loadFraction(progress),
         progress,
       };

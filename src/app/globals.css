@@ -634,6 +634,10 @@ details[open] > .funder-summary .chev-toggle::after { content: 'Close'; }
 .notice { display: flex; gap: var(--s-2); font-size: var(--t-sm); margin: var(--s-1) 0; }
 .notice-neutral { color: var(--ink-soft); }
 .notice-caution { color: var(--caution); font-weight: 550; }
+/* For the one state on a console that is a job rather than a reading: a
+   stalled corpus load. Amber is "worth knowing"; this is "nothing is
+   happening and it will not fix itself". */
+.notice-negative { color: var(--negative); font-weight: 550; }
 
 .banner {
   display: flex; gap: var(--s-3); align-items: flex-start;

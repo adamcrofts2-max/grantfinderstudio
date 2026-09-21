@@ -1,6 +1,11 @@
 import { withAdmin } from '@/db';
 import { readEnvironment } from '@/env';
-import { corpusBytes, isLoading, loadFraction, readCorpusProgress } from '@/db/corpus';
+import {
+  corpusBytes,
+  corpusStanding,
+  loadFraction,
+  readCorpusProgress,
+} from '@/db/corpus';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +29,14 @@ export async function GET(): Promise<Response> {
       progress: await readCorpusProgress(tx),
       bytes: await corpusBytes(tx),
     }));
+    const standing = corpusStanding(progress, new Date());
     return Response.json({
       ok: true,
-      loading: isLoading(progress),
+      loading: standing === 'filling',
+      // The four-state answer, because "loading: false" covers a record that
+      // has finished, one that never started and one that has stopped dead,
+      // and the e2e and the operator both need to tell them apart.
+      standing,
       fraction: loadFraction(progress),
       // Including indexes, so it answers the question it is here for: which
       // database tier does holding this record actually need.

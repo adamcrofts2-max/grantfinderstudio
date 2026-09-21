@@ -1,6 +1,13 @@
 import { withOperator } from '@/db';
 import { readFunderHoldings } from '@/db/awards';
-import { readCorpusProgress, type CorpusProgress } from '@/db/corpus';
+import {
+  corpusStanding,
+  readCorpusProgress,
+  STALLED_AFTER_HOURS,
+  type CorpusProgress,
+  type CorpusStanding,
+} from '@/db/corpus';
+import { since } from '@/domain/time/since';
 import { MIN_AWARDS_TO_CHARACTERISE } from '@/domain/funder/behaviour';
 
 import { requireAdmin } from '../session';
@@ -33,12 +40,32 @@ export default async function AdminFundersPage() {
     error = thrown instanceof Error ? thrown.message : String(thrown);
   }
 
+  /**
+   * ONE clock reading, here, for the standing and for the phrase beside it.
+   *
+   * The panel is a client component, and a clock read while rendering one
+   * gives a different answer in the server's HTML than on hydration — React
+   * #418, and a discarded tree. So the server decides both.
+   */
+  const now = Date.now();
+  const standing: CorpusStanding =
+    progress === null ? 'never_started' : corpusStanding(progress, new Date(now));
+
   const characterised = holdings.filter((h) => h.awardCount >= MIN_AWARDS_TO_CHARACTERISE);
   const totalAwards = holdings.reduce((sum, h) => sum + h.awardCount, 0);
 
   return (
     <AdminShell email={session.email} active="funders">
-      {progress === null ? null : <CorpusPanel progress={progress} />}
+      {progress === null ? null : (
+        <CorpusPanel
+          lastProgress={
+            progress.progressedAt === null ? null : since(progress.progressedAt, now)
+          }
+          progress={progress}
+          stalledAfterHours={STALLED_AFTER_HOURS}
+          standing={standing}
+        />
+      )}
 
       <section className="card" style={{ marginTop: 'var(--s-5)' }}>
         <h2 className="card-title">Load one funder by hand</h2>

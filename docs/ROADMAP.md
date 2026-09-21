@@ -673,13 +673,25 @@ this cheque before", where no source answers "what is open".
       the way back drops the scope. The row
       names its funders, which is the actionable part, but "show me those six
       grants" needs a recipient filter in the URL and the facets
-- [ ] `finishedAt` is never set when a publisher fails every time, so
-      `isLoading` stays true forever — a deployment with one permanently
-      broken publisher shows the corpus-loading panel on every visit and
-      nudges a step each time. It is also the mechanism behind the React #418
-      below: `/grants` both renders corpus progress and advances it through
-      `after()`, on a `force-dynamic` page, so the HTML and the payload the
-      client reconciles against fall either side of that write
+- [x] **A load that has stopped no longer reports itself as loading**
+      (migration 0026, `corpusStanding`). `isLoading` was
+      `startedAt !== null && finishedAt === null`, which has two states where
+      the truth has four: a walk that can never finish — the API unreachable,
+      every step dying before it reads a publisher — showed applicants "We are
+      building the grant record now … come back in a few minutes and there
+      will be more" indefinitely. The missing fact was a second clock:
+      `updated_at` is written by the lease BEFORE the work and is refreshed by
+      any page visit, so it says only that a step was attempted.
+      `progressed_at` is written only when a step read a funder or wrote a
+      grant. Stalled is now named on the applicant's screen (which stops
+      promising more), and on the console it is the one state that is a job,
+      dated, with the error beside the button that retries. Demonstrated by
+      killing the publisher: the step ran, failed, and the record stayed
+      stalled; bringing it back walked 8 funders and went to complete
+      - [ ] The React #418 on `/grants` still stands on its own — the page
+        renders corpus progress AND advances it through `after()` on a
+        `force-dynamic` route, so the HTML and the payload the client
+        reconciles against fall either side of that write
 - [ ] Reproduce the remaining React #418 on demand. The e2e named it:
       `/grants?q=1&text=youth`, which is `force-dynamic` over the corpus and
       starts a corpus step itself through `after()`. Three sightings, all

@@ -50,7 +50,7 @@ const count = (n: number): string => n.toLocaleString('en-GB');
  * that this page has not already done.
  */
 function CorpusNotice({ corpus }: { corpus: CorpusState }) {
-  if (corpus.awards > 0 && !corpus.loading) return null;
+  if (corpus.awards > 0 && !corpus.loading && corpus.standing !== 'stalled') return null;
 
   const held =
     corpus.awards === 0
@@ -61,6 +61,39 @@ function CorpusNotice({ corpus }: { corpus: CorpusState }) {
     corpus.fraction === null
       ? ''
       : ` About ${Math.round(corpus.fraction * 100)}% of the funders have been read.`;
+
+  /**
+   * A LOAD THAT HAS STOPPED IS NOT A LOAD IN PROGRESS.
+   *
+   * This banner said "We are building the grant record now … come back in a
+   * few minutes and there will be more" whenever a load had started and not
+   * finished — which, if the walk could never finish, meant for ever, on the
+   * search screen, to everyone. The record still says what it holds and that
+   * searching works; what it stops doing is promising more in a few minutes
+   * when nothing is coming. There is still nothing for the applicant to do —
+   * their arrival nudges the load either way — so there is no operator line
+   * here, as there never has been.
+   */
+  if (corpus.standing === 'stalled') {
+    return (
+      <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">
+        <span aria-hidden="true">◐</span>
+        <span>
+          <strong>
+            {corpus.awards === 0
+              ? 'The grant record is empty and has stopped filling.'
+              : 'The grant record is incomplete and has stopped filling.'}
+          </strong>{' '}
+          We read every funder that publishes to 360Giving and keep their grants from{' '}
+          {RECENT_WINDOW_LABEL} here, a few funders at a time.
+          {held}
+          {through} It has not moved for over a day. What is here is what there is for now
+          — searching it works, and it carries on from where it stopped as soon as the next
+          attempt gets through.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="banner" style={{ marginTop: 'var(--s-4)' }} role="status">

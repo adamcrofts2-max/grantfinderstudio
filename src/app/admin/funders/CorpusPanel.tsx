@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 
 import { startCorpusAction, stepCorpusAction } from './corpus-actions';
 import { EMPTY_CORPUS } from './corpus-state';
-import type { CorpusProgress } from '@/db/corpus';
+import type { CorpusProgress, CorpusStanding } from '@/db/corpus';
 import { RECENT_WINDOW_LABEL } from '@/domain/grants/recency';
 
 const count = (n: number): string => n.toLocaleString('en-GB');
@@ -23,7 +23,19 @@ const count = (n: number): string => n.toLocaleString('en-GB');
  * walk from the top when the data needs re-reading. Neither is part of the
  * normal path.
  */
-export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
+export function CorpusPanel({
+  progress,
+  standing,
+  lastProgress,
+  stalledAfterHours,
+}: {
+  progress: CorpusProgress;
+  /** Decided by the page, off one clock reading. */
+  standing: CorpusStanding;
+  /** "3 days ago", phrased by the page. Null when nothing has progressed. */
+  lastProgress: string | null;
+  stalledAfterHours: number;
+}) {
   const [startState, start, starting] = useActionState(startCorpusAction, EMPTY_CORPUS);
   const [stepState, step, stepping] = useActionState(stepCorpusAction, EMPTY_CORPUS);
 
@@ -116,21 +128,56 @@ export function CorpusPanel({ progress }: { progress: CorpusProgress }) {
         <div>
           <dt>State</dt>
           <dd>
-            {progress.startedAt === null
+            {/* Four states, not two. "In progress" was shown for anything
+                started and unfinished, so a walk that could never finish
+                reported itself as working indefinitely — here and, worse, on
+                the applicant's search screen. */}
+            {standing === 'never_started'
               ? 'never started'
-              : progress.finishedAt !== null
-                ? `finished ${progress.finishedAt.slice(0, 16).replace('T', ' ')}`
-                : 'in progress'}
+              : standing === 'complete'
+                ? `finished ${(progress.finishedAt ?? '').slice(0, 16).replace('T', ' ')}`
+                : standing === 'stalled'
+                  ? 'STALLED — not moving'
+                  : 'filling'}
           </dd>
         </div>
       </dl>
+
+      {/* THE ONE THING ON THIS PANEL THAT IS A JOB.
+          Everything else here is visibility — the record fills itself. A
+          stalled record does not, and it is the state an operator has to
+          decide about: the API unreachable, a step dying before it reads a
+          publisher, or a scheduler that has stopped firing. Named, dated, and
+          next to the button that tries again. */}
+      {standing !== 'stalled' ? null : (
+        <p className="notice notice-negative" style={{ marginTop: 'var(--s-3)' }}>
+          <span aria-hidden="true">✕</span>
+          <span>
+            <strong>
+              {lastProgress === null
+                ? 'The walk has not progressed at all since it started.'
+                : `The walk last progressed ${lastProgress}.`}
+            </strong>{' '}
+            Anything over {stalledAfterHours} hours counts as stalled — a daily scheduled
+            step and any page visit both advance it, so this means neither is getting
+            through. Read the last problem below, then try a step by hand: it runs here and
+            reports what happened, rather than failing silently on somebody else's clock.
+            {progress.fundersTotal === null
+              ? ' The funder list itself was never read, which points at the API or the base URL rather than at one publisher.'
+              : ` ${count(progress.fundersDone)} of ${count(progress.fundersTotal)} funders were read before it stopped.`}
+          </span>
+        </p>
+      )}
 
       {progress.lastError === null ? null : (
         <p className="notice notice-caution" style={{ marginTop: 'var(--s-3)' }}>
           <span aria-hidden="true">⚠</span>
           <span>
-            Last problem: {progress.lastError}. One publisher’s bad data does not stop the
-            walk — the cursor moves past them.
+            {/* The stored message usually ends in a full stop of its own, and
+                adding a second one produced "Nothing has been written.." on
+                the one screen an operator reads when something is wrong. */}
+            Last problem: {progress.lastError.replace(/\.\s*$/u, '')}. One publisher’s bad
+            data does not stop the walk — the cursor moves past them.
           </span>
         </p>
       )}
