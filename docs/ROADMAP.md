@@ -727,12 +727,24 @@ this cheque before", where no source answers "what is open".
       by re-rendering so nothing a user sees fails, and the e2e now waits for
       the corpus to settle — but two attempts at a reproduction missed the
       window, so the mechanism is consistent and not demonstrated
-- [ ] Give `relevance` a weight for the REGION field. The SQL vector has it at
-      D and the in-memory ranker has no weight for it at all, so a typed county
-      earns rank in the fetch and nothing in the final ordering — only the
-      applicant's OWN region earns a bonus. Ties keep the SQL order so nothing
-      is visibly wrong today, but "dorset youth" cannot put a Dorset grant
-      above a youth-titled one anywhere else
+- [x] **A county somebody TYPED is worth something in the ordering**
+      (`NAMED_PLACE_BONUS`, a quarter of the text scale). The vector carries
+      region at weight D — the lowest, because for every other purpose a
+      region mention is the weakest kind of hit — so a grant in the wrong
+      county with better words beat a grant in the right one. Measured before
+      and after on a 587-grant corpus: "bristol green space" led with a DEVON
+      grant, above every Bristol one; it now leads with five Bristol grants
+      and the Devon one sits sixth, still on the page. The two searches that
+      were already right (10 of 10 in the named county) are unchanged. It
+      lifts the named place above a moderately better match elsewhere and not
+      above a much better one, because a county in a search is not always a
+      constraint — the place chips are the filter, and they say what they
+      would leave
+      - [ ] The FUNDER view does not do the same. `funderScore` counts
+        matching grants, so a typed county flows through in which grants
+        matched, but `inYourRegion` is counted against the applicant's own
+        region only — "how many of their matching grants were in the county
+        you typed" is not carried on the summary at all
 - [x] **Moved the realistic 360Giving stub into the repo**
       (`scripts/stub-360giving.mjs`). 13 funders, 486 grants, 33 recipients,
       12 themes with their own prose, £500–£395,000, 16 grants outside the

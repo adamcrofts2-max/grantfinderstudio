@@ -304,7 +304,14 @@ export default async function GrantsPage({
 
   const ranked =
     result.state === 'ok'
-      ? rankGrants(result.grants, { region, amountSoughtGbp: ask })
+      ? rankGrants(result.grants, {
+          region,
+          amountSoughtGbp: ask,
+          // The words the DATABASE searched for, not the raw box: the ranker
+          // asks whether one of them names a grant's county, and it has to be
+          // asking about the same tokens the corpus was queried with.
+          terms: result.facets.terms.map((term) => term.term),
+        })
       : [];
 
   /**

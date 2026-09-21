@@ -142,6 +142,15 @@ export interface Rankable {
 export interface RankContext {
   region: string | null;
   amountSoughtGbp: number | null;
+  /**
+   * The words they searched for, already tokenised by `queryTerms`.
+   *
+   * Only one thing is read from them here: whether any of them names the
+   * place this grant went to. Optional, so a caller ranking without a search
+   * — the funder screen, a recent-grants list — keeps the old behaviour
+   * rather than having to pass an empty array it does not have.
+   */
+  terms?: readonly string[];
 }
 
 /**
@@ -188,12 +197,72 @@ const REGION_BONUS = 3;
 /** A size they actually give at. */
 const AMOUNT_BONUS = 2;
 
+/**
+ * A place they NAMED in the search, which is a constraint rather than a word.
+ *
+ * ## Why this is not already covered by the text score
+ *
+ * It is, partly, and that is what made the gap hard to see: the search vector
+ * carries `region`, so "bristol" does match a Bristol grant and does earn
+ * some `textScore`. But it is weighted `D` — the lowest of the four — because
+ * for every other purpose a region mention is the weakest kind of hit. So a
+ * grant in the wrong county with better words beats a grant in the right one,
+ * which is exactly backwards for somebody who typed a county.
+ *
+ * Measured on a 587-grant corpus, searching "bristol green space" with no
+ * applicant region set:
+ *
+ *     13.88  Greening the estate            Devon      ← the top result
+ *     10.36  Street trees and pocket parks  Bristol
+ *     10.36  Urban canopy project           Bristol
+ *
+ * ## Why a quarter of the text scale
+ *
+ * Big enough to lift the right place above a moderately better match
+ * elsewhere: a grant matching half the query in the county they named (10+5)
+ * beats one matching 70% somewhere else (14). Small enough that a much
+ * better match still wins (80% → 16), because a county in a search is not
+ * always a constraint — "Dorset Coast Volunteers" is a recipient who works
+ * elsewhere, and a fixed filter would hide their grants rather than rank
+ * them lower. The place chips beside the results are the filter, and they
+ * say what they would leave.
+ *
+ * This is ON TOP of whatever the text score already gave the region hit.
+ * Deliberately: the vector weight is a fact about the corpus, and this is a
+ * fact about what the person asked for.
+ */
+const NAMED_PLACE_BONUS = 5;
+
+/**
+ * Whether one of the words they typed is the name of this grant's region.
+ *
+ * WHOLE WORDS, unlike the applicant's own region below, which is a substring
+ * test so that "Somerset" matches "Somerset County Council area". Here the
+ * candidates are arbitrary search terms rather than a place somebody chose
+ * from their own profile, and a substring test would make "art" match
+ * "Dartmoor" and "ton" match "Taunton".
+ */
+function namesTheRegion(region: string, terms: readonly string[]): boolean {
+  if (terms.length === 0) return false;
+  const words = new Set(
+    region
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word !== ''),
+  );
+  return terms.some((term) => words.has(term.trim().toLowerCase()));
+}
+
 export function relevance(grant: Rankable, context: RankContext): number {
   let score = (grant.textScore ?? 0) * TEXT_WEIGHT;
 
   const region = context.region?.trim().toLowerCase();
   if (region !== undefined && region !== '' && grant.region !== null) {
     if (grant.region.toLowerCase().includes(region)) score += REGION_BONUS;
+  }
+
+  if (grant.region !== null && namesTheRegion(grant.region, context.terms ?? [])) {
+    score += NAMED_PLACE_BONUS;
   }
 
   const ask = context.amountSoughtGbp;

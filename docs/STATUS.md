@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,733 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,740 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5207,3 +5207,57 @@ A cut-short publisher is counted twice on purpose — under "records cut short"
 because the record is incomplete, and under "could not be read" because an
 operator re-fetching that list should find them. The console says so rather
 than letting one funder look like two.
+
+## A county somebody typed, and what the measurement said about it
+
+The roadmap carried this as a known gap: the search vector weights `region` at
+`D`, the in-memory ranker had no term for it, so a typed county earned rank in
+the fetch and nothing in the final order. The fix was obvious. The measurement
+was not, and it is why this is worth writing down.
+
+Three searches, on 587 grants, with no applicant region set — so the only
+place in play is the one they typed:
+
+```
+"dorset tree nursery"   10 of the top 10 in Dorset      ← already right
+"cornwall woodland"     10 of the top 10 in Cornwall    ← already right
+"bristol green space"    8 of the top 10 in Bristol, and the FIRST result
+                           was a Devon grant, above every Bristol one
+```
+
+Two of three were already right, because the per-term normalisation in
+`textSearch` gives a region hit a full score for that term when the best that
+term can reach is also a region hit. The gap is real but narrower than
+stated: it appears when some OTHER grant has a much better word match, and
+then the county loses entirely.
+
+### A quarter of the text scale
+
+`NAMED_PLACE_BONUS = 5`, against `TEXT_WEIGHT = 20`:
+
+- Half the query in the county they named (10 + 5) beats 70% of it elsewhere (14).
+- 85% elsewhere (17) still wins.
+
+That second half matters as much as the first. A county in a search is not
+always a constraint — "Dorset Coast Volunteers" is a recipient who works
+elsewhere — and the product already has a filter for people who mean it
+strictly: the place chips beside the results, which say how many grants they
+would leave. A bonus ranks; a filter hides.
+
+The check is WHOLE WORDS, unlike the applicant's own region just above it,
+which stays a substring test so "Somerset" matches "Somerset County Council
+area". Here the candidates are arbitrary search terms, and a substring test
+would make `art` match Dartmoor and `ton` match Taunton. Both are tested.
+
+After:
+
+```
+"bristol green space"  → five Bristol grants, then the Devon one at sixth
+                         (still on the page, ranked, not hidden)
+"dorset tree nursery"  → unchanged, 10 of 10
+"cornwall woodland"    → unchanged, 10 of 10
+```
+
+`src/db/region-rank.probe.test.ts` is the rig, skipped unless pointed at a
+loaded corpus, so the next person can re-measure rather than take this on
+trust.

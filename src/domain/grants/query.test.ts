@@ -54,7 +54,11 @@ describe('the pattern sent to 360Giving', () => {
 });
 
 const ctx = (
-  over: Partial<{ region: string | null; amountSoughtGbp: number | null }> = {},
+  over: Partial<{
+    region: string | null;
+    amountSoughtGbp: number | null;
+    terms: readonly string[];
+  }> = {},
 ) => ({ region: null, amountSoughtGbp: null, ...over });
 
 describe('ranking what comes back', () => {
@@ -116,6 +120,72 @@ describe('ranking what comes back', () => {
     const away = relevance({ ...grant, textScore: 0.6, region: 'Powys' },
       ctx({ region: 'Somerset' }));
     expect(here).toBeGreaterThan(away);
+  });
+
+  /**
+   * A county somebody TYPED, which is a different thing from the county they
+   * are in — and was worth nothing here until it was measured.
+   *
+   * The search vector does carry `region`, so a typed county earns some text
+   * score, but at weight `D`: the lowest, because for every other purpose a
+   * region mention is the weakest kind of hit. Measured on a 587-grant
+   * corpus, "bristol green space" put a DEVON grant first, above every
+   * Bristol one, on a better word match.
+   */
+  describe('a place they named in the search', () => {
+    const named = (over: Partial<typeof grant>, terms: string[]) =>
+      relevance({ ...grant, ...over }, ctx({ terms }));
+
+    it('lifts the county they asked for above a moderately better match', () => {
+      // Half the words in Bristol beats 70% of them in Devon.
+      const asked = named({ textScore: 0.5, region: 'Bristol' }, ['bristol', 'green']);
+      const elsewhere = named({ textScore: 0.7, region: 'Devon' }, ['bristol', 'green']);
+      expect(asked).toBeGreaterThan(elsewhere);
+    });
+
+    it('does not lift it above a much better one', () => {
+      // Because a county in a search is not always a constraint: "Dorset
+      // Coast Volunteers" is a recipient who works elsewhere. The place
+      // chips beside the results are the filter, and they say what they
+      // would leave.
+      const asked = named({ textScore: 0.5, region: 'Bristol' }, ['bristol', 'green']);
+      const muchBetter = named({ textScore: 0.85, region: 'Devon' }, ['bristol', 'green']);
+      expect(muchBetter).toBeGreaterThan(asked);
+    });
+
+    it('matches whole words, so a term cannot match half a place name', () => {
+      // `art` must not match Dartmoor, nor `ton` Taunton — this test is the
+      // reason the check is not the substring one the applicant's own region
+      // uses.
+      expect(named({ textScore: 0, region: 'Dartmoor' }, ['art'])).toBe(0);
+      expect(named({ textScore: 0, region: 'Taunton' }, ['ton'])).toBe(0);
+      expect(named({ textScore: 0, region: 'Dartmoor' }, ['dartmoor'])).toBe(5);
+    });
+
+    it('reads a multi-word region a word at a time', () => {
+      expect(named({ textScore: 0, region: 'North Somerset' }, ['somerset'])).toBe(5);
+      expect(named({ textScore: 0, region: 'Somerset County Council' }, ['county'])).toBe(5);
+    });
+
+    it('is nothing at all when they typed no place', () => {
+      expect(named({ textScore: 0, region: 'Bristol' }, ['green', 'space'])).toBe(0);
+      expect(named({ textScore: 0, region: null }, ['bristol'])).toBe(0);
+    });
+
+    it('stacks with their own area, because they are different claims', () => {
+      // Somebody in Somerset searching "somerset trees" gets both: the grant
+      // is where they are AND where they asked about.
+      const both = relevance(
+        { ...grant, textScore: 0, region: 'Somerset' },
+        ctx({ region: 'Somerset', terms: ['somerset', 'trees'] }),
+      );
+      expect(both).toBe(8);
+    });
+
+    it('is ignored by a caller that has no search', () => {
+      // The funder screen and the recent-grants list rank without terms.
+      expect(relevance({ ...grant, textScore: 0, region: 'Bristol' }, ctx())).toBe(0);
+    });
   });
 
   it('orders by score and keeps the query’s order as the tie-break', () => {
