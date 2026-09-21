@@ -10,6 +10,7 @@ import { addBudgetLine, deleteBudgetLine } from '@/db/budget';
 import { addOutcome, deleteOutcome } from '@/db/outcomes';
 import { saveReview } from '@/db/reviews';
 import { createShare, revokeShare } from '@/db/shares';
+import { loadComments, questionNumber, setCommentHandled } from '@/db/comments';
 import { createShareToken, hashShareToken } from '@/auth/token';
 import { isShareLength, SHARE_DAYS, shareExpiry } from '@/domain/review/share';
 import { isCostCategory } from '@/domain/budget/categories';
@@ -859,5 +860,76 @@ export async function revokeShareAction(
       ...EMPTY_SHARE,
       message: 'We could not withdraw that link. It is still live — please try again.',
     };
+  }
+}
+
+/**
+ * Mark a reviewer's comment as dealt with, or put it back.
+ *
+ * Not a delete. What a reviewer said is worth keeping once it has been
+ * answered — it is the record of why an answer changed — so "handled" is a
+ * state and the words stay.
+ *
+ * The reviewer's name and the question number for the trail are read from the
+ * row rather than taken from the form. They are on the screen the form was
+ * posted from, so trusting them would only ever let the applicant write a
+ * wrong name into their own audit trail, which is a small fault and an
+ * avoidable one.
+ */
+export async function setCommentHandledAction(
+  _previous: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
+  const applicationId = String(formData.get('applicationId') ?? '');
+  const commentId = String(formData.get('commentId') ?? '');
+  // The state being asked for, so the button is idempotent: pressing it twice
+  // does not toggle back and forth with the screen a step behind.
+  const handled = String(formData.get('handled') ?? '') === '1';
+  if (applicationId === '' || commentId === '') {
+    return { ...EMPTY_EDIT, message: 'Nothing to mark.' };
+  }
+
+  const database = await getDatabase();
+  try {
+    const outcome = await database.withTenant(organisationId, async (tx) => {
+      const comment = (await loadComments(tx, applicationId)).find(
+        (row) => row.id === commentId,
+      );
+      if (comment === undefined) return null;
+      const changed = await setCommentHandled(
+        tx,
+        applicationId,
+        commentId,
+        handled ? { by: userId } : null,
+      );
+      if (changed) {
+        await recordAudit(tx, organisationId, {
+          userId,
+          action: handled ? 'comment.handled' : 'comment.reopened',
+          entityId: commentId,
+          applicationId,
+          metadata: {
+            reviewerName: comment.reviewerName,
+            questionNumber:
+              comment.questionId === null
+                ? null
+                : await questionNumber(tx, applicationId, comment.questionId),
+          },
+        });
+      }
+      return changed;
+    });
+
+    revalidatePath(`/applications/${applicationId}`);
+    if (outcome === null) return { ...EMPTY_EDIT, message: 'That comment has gone.' };
+    return outcome
+      ? { ok: true, message: handled ? 'Marked as dealt with.' : 'Put back on the list.' }
+      : { ...EMPTY_EDIT, message: 'That was already how it was.' };
+  } catch (error) {
+    rethrowControlFlow(error);
+    console.error('[grantfinderstudio] the comment could not be marked:', error);
+    return { ...EMPTY_EDIT, message: 'We could not mark that. Nothing has changed.' };
   }
 }

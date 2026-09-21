@@ -5,13 +5,17 @@ import { getDatabase, withAdmin } from '@/db';
 import { recordShareView, resolveShare } from '@/db/shares';
 import { recordAudit } from '@/db/audit';
 import { loadApplication, loadClaimRefs, loadFacts } from '@/db/workspace';
+import { loadComments } from '@/db/comments';
 import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { claimStanding, usableFacts, type Fact } from '@/domain/provenance/facts';
 import { daysLeft, isNewVisit, refusalMessage } from '@/domain/review/share';
 import { verdictForReviewer } from '@/domain/review/verdict';
 import { readableClaim } from '@/domain/provenance/self-declared';
+import { since } from '@/domain/time/since';
 import type { SourceType } from '@/domain/types';
+
+import { CommentBox, type LeftComment } from './CommentBox';
 
 /**
  * One application, read-only, to somebody holding a link.
@@ -39,9 +43,19 @@ import type { SourceType } from '@/domain/types';
  *
  * The organisation's other applications. Its fact base as a whole — only the
  * facts this application's answers actually stand on. Its documents, its
- * tracker, its other funders. And no control that writes anything: there is
- * no form on this page, so there is nothing for a leaked link to do beyond
- * reading the one application it names.
+ * tracker, its other funders. And another reviewer's comments: one link
+ * shows its own holder's notes and nobody else's.
+ *
+ * ## The one thing it can write
+ *
+ * A comment, attached to the question it is about — Phase 9 Step 2's third
+ * bullet, and the whole reason to show somebody the application rather than
+ * email them a PDF. It is bounded in three places (the text and the
+ * fifty-per-link cap in `checkComment`, the length again in the column), so
+ * that a leaked link is a nuisance somebody withdraws rather than a way to
+ * fill an application with a pasted document. Every comment is audited, and
+ * the standing is checked on the WRITE as well as on the read: a page left
+ * open for an hour must not outlive the link that drew it.
  *
  * ## Why every load is a write
  *
@@ -125,6 +139,10 @@ export default async function ReviewPage({
         ? []
         : (await loadCriteria(tx, application.opportunityId)).criteria;
 
+    // This reviewer's own notes, by share rather than by application: one
+    // reviewer has no business reading another's.
+    const comments = await loadComments(tx, share.applicationId, { shareId: share.id });
+
     const questions = [];
     for (const question of application.questions) {
       const answer = application.answers.get(question.id) ?? null;
@@ -161,11 +179,26 @@ export default async function ReviewPage({
       });
     }
 
-    return { application, facts, organisation, project, criteria, questions };
+    return { application, facts, organisation, project, criteria, questions, comments };
   });
 
   if (page === null) notFound();
-  const { application, facts, organisation, project, criteria, questions } = page;
+  const { application, facts, organisation, project, criteria, questions, comments } = page;
+
+  // ONE clock reading for every relative time on this page, phrased here
+  // rather than inside the client component: a clock read during render gives
+  // one answer in the server's HTML and another on hydration, which is React
+  // #418 and a discarded tree.
+  const clock = now.getTime();
+  const commentsFor = (questionId: string | null): LeftComment[] =>
+    comments
+      .filter((comment) => comment.questionId === questionId)
+      .map((comment) => ({
+        id: comment.id,
+        body: comment.body,
+        when: since(comment.createdAt, clock),
+        handled: comment.handledAt !== null,
+      }));
 
   const confirmed = usableFacts(facts);
   const byId = new Map<string, Fact>();
@@ -230,9 +263,9 @@ export default async function ReviewPage({
         <h2 className="card-title">You are reading, not editing</h2>
         <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
           This link was made for {share.reviewerName} by whoever is writing the
-          application. Nothing here can be changed from this page, and it stops working in{' '}
-          {left} day{left === 1 ? '' : 's'} or as soon as they withdraw it. Send them your
-          thoughts however you normally would — there is nowhere to type them here yet.
+          application. You cannot change a word of it — but you can leave a comment under
+          any answer, and they will see it beside the words it is about. The link stops
+          working in {left} day{left === 1 ? '' : 's'}, or as soon as they withdraw it.
         </p>
         <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
           They are told that you opened it, and when. That is the deal that makes showing
@@ -388,6 +421,18 @@ export default async function ReviewPage({
                 drafted from their confirmed facts.
               </p>
             ) : null}
+
+            {/* THE COMMENT BOX, under the answer it is about.
+                Not one box at the foot of the page: a note written six
+                answers away from its subject arrives as "the second one needs
+                numbers", which is a puzzle by the time somebody reads it. */}
+            <CommentBox
+              comments={commentsFor(question.id)}
+              heading={`Anything to say about answer ${question.position}?`}
+              hint="What an assessor would ask, what is missing, what reads well."
+              questionId={question.id}
+              token={token}
+            />
           </section>
         );
       })}
@@ -409,9 +454,28 @@ export default async function ReviewPage({
         </section>
       ) : null}
 
+      {/* And one box for what belongs to no single answer — "the budget does
+          not match what answer 3 promises" is about the application, and
+          filing it under an arbitrary question hides it. */}
+      <section className="card">
+        <h2 className="card-title">Anything about the whole application?</h2>
+        <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
+          The overall case, something two answers contradict, or what you would ask if you
+          were assessing it.
+        </p>
+        <CommentBox
+          comments={commentsFor(null)}
+          heading="Your comment"
+          hint="Something that is not about one answer in particular."
+          questionId={null}
+          token={token}
+        />
+      </section>
+
       <p className="hint" style={{ marginTop: 'var(--s-6)' }}>
         Shared through Grant Finder Studio. This link is for {share.reviewerName} and expires
-        in {left} day{left === 1 ? '' : 's'}.
+        in {left} day{left === 1 ? '' : 's'}. Comments you leave here are recorded with your
+        name as they labelled it, and they are told each time you read it.
       </p>
     </div>
   );

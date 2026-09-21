@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,644 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
+**1,676 tests (7 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions) and `npm run walk`.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -4800,3 +4800,66 @@ changed.**
   the shell running them, twice, exactly as noted last time. The pattern text
   is in the shell's own command line. Read the pid from `ps -eo pid,args` and
   kill that.
+
+## And somewhere for the reviewer to say what they noticed
+
+The share made a reader; this makes a review. A comment box under each
+answer, one for the application as a whole, and the applicant's own list of
+what everybody said — Phase 9 Step 2's third bullet, and the reason to show
+somebody the application rather than email them a PDF.
+
+The structure is the feature. "The second answer needs numbers" written at the
+foot of a page of six answers is a puzzle by the time anybody reads it, so a
+comment carries the question it belongs to and the applicant sees it named
+beside the words it is about. A comment about no single answer is stored with
+a null question rather than filed under an arbitrary one, because "the budget
+does not match what answer 3 promises" is about the application.
+
+### What bounds a bearer token that can write
+
+A review link is a bearer token, and this is the first thing one can write
+with. So:
+
+| where | bound |
+|---|---|
+| `checkComment` | 2,000 characters, and 50 comments per link — a leaked link is a nuisance somebody withdraws, never a way to fill an application with a pasted document |
+| the column | `length(body) <= 2000` and a non-empty check, because belt-and-braces is the rule for anything an outsider writes |
+| `leaveCommentAction` | the token is resolved AGAIN on the write, so a page left open for an hour cannot outlive the link that drew it |
+| `addComment` | the question must belong to this application — RLS keeps a write inside the organisation and cannot keep it inside the application |
+
+Of the three things the form posts — the token, the question and the text —
+only the text is taken at face value. The organisation, the application and
+the share id all come from the resolved row, because the token is the only
+thing that authenticated anybody.
+
+### The text is data, and stays data
+
+It arrives from outside the organisation and outside any account. React
+escapes it on the way to both screens, `white-space: pre-wrap` keeps the line
+breaks the reviewer typed (three short points on three lines are three
+points), and nothing splices it into a model prompt. Whether the Critic should
+ever read it is on the roadmap as a decision, not an omission: a human's
+actual objections would be the strongest context it could have, and it is
+exactly the kind of text `keepCheckableFindings` exists to handle.
+
+### Dealt with, not deleted
+
+The applicant marks a comment handled and the words stay. A comment is the
+reason an answer changed, and a record that loses the reason keeps only the
+change. Handled ones fold away under their own summary so the list is what is
+left to do, and the panel renders nothing at all when there are no comments —
+an empty panel on every application teaches people to skip it.
+
+Both sides audit. `comment.left` carries the reviewer's name and the question
+number and never the words, for the reason `recordAudit` gives: the trail
+carries shape, and a second copy of a reviewer's prose in a table the same
+reviewer can read back is not an improvement.
+
+### Two faults the screenshots found
+
+- The comment box rendered in the monospace face `textarea.input` sets for
+  every answer box in the product. Right for an answer, which gets pasted into
+  a funder's portal; wrong for a comment, which the applicant reads set as
+  prose — so what you typed did not look like what they saw.
+- The box's label sat flush against the "just now" of the comment above it,
+  so the form read as part of the record rather than as a control.

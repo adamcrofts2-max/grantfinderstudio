@@ -7,6 +7,7 @@ import { loadOutcomes } from '@/db/outcomes';
 import { answersEditedSince, loadLatestReview } from '@/db/reviews';
 import { loadAuditTrail } from '@/db/audit';
 import { loadShares } from '@/db/shares';
+import { loadComments } from '@/db/comments';
 import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { since } from '@/domain/time/since';
@@ -23,6 +24,7 @@ import { BudgetPanel } from './BudgetPanel';
 import { OutcomesPanel } from './OutcomesPanel';
 import { TrailPanel } from './TrailPanel';
 import { SharePanel, type ShareView } from './SharePanel';
+import { CommentsPanel, type CommentView } from './CommentsPanel';
 import { CopyButton } from './CopyButton';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +76,9 @@ export default async function ApplicationPage({
     // ones are the applicant's record of who had access and when it stopped,
     // so the panel lists them rather than hiding them.
     const shares = await loadShares(tx, id);
+    // Every reviewer's comments, unlike the reviewer's own page which sees
+    // only the ones left through its own link. These are the applicant's.
+    const comments = await loadComments(tx, id);
 
     const questions: QuestionView[] = [];
     for (const q of application.questions) {
@@ -106,14 +111,14 @@ export default async function ApplicationPage({
     }
     return {
       application, facts, questions, budgetLines, outcomes, criteria, review,
-      answersEdited, organisation, project, trail, shares,
+      answersEdited, organisation, project, trail, shares, comments,
     };
   });
 
   if (!page) notFound();
   const {
     application, facts, questions, budgetLines, outcomes, criteria, review,
-    answersEdited, organisation, project, trail, shares,
+    answersEdited, organisation, project, trail, shares, comments,
   } = page;
 
   // ONE clock reading, here, for every relative time on this page. Read while
@@ -137,6 +142,22 @@ export default async function ApplicationPage({
       firstViewed: share.firstViewedAt === null ? null : since(share.firstViewedAt, now),
       lastViewed: share.lastViewedAt === null ? null : since(share.lastViewedAt, now),
       created: since(share.createdAt, now),
+    };
+  });
+
+  // The question each comment is about, by id, so the panel can name it. The
+  // comment carries the id; the question text is here.
+  const questionById = new Map(questions.map((question) => [question.id, question]));
+  const commentViews: CommentView[] = comments.map((comment) => {
+    const question = comment.questionId === null ? null : questionById.get(comment.questionId);
+    return {
+      id: comment.id,
+      body: comment.body,
+      reviewerName: comment.reviewerName,
+      when: since(comment.createdAt, now),
+      handled: comment.handledAt !== null,
+      questionNumber: question?.position ?? null,
+      questionText: question?.question ?? null,
     };
   });
 
@@ -334,6 +355,12 @@ export default async function ApplicationPage({
           </>
         ) : null}
       </section>
+
+      {/* HIGH, because a comment is somebody waiting on you rather than a
+          reference. Under the readiness card so the first two things on the
+          screen are "how far along is this" and "what has a person told you
+          about it". It renders nothing at all when there are no comments. */}
+      <CommentsPanel applicationId={application.id} comments={commentViews} />
 
       {confirmed.length === 0 ? (
         <section className="card">

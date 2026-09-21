@@ -143,6 +143,14 @@ async function seedFixtures(db: PGlite): Promise<void> {
       ('shr_a', '${ORG_A}', 'app_a', 'hash_a', 'Alpha reviewer', now() + interval '14 days'),
       ('shr_b', '${ORG_B}', 'app_b', 'hash_b', 'Beta reviewer',  now() + interval '14 days');
 
+    -- One reviewer comment each, so the isolation suite covers the table a
+    -- bearer token can write into.
+    INSERT INTO share_comments
+      (id, organisation_id, application_id, share_id, body)
+    VALUES
+      ('cmt_a', '${ORG_A}', 'app_a', 'shr_a', 'Alpha reviewer’s note.'),
+      ('cmt_b', '${ORG_B}', 'app_b', 'shr_b', 'Beta reviewer’s note.');
+
     INSERT INTO source_datasets
       (id, name, publisher, licence, attribution, retrieved_at)
     VALUES

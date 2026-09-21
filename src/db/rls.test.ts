@@ -36,6 +36,10 @@ const TENANT_TABLES = [
   // read its work. A leak here is worse than a leak of the data itself: it is
   // a leak of a way in.
   'application_shares',
+  // A table an outsider holding a link can write into. One tenant's reviewer
+  // must not be able to read or write another's, which is the same property
+  // as everything above and worth asserting where a bearer token is involved.
+  'share_comments',
 ] as const;
 
 describe('reads', () => {

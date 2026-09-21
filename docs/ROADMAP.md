@@ -231,7 +231,17 @@ marketplace built first is a bet; built last it is an obvious extension.
       binds the table owner too, so a reviewer's lookup reads the one row whose
       token it is holding, by putting that hash in `app.share_token_hash` for
       one transaction, and nothing else
-- [ ] Structured comments a reviewer can leave against a specific answer
+- [x] **Structured comments a reviewer can leave against a specific answer**
+      (migration 0025, `src/db/comments.ts`). A box under each answer and one
+      for the application as a whole, because "the budget does not match what
+      answer 3 promises" belongs to neither one answer nor a footnote. The
+      applicant sees them beside the question they are about, marks each one
+      dealt with without losing the words, and every comment writes an audit
+      line. Bounded in three places, since a link is a bearer token: the text
+      and a fifty-per-link cap in `checkComment`, the length again in the
+      column. The reviewer's text is untrusted — escaped on the way to a
+      screen, never spliced into a prompt — and one link shows its own
+      holder's notes and nobody else's
 - [ ] Decide whether a reviewer's sign-off is recorded as provenance or stays
       advisory (leaning: recorded — a reviewer's judgement is the strongest
       provenance the product could carry)
@@ -241,6 +251,18 @@ marketplace built first is a bet; built last it is an obvious extension.
       "by a colleague", and a reviewer is neither
 - [ ] Let the applicant extend a live share rather than withdraw it and make
       another (the second link is a second thing to keep track of)
+- [ ] Tell the applicant a comment has arrived. Today they find out by opening
+      the application, which is fine for somebody working on it daily and no
+      use at all for a review that lands a week later. There is no mail on the
+      platform yet, so this waits on that decision rather than on the panel
+- [ ] Decide whether the Critic may read the reviewer's comments. It would be
+      the strongest context it could have — a human's actual objections — and
+      it is text from outside the organisation, so it needs the treatment
+      answer prose already gets (`keepCheckableFindings`, the instruction-like
+      content report) rather than a paste into the prompt
+- [ ] A reviewer cannot see a reply, only that something was dealt with. Decide
+      whether a thread is worth it or whether "dealt with" plus the applicant's
+      own email is the honest scope
 
 **Step 3 — curated referral (revenue, no platform liability)**
 - [ ] A short list of vetted bid writers; they contract directly with the CIC

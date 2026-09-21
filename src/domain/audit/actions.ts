@@ -58,6 +58,9 @@ export const AUDIT_ACTIONS = {
   'share.created': 'Shared read-only for review',
   'share.revoked': 'Review link withdrawn',
   'share.viewed': 'Read by the reviewer',
+  'comment.left': 'Comment from the reviewer',
+  'comment.handled': 'Reviewer’s comment dealt with',
+  'comment.reopened': 'Reviewer’s comment reopened',
 
   // The organisation's own record
   'fact.added': 'Fact added',
@@ -197,6 +200,19 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
     }
     case 'share.revoked':
       return str('reviewerName') ?? '';
+    case 'comment.left':
+    case 'comment.handled':
+    case 'comment.reopened': {
+      // The reviewer's name and WHICH question — never the comment's text.
+      // `metadata` carries shape, and a reviewer's words belong in
+      // `share_comments` where they can be read in context, not copied into
+      // a second store that the same reviewer can then read back.
+      const who = str('reviewerName');
+      const question = num('questionNumber');
+      return [who, question === null ? null : `question ${question}`]
+        .filter((part) => part !== null)
+        .join(' · ');
+    }
     case 'share.viewed': {
       const who = str('reviewerName');
       const visit = num('visit');

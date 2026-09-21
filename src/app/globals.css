@@ -2032,3 +2032,39 @@ summary:focus-visible {
   margin: 0; padding-left: var(--s-4); color: var(--ink-soft);
 }
 .unanswered li { margin-bottom: var(--s-2); }
+
+/* ---------- Reviewer comments ---------------------------------------------
+   The same list on two screens: the reviewer's own notes under the answer
+   they are about, and the applicant's list of what everybody said.
+
+   Quoted rather than boxed: it is somebody's words, and a left rule reads as
+   a quotation where a card would read as another panel of the product's own
+   voice. */
+
+.comments { list-style: none; margin: 0; padding: 0; }
+.comment {
+  margin-top: var(--s-4);
+  padding-left: var(--s-4);
+  border-left: 3px solid var(--line-strong);
+  font-size: var(--t-sm);
+}
+.comment:first-child { margin-top: 0; }
+.comment-where {
+  font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+/* `pre-wrap`, because a reviewer who wrote three points on three lines meant
+   three points — the one piece of structure they gave. */
+.comment-body { margin-top: var(--s-2); white-space: pre-wrap; line-height: 1.6; }
+.comment-foot { margin-top: var(--s-2); color: var(--ink-faint); font-size: var(--t-xs); }
+.comment form { margin-top: var(--s-2); }
+
+/* The box itself, under the answer it is about. */
+.commenting { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+.commenting .part-head { margin-top: 0; }
+.commenting form { margin-top: var(--s-4); }
+/* Shorter than an answer box, and PROPORTIONAL where `textarea.input` is
+   monospaced. An answer is text that gets pasted into a funder's portal, and
+   monospace is right for it; a comment is prose, and the applicant reads it
+   set as prose — what you type should look like what they see. */
+.commenting textarea { min-height: 4.5rem; font-family: inherit; }

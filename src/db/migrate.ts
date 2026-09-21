@@ -48,6 +48,7 @@ export const MIGRATIONS = [
   '0022_audit_application_scope.sql',
   '0023_application_shares.sql',
   '0024_share_token_lookup.sql',
+  '0025_share_comments.sql',
 ] as const;
 
 /**
