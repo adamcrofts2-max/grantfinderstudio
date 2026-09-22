@@ -133,6 +133,10 @@ export interface ApplicationView {
   /** Null when the application was started without a fund attached. */
   opportunityId: string | null;
   amountRequestedGbp: number | null;
+  /** ISO date the funder answered. Null while `status` is not a decision. */
+  decidedOn: string | null;
+  amountAwardedGbp: number | null;
+  outcomeNote: string | null;
   opportunityTitle: string | null;
   funderName: string | null;
   deadline: string | null;
@@ -149,11 +153,16 @@ export async function loadApplication(
     status: string;
     opportunity_id: string | null;
     amount_requested_gbp: string | null;
+    decided_on: string | null;
+    amount_awarded_gbp: string | null;
+    outcome_note: string | null;
     title: string | null;
     funder_name: string | null;
     deadline: string | null;
   }>(
     `SELECT a.id, a.status, a.opportunity_id, a.amount_requested_gbp::text AS amount_requested_gbp,
+            to_char(a.decided_at, 'YYYY-MM-DD') AS decided_on,
+            a.amount_awarded_gbp::text AS amount_awarded_gbp, a.outcome_note,
             o.title, f.name AS funder_name, o.deadline::text AS deadline
      FROM applications a
      LEFT JOIN opportunities o ON o.id = a.opportunity_id
@@ -183,6 +192,10 @@ export async function loadApplication(
     status: row.status,
     opportunityId: row.opportunity_id,
     amountRequestedGbp: row.amount_requested_gbp === null ? null : Number(row.amount_requested_gbp),
+    decidedOn: row.decided_on,
+    amountAwardedGbp:
+      row.amount_awarded_gbp === null ? null : Number(row.amount_awarded_gbp),
+    outcomeNote: row.outcome_note,
     opportunityTitle: row.title,
     funderName: row.funder_name,
     deadline: row.deadline,

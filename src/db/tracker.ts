@@ -12,6 +12,7 @@
  */
 
 import type { Criterion } from '../domain/eligibility/types.js';
+import { isDecision, type Decision } from '../domain/tracker/decision.js';
 import type { DeadlineType } from '../domain/types.js';
 import { mapCriteria, type CriterionRow } from './criteria-mapper.js';
 import type { QuestionProgress } from '../domain/tracker/schedule.js';
@@ -40,6 +41,13 @@ export interface TrackedApplication {
   deadlineKind: DeadlineType;
   amountRequestedGbp: number | null;
   submittedOn: string | null;
+  /** The funder's answer. Null while it is still out. */
+  decision: Decision | null;
+  /** ISO date the answer landed. Null exactly when `decision` is. */
+  decidedOn: string | null;
+  /** Only ever set on an award, and null there too when the sum was not recorded. */
+  amountAwardedGbp: number | null;
+  outcomeNote: string | null;
   sourceUrl: string | null;
   questions: QuestionProgress[];
   answered: number;
@@ -73,6 +81,9 @@ export async function loadTracker(tx: Queryable): Promise<Tracker> {
     deadline_kind: string | null;
     amount_requested_gbp: string | null;
     submitted_on: string | null;
+    decided_on: string | null;
+    amount_awarded_gbp: string | null;
+    outcome_note: string | null;
     source_url: string | null;
     unsupported: string;
   }>(`
@@ -80,6 +91,9 @@ export async function loadTracker(tx: Queryable): Promise<Tracker> {
            o.deadline::text AS deadline, o.deadline_kind::text AS deadline_kind,
            a.amount_requested_gbp::text AS amount_requested_gbp,
            to_char(a.submitted_at, 'YYYY-MM-DD') AS submitted_on,
+           to_char(a.decided_at, 'YYYY-MM-DD') AS decided_on,
+           a.amount_awarded_gbp::text AS amount_awarded_gbp,
+           a.outcome_note,
            o.source_url,
            count(DISTINCT r.id) FILTER (WHERE r.is_unsupported)::text AS unsupported
     FROM applications a
@@ -89,7 +103,8 @@ export async function loadTracker(tx: Queryable): Promise<Tracker> {
     LEFT JOIN answers ans ON ans.question_id = q.id
     LEFT JOIN answer_fact_refs r ON r.answer_id = ans.id
     GROUP BY a.id, a.status, a.opportunity_id, o.title, f.name, o.deadline,
-             o.deadline_kind, a.amount_requested_gbp, a.submitted_at, o.source_url
+             o.deadline_kind, a.amount_requested_gbp, a.submitted_at, a.decided_at,
+             a.amount_awarded_gbp, a.outcome_note, o.source_url
     ORDER BY o.deadline NULLS LAST, a.created_at DESC
   `);
 
@@ -126,6 +141,11 @@ export async function loadTracker(tx: Queryable): Promise<Tracker> {
       amountRequestedGbp:
         row.amount_requested_gbp === null ? null : Number(row.amount_requested_gbp),
       submittedOn: row.submitted_on,
+      decision: isDecision(row.status) ? row.status : null,
+      decidedOn: row.decided_on,
+      amountAwardedGbp:
+        row.amount_awarded_gbp === null ? null : Number(row.amount_awarded_gbp),
+      outcomeNote: row.outcome_note,
       sourceUrl: row.source_url,
       questions,
       answered: questions.filter((q) => q.answered).length,

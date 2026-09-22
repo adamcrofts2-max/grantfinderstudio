@@ -38,6 +38,8 @@ export const AUDIT_ACTIONS = {
   'application.questions_added': 'Questions added from the funder’s form',
   'application.submitted': 'Marked as submitted',
   'application.unsubmitted': 'No longer marked as submitted',
+  'application.decided': 'The funder answered',
+  'application.decision_cleared': 'Funder’s answer withdrawn',
 
   // Writing
   'answer.saved': 'Answer written',
@@ -200,6 +202,26 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
     }
     case 'share.revoked':
       return str('reviewerName') ?? '';
+    case 'application.decided': {
+      // The answer and the amount, never the note. The note can carry a
+      // funder's reasons verbatim, and the trail holds shape, not content.
+      const answer = str('decision');
+      const named =
+        answer === 'awarded'
+          ? 'Funded'
+          : answer === 'rejected'
+            ? 'Turned down'
+            : answer === 'no_reply'
+              ? 'No reply'
+              : answer;
+      const amount = num('amountAwardedGbp');
+      return [
+        named,
+        amount === null ? null : `£${amount.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`,
+      ]
+        .filter((part) => part !== null)
+        .join(' · ');
+    }
     case 'comment.left':
     case 'comment.handled':
     case 'comment.reopened': {

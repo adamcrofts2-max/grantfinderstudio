@@ -1489,6 +1489,132 @@ try {
           fail(`the answer line records no word count: ${inTrail.slice(0, 200)}`);
         } else ok('a saved answer is recorded as a word count');
       }
+
+      // --- the funder answers ------------------------------------------------
+      //
+      // The walk had never opened /tracker at all, so the one screen that
+      // reports what is slipping went unchecked by the only rig that runs a
+      // browser. It is checked here because the outcome loop lives on it, and
+      // because the decision form is a client component with a conditional
+      // field — exactly the kind of thing that type-checks and still does not
+      // work. `page.on('pageerror')` above is what makes this a hydration
+      // check as well as a behaviour one.
+      await page.goto(`${B}/tracker`, { waitUntil: 'networkidle' });
+      const trackerText = () => page.locator('body').innerText();
+      const beforeSubmit = await trackerText();
+      if (/Application error|server-side exception/i.test(beforeSubmit)) {
+        fail(`the tracker will not render: ${beforeSubmit.slice(0, 300)}`);
+      } else ok('the tracker renders with an application on it');
+
+      if (/Record the funder/iu.test(beforeSubmit)) {
+        fail('an unsent application is being asked what the funder said');
+      } else ok('an unsent application is not asked what the funder said');
+
+      const markSubmitted = page
+        .locator('button')
+        .filter({ hasText: /^Mark submitted$/iu })
+        .first();
+      if (!(await markSubmitted.count())) {
+        fail('no way to mark an application submitted from the tracker');
+      } else {
+        await markSubmitted.click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(800);
+        const afterSubmit = await trackerText();
+        if (!/Record the funder/iu.test(afterSubmit)) {
+          fail('a submitted application is never asked what the funder said');
+        } else ok('a submitted application is asked what the funder said');
+
+        const disclosure = page
+          .locator('summary')
+          .filter({ hasText: /Record the funder/iu })
+          .first();
+        await disclosure.click();
+        await page.waitForTimeout(300);
+
+        // THE AMOUNT BOX IS NOT THERE YET. It belongs only on an award, and
+        // the server refuses one anywhere else; the form is supposed to spare
+        // the person that conversation.
+        if (await page.locator('input[name="amountAwardedGbp"]').count()) {
+          fail('the amount box is offered before an award is chosen');
+        } else ok('the amount box is not offered until the answer is an award');
+
+        const today = new Date().toISOString().slice(0, 10);
+
+        // A DATE FROM THE FUTURE, first, so the refusal is proved before the
+        // success. A form that accepts everything passes a happy-path check.
+        //
+        // The browser gets there before the server does: the input carries
+        // `max={today}`, so a future date is a range overflow and the submit
+        // never leaves the page. That is the better refusal — immediate, and
+        // beside the box — so what is checked here is that it happened and
+        // that nothing was recorded, not which layer said so. The server's
+        // own rule is the real guard and is proved in
+        // `src/domain/tracker/decision.test.ts`.
+        const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+        await page.locator('input[value="rejected"]').first().check();
+        await page.fill('input[name="decidedOn"]', tomorrow);
+        const overflows = await page
+          .locator('input[name="decidedOn"]')
+          .first()
+          .evaluate((el) => el.validity.rangeOverflow);
+        if (!overflows) fail('a date after today is not out of the input’s range');
+        else ok('a date after today is out of the input’s range');
+
+        await page.locator('button').filter({ hasText: /^Record it$/iu }).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(800);
+        const refused = await trackerText();
+        if (/\bAnswered\b/u.test(refused)) {
+          fail(`an answer dated tomorrow was recorded: ${refused.slice(0, 300)}`);
+        } else ok('and an answer dated tomorrow is not recorded');
+
+        await page.locator('input[value="awarded"]').first().check();
+        await page.waitForTimeout(200);
+        if (!(await page.locator('input[name="amountAwardedGbp"]').count())) {
+          fail('choosing an award does not offer the amount box');
+        } else ok('choosing an award offers the amount box');
+
+        await page.fill('input[name="decidedOn"]', today);
+        await page.fill('input[name="amountAwardedGbp"]', '12,500');
+        await page.fill('textarea[name="note"]', 'Funded for year one only.');
+        await page.locator('button').filter({ hasText: /^Record it$/iu }).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1000);
+
+        const answered = await trackerText();
+        if (!/\bAnswered\b/u.test(answered)) {
+          fail(`a decided application did not move to Answered: ${answered.slice(0, 300)}`);
+        } else ok('a decided application moves to its own group');
+        if (!/Funded/u.test(answered)) fail('the row does not say it was funded');
+        else ok('and the row says it was funded');
+        if (!/£12,500/u.test(answered)) fail('the amount awarded is not on the row');
+        else ok('and carries the amount actually given');
+        if (!/Funded for year one only/u.test(answered)) {
+          fail('the funder’s own words were not kept');
+        } else ok('and keeps what the funder said, in their words');
+        if (!/Too few decided either way/iu.test(answered)) {
+          fail(`a success rate was printed over one answer: ${answered.slice(0, 400)}`);
+        } else ok('and withholds a success rate over a single answer');
+
+        // Undoing it has to take the money with it. An amount left behind
+        // would show up in the next total as money won on an application
+        // nobody has heard about.
+        await page
+          .locator('button')
+          .filter({ hasText: /Not answered after all/iu })
+          .first()
+          .click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(800);
+        const undone = await trackerText();
+        if (/£12,500/u.test(undone)) {
+          fail('withdrawing the answer left the amount behind');
+        } else ok('withdrawing the answer takes the amount with it');
+        if (!/Record the funder/iu.test(undone)) {
+          fail('withdrawing the answer did not put it back to waiting');
+        } else ok('and puts the application back to waiting on the funder');
+      }
     }
   }
 } finally {

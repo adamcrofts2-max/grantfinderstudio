@@ -3,7 +3,8 @@ import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import { loadApplications } from '@/db/workspace';
 
-import { gbp } from '@/app/components';
+import { DECISION_BADGE, gbp } from '@/app/components';
+import { isDecision } from '@/domain/tracker/decision';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +68,20 @@ export default async function ApplicationsPage() {
                 </p>
               </div>
               <div className="metric">
-                {application.unsupported > 0 ? (
+                {/* The funder's answer outranks everything else this badge
+                    could say. An awarded application reading "All answered"
+                    would be the list reporting the least interesting true
+                    thing about it — and `no_reply` rendered raw, as the
+                    status string used to be, is a column name rather than a
+                    sentence. */}
+                {isDecision(application.status) ? (
+                  <span className={DECISION_BADGE[application.status].className}>
+                    <span aria-hidden="true">
+                      {DECISION_BADGE[application.status].mark}
+                    </span>
+                    {DECISION_BADGE[application.status].label}
+                  </span>
+                ) : application.unsupported > 0 ? (
                   <span className="badge badge-caution">
                     <span aria-hidden="true">⚠</span>
                     {application.unsupported} unsupported

@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-22
 
 ## What exists
 
-**1,740 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application, 123 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,786 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 137 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5261,3 +5261,143 @@ After:
 `src/db/region-rank.probe.test.ts` is the rig, skipped unless pointed at a
 loaded corpus, so the next person can re-measure rather than take this on
 trust.
+
+## The funder's answer, which the product never learned
+
+The tracker's last state was "Submitted on 3 June. Nothing further to do until
+the funder replies." The funder's reply landed in an inbox this product never
+saw, so an organisation could use it for a year and still not be able to say,
+from inside it, which funders had said yes.
+
+That is not a reporting nicety. The whole pitch is *evidence, not guesswork* —
+it works back from grants funders actually gave. An applicant's own answers are
+the only evidence about funding they own outright, and they are the strongest
+thing a second application can argue from.
+
+### The schema had been waiting since 0001
+
+`applications` has carried `status`, with `'awarded'` and `'rejected'` in the
+enum, plus `amount_awarded_gbp` and `outcome_note`, since the first migration.
+Nothing had ever written to any of them. Two things were missing before
+anything could.
+
+**Silence.** Most UK grant applications are never answered, and a no-reply is
+not a rejection: the applicant may re-apply, and counting it as a loss makes
+every success rate too harsh and tells somebody they failed at something nobody
+judged. `0027` adds `'no_reply'` to the enum, `AFTER 'rejected'` so the
+existing order is undisturbed.
+
+**A date.** `'awarded'` with no date cannot be sorted, cannot go on a timeline
+and cannot answer "how long does this funder take" — which is what a second
+application to the same funder needs. `0027` adds `decided_at`; `0028` adds the
+constraint.
+
+The constraint is one-directional on purpose:
+
+```sql
+CHECK (status NOT IN ('awarded', 'rejected', 'no_reply') OR decided_at IS NOT NULL)
+```
+
+"Decided implies dated" is the invariant worth holding. The converse would
+forbid a later `'reporting'` or `'complete'` status on an award that keeps its
+decision date, and those are real states further down the same lifecycle.
+Tested both ways.
+
+Two migrations rather than one because **a new enum value cannot be USED in the
+transaction that adds it**, and the constraint names all three. Checked against
+PGlite first rather than assumed: `ALTER TYPE ... ADD VALUE` inside a
+transaction is fine on PG12+, which is what both PGlite and Neon are.
+
+### Three answers, and what they do to the arithmetic
+
+`src/domain/tracker/decision.ts` owns every rule, so none of them can drift
+between this form and any other way a decision is ever recorded.
+
+- **A success rate is withheld below five decided applications.** "1 of 3" is
+  not 33%; it is three applications. A percentage printed over a handful of
+  events invites exactly the false confidence this product exists to replace.
+- **No-replies are excluded from both halves of the rate.** Five decided, two
+  funded is 40%, and ten unanswered applications alongside them must not drag
+  that to 13%. There is a test that says so in those words.
+- **An award with no amount recorded is counted as an award and said to be
+  without an amount** — "£5,000 won, plus 1 award with no amount recorded"
+  rather than a total that quietly understates itself.
+- **An amount is refused on anything but an award**, and a figure above
+  £100,000,000 is refused with "check whether it is in pence" — the mistake
+  that would otherwise multiply a total by a hundred.
+
+### The guard that matters
+
+`recordDecision` is `WHERE id = $1 AND submitted_at IS NOT NULL`. Row-level
+security makes "theirs" true; that clause makes "sent" true. An award recorded
+against an unsent draft would put money into the totals that no funder ever
+agreed to. Both refusals are tested, including the cross-tenant one.
+
+Correcting an award to a refusal wipes the amount and the note in the same
+statement, because the alternative — £12,500 left in the totals of an
+application that was turned down — is the failure nobody would notice.
+
+### On screen
+
+The tracker grows an **Answered** group, which sits past every other judgement
+the row makes: a decided application's deadline, eligibility and remaining work
+are settled facts, and re-deciding them would put a funded grant under "Needs
+you this week". The decision badge outranks both the schedule badge and the
+ruled-out badge for the same reason.
+
+The award line names the shortfall — "Funded on Tue 1 Sep 2026 — £12,500 of the
+£20,000 asked for". Being cut from twenty thousand to twelve is the single most
+useful fact about an award and the one a bare "Funded" hides; it is what tells
+you whether to ask this funder for less next time.
+
+The form is three radios, not a tick box, and its amount field appears only
+when "We were funded" is chosen. The server keeps the rule either way; the form
+keeps the person from meeting it. `today` is a prop, read once by the page —
+a clock read during a client render is React #418 again.
+
+Opening a funded application and being told it is "Readiness — 83%" is the
+product not knowing something the user told it, so the answer now sits above
+the readiness card on the application page, with the funder's own words under
+it. The readiness card stays: it is a true record of how complete the thing
+was.
+
+`DECISION_BADGE`, `decisionLine` and `humanDate` live in
+`src/app/components.tsx` rather than with the tracker, because three screens
+render them now — the tracker row, the application list and the application
+itself. The list used to print the raw status string; `no_reply` is a column
+name, not a sentence.
+
+### Found on the way
+
+`npm run typecheck` (`tsc --noEmit`, which covers the test files) was failing at
+`6fb8140` on a `null` passed to a fixture typed `string | undefined` in
+`query.test.ts`. `npm run build` does not compile the tests, so a build-and-lint
+check missed it. Fixed; the lesson is that `npm run verify` is the gate, not
+build plus lint.
+
+### The walk had never opened the tracker
+
+137 checks now, up from 123. The only rig in this repository that runs a
+browser had never visited `/tracker` — the one screen that reports what is
+slipping — so every render on it was proved by unit tests and by nothing
+looking at it. The decision form is a client component with a conditional
+field and a `useActionState` message, which is exactly the shape of thing that
+type-checks and still does not work, so the leg was written before the feature
+was called finished.
+
+It marks the application submitted, checks that an **unsent** application is
+never asked what the funder said, opens the disclosure, proves the amount box
+is absent until "We were funded" is chosen, records £12,500 with a note, and
+then withdraws the answer and proves the money went with it.
+
+The future-date check was wrong on its first run and the run said so. `max`
+on the date input makes tomorrow a range overflow, so the browser refuses
+before the request is made and the server's sentence never appears. That is
+the better refusal — immediate, and beside the box — so the check now asserts
+the overflow and that nothing was recorded, rather than asserting which layer
+spoke. The server rule is still the real guard, and still proved in
+`decision.test.ts`.
+
+`page.on('pageerror')` was already wired to fail the run with the URL
+attached, so this leg is a hydration check on the tracker as well as a
+behaviour one.

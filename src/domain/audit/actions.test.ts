@@ -109,6 +109,23 @@ describe('what a line says beyond its label', () => {
     );
   });
 
+  it('renders the funder’s answer in words, with the amount and never the note', () => {
+    expect(
+      auditDetail('application.decided', {
+        decision: 'awarded',
+        amountAwardedGbp: 12_500,
+        note: 'Funded in full.',
+      }),
+    ).toBe('Funded · £12,500');
+    expect(auditDetail('application.decided', { decision: 'rejected' })).toBe('Turned down');
+    expect(auditDetail('application.decided', { decision: 'no_reply' })).toBe('No reply');
+    // A funder's reasons belong in the application, where they can be read in
+    // context — not copied into the trail as well.
+    expect(
+      auditDetail('application.decided', { decision: 'rejected', note: 'Oversubscribed.' }),
+    ).not.toContain('Oversubscribed');
+  });
+
   it('adds nothing when there is nothing worth adding', () => {
     // A line reads perfectly well as "Outcome removed" with no clause after
     // it, and inventing one to fill the space is how a record becomes padding.

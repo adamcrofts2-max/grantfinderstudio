@@ -16,6 +16,8 @@ import { claimStanding, usableFacts } from '@/domain/provenance/facts';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { validateBudget } from '@/domain/budget/validate';
 import { restrictionsFromCriteria } from '@/domain/budget/restrictions';
+import { isDecision } from '@/domain/tracker/decision';
+import { DECISION_BADGE, decisionLine } from '@/app/components';
 
 import { Workspace, type QuestionView } from './Workspace';
 import { PasteQuestions } from './PasteQuestions';
@@ -257,6 +259,39 @@ export default async function ApplicationPage({
           {application.deadline ? ` · deadline ${application.deadline}` : null}
         </p>
       </header>
+
+      {/* THE ANSWER, ABOVE THE READINESS CARD.
+          Opening a funded application and being told it is 83% ready to
+          submit is the product not knowing something the user told it. The
+          readiness card still stands — it is a record of how complete the
+          thing was — but it cannot be the first thing on the page once the
+          funder has spoken. */}
+      {isDecision(application.status) ? (
+        <section className="card" style={{ marginBottom: 'var(--s-5)' }}>
+          <div className="row-between" style={{ alignItems: 'center' }}>
+            <div>
+              <h2 className="card-title">
+                {decisionLine({
+                  decision: application.status,
+                  decidedOn: application.decidedOn,
+                  amountAwardedGbp: application.amountAwardedGbp,
+                  amountRequestedGbp: application.amountRequestedGbp,
+                })}
+              </h2>
+              <p className="card-sub" style={{ marginTop: 'var(--s-1)' }}>
+                Recorded by you on the tracker, where it can also be corrected.
+              </p>
+            </div>
+            <span className={DECISION_BADGE[application.status].className}>
+              <span aria-hidden="true">{DECISION_BADGE[application.status].mark}</span>
+              {DECISION_BADGE[application.status].label}
+            </span>
+          </div>
+          {application.outcomeNote === null ? null : (
+            <blockquote className="decision-note">{application.outcomeNote}</blockquote>
+          )}
+        </section>
+      ) : null}
 
       {/* An application with no questions in it can do nothing at all, and
           everything below assumes there are some. Leading with the readiness

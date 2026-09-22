@@ -64,7 +64,7 @@ const ctx = (
 describe('ranking what comes back', () => {
   const grant = {
     title: 'Green Skills Programme',
-    region: 'Somerset',
+    region: 'Somerset' as string | null,
     amountGbp: 24_000,
     textScore: null as number | null,
   };

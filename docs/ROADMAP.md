@@ -315,6 +315,23 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [x] Assisted rate claimed only when the Writer is genuinely usable (key present and working,
       enough confirmed facts to ground prose in)
 - [x] Unsupported claims counted as outstanding work: assisted drafting creates them
+- [x] **Record the funder's answer.** Funded, turned down, or never answered — with the
+      date, the amount actually given (often less than the ask) and what they said.
+      The tracker used to stop at "Submitted", so an organisation could use this for a
+      year and still not be able to say from inside it which funders said yes
+- [x] Silence counted as its own outcome, not as a rejection, and kept out of both
+      halves of any success rate — nobody decided it
+- [x] A success rate withheld below five decided applications, because "1 of 3" is not
+      33%, it is three applications
+- [x] An answer refused against an application nobody marked submitted, so no money
+      enters the totals that no funder agreed to
+- [x] The e2e walks `/tracker` for the first time: mark submitted, be asked what the
+      funder said, be refused a date from the future, record an award, and have the
+      amount taken away again when the answer is withdrawn
+- [ ] Prompt for the answer on an application submitted months ago with nothing
+      recorded, rather than waiting to be told
+- [ ] Let the applicant's own record inform the funder view — "this funder funded you
+      before" is the strongest fact either screen could carry
 - [ ] Calibrate the assisted rate against real usage rather than a trade heuristic
 - [ ] Weekly capacity as a per-organisation setting rather than a 4h/week assumption
 - [ ] Subscribable calendar feed (needs auth: a feed URL is fetched without a session)

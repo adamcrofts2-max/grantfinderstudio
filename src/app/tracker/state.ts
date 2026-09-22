@@ -47,7 +47,14 @@ export const STATE_TONE = {
   submitted: 'neutral',
 } as const satisfies Record<TrackerState, TimelineTone>;
 
-export type Group = 'attention' | 'ahead' | 'open' | 'watching' | 'ruled_out' | 'done';
+export type Group =
+  | 'attention'
+  | 'ahead'
+  | 'open'
+  | 'watching'
+  | 'ruled_out'
+  | 'done'
+  | 'answered';
 
 export const GROUPS: ReadonlyArray<{ id: Group; title: string; blurb: string }> = [
   {
@@ -80,6 +87,12 @@ export const GROUPS: ReadonlyArray<{ id: Group; title: string; blurb: string }> 
       'The eligibility check says you do not qualify, so these are kept out of the way rather than chased. Open one to see which rule fails — if the funder tells you otherwise, that answer wins.',
   },
   { id: 'done', title: 'Submitted', blurb: 'Waiting on the funder.' },
+  {
+    id: 'answered',
+    title: 'Answered',
+    blurb:
+      'The funder came back. Kept rather than archived: your own results are the only evidence you own outright, and they are what the next application argues from.',
+  },
 ];
 
 /**
@@ -93,16 +106,26 @@ export const RULED_OUT_BADGE = {
   mark: '✕',
 } as const;
 
-/** A date a British reader can scan: "Mon 30 Nov 2026". */
-export function humanDate(isoDate: string): string {
-  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+/**
+ * What `recordDecisionAction` hands back.
+ *
+ * `applicationId` is on it so a message from one row does not appear under
+ * every other row's form: the tracker renders many of these at once, and a
+ * shared error banner would blame the wrong application.
+ */
+export interface DecisionFormState {
+  ok: boolean;
+  message: string;
+  applicationId: string | null;
+  /** Which box to point at, where the complaint is about one. */
+  field?: string;
 }
+
+export const EMPTY_DECISION: DecisionFormState = {
+  ok: false,
+  message: '',
+  applicationId: null,
+};
 
 /** "in 9 days" / "9 days ago" / "today". */
 export function relativeDays(days: number): string {

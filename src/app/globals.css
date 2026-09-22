@@ -1837,6 +1837,46 @@ summary:focus-visible {
   font-size: var(--t-md); font-weight: 700; letter-spacing: -0.015em;
 }
 
+/* ---------- Recording what the funder said --------------------------------
+   The form sits INSIDE the tracker row it belongs to, closed, so a page of
+   applications waiting on funders is not a page of open forms. */
+.decision-form {
+  margin: var(--s-4) var(--s-5) var(--s-5);
+  /* Sunken, because it is a card inside a card: the row it belongs to already
+     carries a border and a shadow, and a second identical surface on top of
+     the first reads as two rows rather than one. */
+  background: var(--surface-sunken); box-shadow: none;
+}
+.decision-answers {
+  margin: 0; padding: var(--s-4);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  /* Raised, not sunken: the form around it is already the sunken surface. */
+  background: var(--surface);
+  display: flex; flex-direction: column; gap: var(--s-3);
+}
+.decision-answers legend {
+  padding: 0 var(--s-2); font-size: var(--t-sm); font-weight: 700;
+}
+/* The whole row is the target, not the 16px dot. */
+.decision-answer {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  cursor: pointer;
+}
+.decision-answer > span { display: flex; flex-direction: column; gap: 2px; }
+.decision-answer input { margin-top: 3px; flex: none; accent-color: var(--accent); }
+
+/* The funder's own words, kept visibly theirs rather than folded into ours. */
+.decision-note {
+  margin: var(--s-3) 0 0; padding: var(--s-1) 0 var(--s-1) var(--s-4);
+  border-left: 2px solid var(--line);
+  color: var(--ink-soft); font-size: var(--t-sm);
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .decision-form { margin: var(--s-3) var(--s-4) var(--s-4); }
+}
+
 /* The licence block on the ingest form. Set apart because it is the part an
    operator must not tab past: publishers choose their own licences, and a
    wrong one here puts somebody else's terms on their data. */

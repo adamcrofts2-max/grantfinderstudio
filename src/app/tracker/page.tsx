@@ -22,12 +22,18 @@ import { horizonFor, timeline, type Horizon } from '@/domain/tracker/timeline';
 import { Timeline } from '@/app/viz/Timeline';
 import { Highlight, MarginNote } from '@/app/marks';
 import { EmptyState } from '@/app/illustration/EmptyState';
-import { gbp } from '@/app/components';
+import { DECISION_BADGE, decisionLine, gbp, humanDate } from '@/app/components';
 
-import { markSubmittedAction, unmarkSubmittedAction } from './actions';
+import { decisionSummary } from '@/domain/tracker/decision';
+
+import {
+  clearDecisionAction,
+  markSubmittedAction,
+  unmarkSubmittedAction,
+} from './actions';
+import { DecisionForm } from './DecisionForm';
 import {
   GROUPS,
-  humanDate,
   paceNote,
   relativeDays,
   RULED_OUT_BADGE,
@@ -65,7 +71,17 @@ type Verdict = 'eligible' | 'ineligible' | 'unknown' | undefined;
  * something about the funder that we do not, and the fund stays one click
  * away.
  */
-function groupFor(state: Schedule['state'], started: boolean, verdict: Verdict): Group {
+function groupFor(
+  state: Schedule['state'],
+  started: boolean,
+  verdict: Verdict,
+  decided: boolean,
+): Group {
+  // An answered application is past every other judgement this function
+  // makes. Its deadline, its eligibility and its remaining work are all
+  // settled facts now, and re-deciding them would put a funded grant under
+  // "Needs you this week".
+  if (decided) return 'answered';
   if (state === 'submitted') return 'done';
   if (verdict === 'ineligible') return 'ruled_out';
   if (needsAttention(state)) return 'attention';
@@ -103,7 +119,7 @@ function applicationRow(
     application: app,
     amountGbp: app.amountRequestedGbp,
     verdict,
-    group: groupFor(state.state, true, verdict),
+    group: groupFor(state.state, true, verdict, app.decision !== null),
   };
 }
 
@@ -130,12 +146,15 @@ function opportunityRow(opportunity: TrackedOpportunity, now: string, verdict: V
     application: null,
     amountGbp: opportunity.maxAmountGbp,
     verdict,
-    group: groupFor(state.state, false, verdict),
+    group: groupFor(state.state, false, verdict, false),
   };
 }
 
 /** The deadline line: the date, how far off it is, and how much to trust it. */
 function DeadlineLine({ row }: { row: Row }) {
+  // A decided application's deadline is history. The date that matters on
+  // that row is the day the funder answered, and the line below carries it.
+  if (row.application?.decision != null) return null;
   if (row.deadline === null) {
     return <p className="criteria-why">No date published</p>;
   }
@@ -200,10 +219,27 @@ function StartNote({ row, horizon }: { row: Row; horizon: Horizon | null }) {
   );
 }
 
-function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
+function TrackerRow({
+  row,
+  horizon,
+  now,
+}: {
+  row: Row;
+  horizon: Horizon | null;
+  now: string;
+}) {
   const ruledOut = row.verdict === 'ineligible';
-  const badge = ruledOut ? RULED_OUT_BADGE : STATE_LABEL[row.schedule.state];
   const app = row.application;
+  const decision = app?.decision ?? null;
+  // An answer outranks both of the other two badges: once a funder has
+  // spoken, neither the schedule nor the eligibility engine has anything left
+  // to say about this row.
+  const badge =
+    decision !== null
+      ? DECISION_BADGE[decision]
+      : ruledOut
+        ? RULED_OUT_BADGE
+        : STATE_LABEL[row.schedule.state];
 
   return (
     <section className="card">
@@ -215,13 +251,23 @@ function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
           </a>
           <DeadlineLine row={row} />
           <p className="headline" style={{ fontWeight: 500 }}>
-            {ruledOut
-              ? 'The eligibility check rules you out of this one, so there is nothing here to schedule. Open it to see which rule fails.'
-              : row.schedule.reason}
+            {decision !== null && app !== null
+              ? decisionLine({
+                  decision,
+                  decidedOn: app.decidedOn,
+                  amountAwardedGbp: app.amountAwardedGbp,
+                  amountRequestedGbp: app.amountRequestedGbp,
+                })
+              : ruledOut
+                ? 'The eligibility check rules you out of this one, so there is nothing here to schedule. Open it to see which rule fails.'
+                : row.schedule.reason}
           </p>
-          <RowTimeline row={row} horizon={horizon} />
-          <StartNote row={row} horizon={horizon} />
-          {row.verdict === 'unknown' ? (
+          {decision === null ? <RowTimeline row={row} horizon={horizon} /> : null}
+          {decision === null ? <StartNote row={row} horizon={horizon} /> : null}
+          {app !== null && app.outcomeNote !== null ? (
+            <blockquote className="decision-note">{app.outcomeNote}</blockquote>
+          ) : null}
+          {decision === null && row.verdict === 'unknown' ? (
             <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
               <span aria-hidden="true">⚠</span>
               <span>
@@ -249,17 +295,36 @@ function TrackerRow({ row, horizon }: { row: Row; horizon: Horizon | null }) {
           </span>
           {app === null ? null : (
             <form
-              action={app.submittedOn === null ? markSubmittedAction : unmarkSubmittedAction}
+              action={
+                decision !== null
+                  ? clearDecisionAction
+                  : app.submittedOn === null
+                    ? markSubmittedAction
+                    : unmarkSubmittedAction
+              }
               style={{ marginTop: 'var(--s-3)' }}
             >
               <input type="hidden" name="applicationId" value={app.id} />
-              <button className="btn btn-secondary" type="submit">
-                {app.submittedOn === null ? 'Mark submitted' : 'Not submitted after all'}
+              <button
+                className={decision === null ? 'btn btn-secondary' : 'btn btn-quiet'}
+                type="submit"
+              >
+                {decision !== null
+                  ? 'Not answered after all'
+                  : app.submittedOn === null
+                    ? 'Mark submitted'
+                    : 'Not submitted after all'}
               </button>
             </form>
           )}
         </div>
       </div>
+      {/* Only on a row that has gone in and has no answer yet. Offering it on
+          a draft would invite an award recorded against an application nobody
+          has sent, which the action refuses anyway — better not to ask. */}
+      {app !== null && app.submittedOn !== null && decision === null ? (
+        <DecisionForm applicationId={app.id} today={now} />
+      ) : null}
     </section>
   );
 }
@@ -322,6 +387,23 @@ export default async function TrackerPage() {
 
   const attention = sorted.filter((row) => row.group === 'attention');
 
+  // flatMap rather than filter-then-assert: the narrowing is the point, and a
+  // non-null assertion here would be the one place in this file where the
+  // types stop being load-bearing.
+  const outcomes = decisionSummary(
+    tracker.applications.flatMap((app) =>
+      app.decision === null
+        ? []
+        : [
+            {
+              decision: app.decision,
+              amountAwardedGbp: app.amountAwardedGbp,
+              amountRequestedGbp: app.amountRequestedGbp,
+            },
+          ],
+    ),
+  );
+
   return (
     <div className="page">
       <header className="page-head">
@@ -379,9 +461,28 @@ export default async function TrackerPage() {
             <p className="card-sub" style={{ marginBottom: 'var(--s-4)', maxWidth: '46rem' }}>
               {group.blurb}
             </p>
+            {/* The tally sits with its own rows rather than at the top of the
+                page. It is a summary of these applications, and a figure
+                floating above every other group would read as a claim about
+                all of them. */}
+            {group.id === 'answered' ? (
+              <section className="card" style={{ marginBottom: 'var(--s-4)' }}>
+                <p className="eyebrow">Your own record</p>
+                <p className="headline" style={{ marginTop: 'var(--s-2)', fontWeight: 500 }}>
+                  {outcomes.sentence}
+                </p>
+                {outcomes.askedGbp > 0 ? (
+                  <p className="hint" style={{ marginTop: 'var(--s-2)' }}>
+                    Against {gbp(outcomes.askedGbp)} asked for across the{' '}
+                    {outcomes.awarded + outcomes.rejected} a funder actually decided.
+                    Applications nobody answered are left out of both halves.
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
             <div className="stack">
               {items.map((row) => (
-                <TrackerRow key={row.key} row={row} horizon={horizon} />
+                <TrackerRow key={row.key} row={row} horizon={horizon} now={now} />
               ))}
             </div>
           </section>
