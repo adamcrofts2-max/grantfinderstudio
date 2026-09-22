@@ -78,6 +78,12 @@ export const AUDIT_ACTIONS = {
   // Documents
   'document.uploaded': 'Document uploaded',
   'document.removed': 'Document removed',
+
+  // The organisation's rights over its own data. There is deliberately no
+  // 'account.erased' here: erasure takes this table with it, so a line saying
+  // the account was deleted would be deleted by the thing it describes.
+  // What survives an erasure is nothing, which is the point of one.
+  'account.exported': 'Everything we hold was downloaded',
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
@@ -202,6 +208,10 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
     }
     case 'share.revoked':
       return str('reviewerName') ?? '';
+    case 'account.exported': {
+      const tables = num('tables');
+      return tables === null ? '' : `${tables} ${tables === 1 ? 'table' : 'tables'}`;
+    }
     case 'application.decided': {
       // The answer and the amount, never the note. The note can carry a
       // funder's reasons verbatim, and the trail holds shape, not content.

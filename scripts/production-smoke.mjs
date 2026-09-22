@@ -65,8 +65,21 @@ const ROUTES = [
   // answer and a 500 is the fault worth catching. It is the one route that
   // renders with no session at all, so nothing else here would exercise it.
   '/review/not-a-real-token',
+  // Both must render to somebody with no session. A privacy notice reachable
+  // only after signing up is useless at the one moment it matters, so a
+  // redirect here is a fault and not a detail.
+  '/privacy', '/terms',
   '/api/health', '/api/corpus', '/api/corpus/step',
 ];
+
+/**
+ * Routes that must answer 200 signed out, rather than merely not 500.
+ *
+ * Everything else in ROUTES is allowed to redirect to the sign-in page. These
+ * two are the product's public obligations and a 307 would hide them behind
+ * the very door they exist to inform people about.
+ */
+const MUST_BE_PUBLIC = ['/privacy', '/terms'];
 
 /**
  * One route's status, or null if it never answered.
@@ -180,7 +193,10 @@ for (const route of ROUTES) {
   // sslmode=require trips it every time. Its verdict is asserted on its own
   // below, from the parsed body; counting its status here as well made the
   // whole run un-cleanable locally for a reason that was never about the code.
-  const bad = status === null || (status >= 500 && route !== '/api/health');
+  const bad =
+    status === null ||
+    (status >= 500 && route !== '/api/health') ||
+    (MUST_BE_PUBLIC.includes(route) && status !== 200);
   if (bad) broken += 1;
   console.log(
     `${route.padEnd(22)} ${status ?? 'TIMEOUT'}${bad ? '  ← SERVER ERROR' : ''}`,

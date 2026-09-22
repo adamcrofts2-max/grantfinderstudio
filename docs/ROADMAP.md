@@ -1096,6 +1096,28 @@ annotation inside the working screens.**
       editable Companies House base URL would have let an admin redirect the
       key off a request, defeating the encryption that makes it write-only
 - [x] Keyboard focus visibility across seven screens
+- [x] **A privacy notice generated from the schema.** `/privacy` is rendered from
+      `src/domain/privacy/record.ts`, and a database test asks the live schema for its
+      table list: a table nobody has classified fails the build, so the notice cannot
+      quietly stop describing the database it runs on
+- [x] Terms of use, mostly about what the product does NOT claim — no win probability,
+      awarded-grant data is history rather than an open call, AI drafts are drafts
+- [x] Export: one JSON file with every row of every table the notice names, plus a
+      legend, driven from the same record so it cannot fall behind
+- [x] Erasure: delete the organisation, everything cascading from it, and the sign-in
+      itself when it is left belonging to nowhere. Typed confirmation of the
+      organisation's own name, and a sentence built from real counts
+- [x] The cascade proved from the foreign keys rather than from the delete statement —
+      "delete everything" is only worth promising if the keys make it true
+- [x] Both public pages asserted to render with no session, in the smoke check
+- [ ] Fill in `src/domain/privacy/operator.ts`: legal name, registered address, ICO
+      registration, the address a request goes to, and where the database lives. Both
+      pages carry a "this is a draft" banner until it is done, and `operator.test.ts`
+      fails the moment it is, so the notice gets read by somebody qualified
+- [ ] State a backup retention period once there is a real one. The notice currently
+      says deletion is true of the live database and unverified of backups
+- [ ] A processor agreement with Anthropic, and a sub-processor list to link from the
+      notice
 - [ ] Security review of the older surface (documents, applications, export)
 - [ ] AI evaluation suite
 - [ ] Performance

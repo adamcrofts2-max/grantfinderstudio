@@ -17,11 +17,20 @@ export const dynamic = 'force-dynamic';
  */
 const ORDER = { strong: 0, worth_considering: 1, conditional: 2, not_recommended: 3 };
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // The root is two pages. To a stranger it is the front door — until this
   // existed they were redirected to a password box for a product they had
   // never heard of. To somebody signed in it is their list of funds.
-  if ((await readSession()) === null) return <Landing />;
+  //
+  // It is also where somebody lands a second after deleting their
+  // organisation, which is the one moment the front door has to acknowledge
+  // what just happened rather than greet them as a new visitor.
+  const erased = (await searchParams)['erased'] === '1';
+  if ((await readSession()) === null) return <Landing erased={erased} />;
 
   const organisationId = await requireOrganisationId();
   const database = await getDatabase();

@@ -53,3 +53,18 @@ export const EMPTY_READ_WEBSITE: ReadWebsiteState = {
   instructionLike: [],
   value: '',
 };
+
+/**
+ * What the erase action hands back.
+ *
+ * It only ever hands back a refusal. A successful erase has nowhere to return
+ * to — the organisation, the membership and quite possibly the sign-in are all
+ * gone by then — so it redirects instead.
+ */
+export interface EraseState {
+  message: string;
+  /** Echoed so a mistyped name does not also clear the box. */
+  value: string;
+}
+
+export const EMPTY_ERASE: EraseState = { message: '', value: '' };

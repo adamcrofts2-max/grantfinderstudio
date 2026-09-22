@@ -1837,6 +1837,61 @@ summary:focus-visible {
   font-size: var(--t-md); font-weight: 700; letter-spacing: -0.015em;
 }
 
+.lp-erased {
+  display: flex; gap: var(--s-3); align-items: flex-start;
+  margin: 0; padding: var(--s-4) var(--s-5);
+  background: var(--positive-bg); color: var(--positive);
+  border-bottom: 1px solid var(--positive-line);
+  font-size: var(--t-sm);
+}
+
+/* ---------- Data rights --------------------------------------------------
+   The footer is on every page but the console, signed in or not: the moment
+   somebody most needs the privacy link is before they have an account. */
+.site-foot {
+  display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: center;
+  padding: var(--s-6) var(--s-5) var(--s-7);
+  color: var(--ink-faint); font-size: var(--t-sm);
+}
+.site-foot a { color: var(--ink-soft); }
+.site-foot a:hover { color: var(--ink); }
+
+/* The generated notice. One card per table, because the unit of the document
+   is the thing being held — not the paragraph it happens to sit in. */
+.held-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.held {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--s-4) var(--s-5);
+}
+.held-head {
+  display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline;
+  justify-content: space-between;
+}
+.held-label { font-size: var(--t-md); margin: 0; }
+/* The real table name, small and quiet. It is here so a technical reader can
+   check this page against the schema rather than take it on trust. */
+.held-table {
+  font-family: var(--font-mono); font-size: var(--t-xs);
+  color: var(--ink-faint); background: var(--surface-sunken);
+  padding: 2px var(--s-2); border-radius: var(--r-sm);
+}
+.held-holds { margin: var(--s-2) 0 0; }
+.held-leaves {
+  margin: var(--s-3) 0 0; font-size: var(--t-sm); font-weight: 550;
+  color: var(--caution);
+}
+.held-stays { color: var(--positive); }
+
+/* Deleting everything. Set apart from the rest of the page on purpose: this
+   is the one control here that cannot be undone. */
+.danger {
+  border-color: color-mix(in oklab, var(--negative) 35%, var(--line));
+}
+.danger .card-title { color: var(--negative); }
+.erase-counts { list-style: none; margin: var(--s-3) 0 0; padding: 0; font-size: var(--t-sm); }
+.erase-counts li { display: flex; justify-content: space-between; gap: var(--s-4); padding: 2px 0; }
+.erase-counts .erase-n { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+
 /* ---------- Recording what the funder said --------------------------------
    The form sits INSIDE the tracker row it belongs to, closed, so a page of
    applications waiting on funders is not a page of open forms. */

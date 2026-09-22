@@ -44,6 +44,25 @@ const NAV = [
   { href: '/onboarding', label: 'Find your company', icon: '⌂' },
 ];
 
+/**
+ * Two links, on every page that is not the operator console.
+ *
+ * On the signed-out pages as well as the signed-in ones, and that is the
+ * point: the moment somebody most needs to know what happens to their data is
+ * before they hand any of it over, which is the one moment a link buried
+ * behind a sign-in cannot help them. It is on the review page too — a reviewer
+ * is having someone else's data shown to them and has no account here at all.
+ */
+function SiteFooter() {
+  return (
+    <footer className="site-foot">
+      <a href="/privacy">What we hold about you</a>
+      <span aria-hidden="true">·</span>
+      <a href="/terms">Terms of use</a>
+    </footer>
+  );
+}
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // The console is not the product. It carries its own frame, and wrapping it
   // in the customer's — a funding navigation, a setup guide, "Your next step"
@@ -80,8 +99,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en-GB" className={display.variable}>
       <body>
-        {isConsole || isReview || session === null ? (
+        {isConsole ? (
           children
+        ) : session === null || isReview ? (
+          <>
+            {children}
+            <SiteFooter />
+          </>
         ) : (
           <>
             <a className="skip-link" href="#main">Skip to main content</a>
@@ -160,6 +184,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   </p>
                 ) : null}
                 <main id="main">{children}</main>
+                <SiteFooter />
               </div>
             </div>
           </>

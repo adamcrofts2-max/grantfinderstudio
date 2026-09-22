@@ -1615,8 +1615,155 @@ try {
           fail('withdrawing the answer did not put it back to waiting');
         } else ok('and puts the application back to waiting on the funder');
       }
+
+      // --- what we hold, and getting rid of it -------------------------------
+      //
+      // LAST IN THE WALK, because it ends by deleting the account it has spent
+      // the whole run building. That is the point: "delete everything" is the
+      // one claim in this product that cannot be half-proved, and the only
+      // honest way to check it is to do it and then find the door locked.
+      await page.goto(`${B}/privacy`, { waitUntil: 'networkidle' });
+      const notice = await page.locator('body').innerText();
+      if (/Application error|server-side exception/i.test(notice)) {
+        fail(`the privacy notice will not render: ${notice.slice(0, 300)}`);
+      } else ok('the privacy notice renders');
+      // Generated from the schema, so the real table names are on it. This is
+      // what a technical reader checks the page against.
+      if (!/application_shares/u.test(notice) || !/document_chunks/u.test(notice)) {
+        fail('the notice does not name the real tables it is generated from');
+      } else ok('and names the real tables it was generated from');
+      if (!/not finished and must not be relied on yet/iu.test(notice)) {
+        fail('the notice does not admit that its publisher is unnamed');
+      } else ok('and says plainly that it is still a draft');
+
+      // FETCHED FROM INSIDE THE PAGE, not through page.request.
+      //
+      // A download in a headless browser is a fight with no useful outcome, so
+      // the file is fetched instead — but it has to be fetched by the PAGE.
+      // `page.request` does not carry the browser's session cookie, so it
+      // followed the redirect to /sign-in and handed back HTML with a 200 on
+      // it. The run then died inside JSON.parse with a stack trace naming no
+      // check at all, which is a worse report than the fault it was finding.
+      // Hence a helper that never throws and always says what it got.
+      const fetchInPage = async (path) =>
+        page.evaluate(async (url) => {
+          const response = await fetch(url, { credentials: 'same-origin' });
+          return {
+            status: response.status,
+            type: response.headers.get('content-type') ?? '',
+            body: await response.text(),
+          };
+        }, path);
+
+      const exported = await fetchInPage('/api/account/export');
+      if (exported.status !== 200 || !exported.type.includes('json')) {
+        fail(
+          `the export answered ${exported.status} as ${exported.type || 'nothing'} — ` +
+            `${exported.body.slice(0, 120)}`,
+        );
+      } else {
+        let dump = null;
+        try {
+          dump = JSON.parse(exported.body);
+        } catch {
+          fail(`the export is not readable JSON: ${exported.body.slice(0, 120)}`);
+        }
+        if (dump !== null) {
+        const tables = Object.keys(dump.data ?? {});
+        if (tables.length < 10) {
+          fail(`the export carries only ${tables.length} tables`);
+        } else ok(`the export carries all ${tables.length} tables`);
+        if (!tables.every((name) => dump.legend?.[name]?.label)) {
+          fail('a table in the export has no legend, so the file needs our schema to read');
+        } else ok('and a legend for every one of them, so it reads without our schema');
+        if (JSON.stringify(dump).includes('password')) {
+          fail('the export contains something called a password');
+        } else ok('and nothing resembling a password');
+        if (!(dump.members ?? []).some((m) => String(m.email).includes('@'))) {
+          fail('the export names no members');
+        } else ok('and names who is in the organisation');
+        }
+      }
+
+      await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+      const eraseSummary = page
+        .locator('summary')
+        .filter({ hasText: /Delete this organisation/iu })
+        .first();
+      // OPEN IT ONLY IF IT IS SHUT. Clicking a <summary> toggles, so a second
+      // blind click closes the panel and every fill after it waits thirty
+      // seconds for an element that is present and invisible.
+      const openTheDanger = async () => {
+        const details = page.locator('details.danger').first();
+        if (!(await details.evaluate((el) => el.open))) {
+          await details.locator('summary').first().click();
+        }
+        await page.waitForTimeout(250);
+      };
+      if (!(await eraseSummary.count())) fail('there is no way to delete the organisation');
+      else {
+        await openTheDanger();
+
+        // What it is about to remove, from real counts. A warning in the
+        // abstract would not tell somebody which account they are in.
+        const panel = await page.locator('.danger').first().innerText();
+        if (!/This removes .*\d+ .*cannot be undone/su.test(panel)) {
+          fail(`the delete does not say what it would remove: ${panel.slice(0, 200)}`);
+        } else ok('the delete says what it is about to remove, counted');
+
+        // WHAT IT ASKS FOR, read off the page rather than assumed. The prompt
+        // names either the organisation's name or the fallback word, and
+        // which one depends on how far onboarding got.
+        const prompt = await page.locator('label[for="erase-confirm"]').first().innerText();
+        const named = /—\s*(.+?)\s*—/u.exec(prompt);
+        const wanted = named?.[1] ?? 'DELETE';
+        ok(`and names what to type to confirm it`);
+
+        // A wrong name first. A confirmation that accepts anything is not one.
+        await page.fill('#erase-confirm', `${wanted} but wrong`);
+        await page.locator('button').filter({ hasText: /Delete everything/iu }).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(800);
+        const refused = await page.locator('body').innerText();
+        if (!/does not match/iu.test(refused)) {
+          fail(`a mistyped name did not refuse: ${refused.slice(0, 300)}`);
+        } else ok('a name that does not match deletes nothing, and says so');
+
+        const stillThere = await fetchInPage('/api/account/export');
+        if (stillThere.status !== 200 || !stillThere.type.includes('json')) {
+          fail('the refused delete took the account with it anyway');
+        } else ok('and the organisation is still there afterwards');
+
+        // Now for real.
+        await openTheDanger();
+        await page.fill('#erase-confirm', wanted);
+        await page.locator('button').filter({ hasText: /Delete everything/iu }).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1200);
+
+        const after = await page.locator('body').innerText();
+        if (!/Deleted\./u.test(after)) {
+          fail(`the deletion did not say it had happened: ${after.slice(0, 300)}`);
+        } else ok('the right name deletes it, and the front door says so');
+
+        // THE DOOR IS LOCKED. Signed out, because the session row went with
+        // the user it belonged to.
+        await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+        const locked = new URL(page.url()).pathname;
+        if (locked !== '/sign-in') {
+          fail(`the account still opens after deletion, at ${locked}`);
+        } else ok('and the account no longer opens');
+      }
     }
   }
+} catch (error) {
+  // A THROW USED TO SKIP THE VERDICT ENTIRELY.
+  //
+  // Twice today this walk died inside a helper and printed a stack trace
+  // instead of its own report, so the run said nothing about the forty checks
+  // that had already passed. An exception is a failure like any other and is
+  // recorded as one; the verdict below still prints.
+  fail(`the walk stopped early: ${error instanceof Error ? error.message : String(error)}`);
 } finally {
   await browser.close();
   api.close();

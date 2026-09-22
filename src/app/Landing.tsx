@@ -37,9 +37,21 @@ import {
  * are no customers yet. No pricing: it is not decided, and a figure invented
  * here is a promise made to somebody in a fortnight.
  */
-export function Landing() {
+export function Landing({ erased = false }: { erased?: boolean }) {
   return (
     <div className="lp">
+      {/* The one thing the front door has to say to somebody who is not a
+          new visitor. Deleting an account and being met by a marketing page
+          leaves a person genuinely unsure whether it worked. */}
+      {erased ? (
+        <p className="lp-erased" role="status">
+          <span aria-hidden="true">✓</span>
+          <span>
+            <strong>Deleted.</strong> Your organisation and everything in it has been
+            removed, and you have been signed out. There is nothing left here to recover.
+          </span>
+        </p>
+      ) : null}
       <header className="lp-nav">
         <div className="lp-nav-in">
           <a className="brand" href="/">

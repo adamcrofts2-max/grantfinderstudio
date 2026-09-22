@@ -2,10 +2,14 @@ import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import { readSetupProgress } from '@/app/setup';
 import { loadFacts } from '@/db/workspace';
+import { loadOrganisation } from '@/db/queries';
+import { countEverything } from '@/db/export';
+import { willRemove } from '@/domain/privacy/erasure';
 
 import { AddFact } from './AddFact';
 import { ReadWebsite } from './ReadWebsite';
 import { FactList, type FactView } from './FactList';
+import { DataRights } from './DataRights';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +37,15 @@ export default async function OrganisationPage({
    */
   const wantedClaim = typeof params['claim'] === 'string' ? params['claim'] : '';
   const database = await getDatabase();
-  const facts = await database.withTenant(organisationId, (tx) => loadFacts(tx));
+  const page = await database.withTenant(organisationId, async (tx) => ({
+    facts: await loadFacts(tx),
+    organisation: await loadOrganisation(tx),
+    // Real counts, so the delete names this account rather than warning in
+    // the abstract. Somebody with two organisations open can tell which is
+    // which from the sentence.
+    counts: await countEverything(tx),
+  }));
+  const facts = page.facts;
 
   // Open the form when this is what somebody was sent here to do. A guide that
   // says "tell us about yourself", links to #add-fact and lands you on a
@@ -84,6 +96,11 @@ export default async function OrganisationPage({
       <div style={{ marginTop: 'var(--s-4)' }}>
         <ReadWebsite open={facts.length === 0} />
       </div>
+
+      <DataRights
+        organisationName={page.organisation?.name ?? null}
+        willRemove={willRemove(page.counts)}
+      />
     </div>
   );
 }

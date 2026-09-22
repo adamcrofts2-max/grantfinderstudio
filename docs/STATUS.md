@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,786 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 137 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,822 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5401,3 +5401,150 @@ spoke. The server rule is still the real guard, and still proved in
 `page.on('pageerror')` was already wired to fail the run with the URL
 attached, so this leg is a hydration check on the tracker as well as a
 behaviour one.
+
+## Data rights, generated from the schema
+
+There was no privacy notice, no terms, and no way for an organisation to take
+a copy of its data or delete it. For a UK product that stores a CIC's
+finances and hands one application to a named outsider through a share link,
+that was the launch blocker — and the thing that made it worth building
+properly rather than pasting a template.
+
+### The notice is rendered from a record the database is held to
+
+`src/domain/privacy/record.ts` classifies every table: what it holds, why we
+have it, who outside this system ever sees it, and how long it stays.
+`/privacy` is rendered from that. `src/db/privacy-record.test.ts` asks the
+**live schema** for its table list and fails when a table is in neither
+`PRIVACY_RECORD` nor `NOT_ABOUT_YOU`.
+
+The consequence is the point. A notice typed by hand is accurate on the day it
+is typed and drifts with the next migration, silently, because nothing checks.
+This one cannot: adding a table forces a decision about what it holds, at the
+moment somebody who knows the answer is looking at it.
+
+Four other properties are asserted rather than believed:
+
+- **No address, device or location anywhere.** A column matching
+  `ip|remote_addr|user_agent|latitude|longitude` fails the test. The notice
+  says there is none; that sentence is now checked.
+- **The cascade.** Every table the record marks as the organisation's must
+  have an `organisation_id` foreign key with `ON DELETE CASCADE`. "Delete
+  everything" is only worth promising if the keys make it true, and that is a
+  property of the schema, not of the delete statement.
+- **No ghosts.** A table described here that no longer exists fails too.
+- **Every exclusion gives a reason.** `NOT_ABOUT_YOU` is a map to sentences,
+  not a list, so "it looked like reference data" cannot pass silently.
+
+Retention numbers come from the constants that set them —
+`ACCOUNT_CONSTANTS.sessionDays`, `SHARE_DAYS` — rather than being retyped.
+
+### Three facts worth stating plainly, because they are unusual
+
+- There is no analytics, no tracking and no third-party script anywhere in the
+  product.
+- A document is read for its text and the original bytes are then thrown away.
+  Migration 0003 decided that, for storage reasons; it turns out to be the
+  strongest sentence in the notice.
+- `ai_generations` records the agent, model, token counts, latency and cost —
+  and no prompt, no response. `audit_logs` records the shape of a change and
+  never its prose. Both were designed that way for other reasons and both are
+  now load-bearing privacy claims.
+
+### The blanks are null, and the page says so
+
+Nothing in this repository knows the legal name of the company running it,
+its registered address, its ICO number, or where the database physically
+lives. `src/domain/privacy/operator.ts` holds those as `null`, and both pages
+carry a banner naming exactly what is missing and saying they are a draft.
+
+`operator.test.ts` asserts `readyToPublish(PUBLISHER)` is **false**. That test
+fails the moment somebody fills the constant in — deliberately, because that
+failure is the prompt to have the notice read by someone qualified before it
+goes live, rather than discovering months later that a draft has been serving
+as the real thing.
+
+The same honesty applies to backups: the notice says deletion is true of the
+live database and unverified of backups, because nothing here knows how the
+database is provisioned. A number will go in when there is a real one.
+
+### Export and erasure, split across two connections
+
+Both are driven from `PRIVACY_RECORD`, so a table added to the schema reaches
+the export by the same route it reaches the notice.
+
+`SELECT *` is right here and almost nowhere else in this codebase. Every other
+read names its columns so a read model does not change shape under a
+migration. This one should: the question it answers is "what do you have about
+me", and a column added next year is part of that answer whether or not
+anybody remembered the file.
+
+The split is forced by a good decision made earlier. Migration 0009 revoked
+`SELECT ON users FROM app_user`, because the tenant role could otherwise read
+the whole platform's customer list and nothing on the tenant path needed it.
+An export is not a reason to hand that back — so the membership seats are read
+on the tenant connection, the addresses on the operator connection, and the
+two are joined in memory. There is a test that the tenant read still throws
+`permission denied`, so the revoke cannot be undone by accident.
+
+Erasure runs in the only order that works: read who is in the organisation
+**before** the memberships cascade away, delete the organisation on the tenant
+connection, then remove sign-ins left belonging to nowhere on the operator
+connection. Sequential, never nested — `withAdmin` refuses to run inside
+`withTenant`, and for good reason.
+
+There is deliberately no audit entry for an erasure. `audit_logs` is
+tenant-scoped and cascades, so a line recording the deletion would be deleted
+by the thing it describes. What survives an erasure is nothing, which is the
+point of one.
+
+### Confirmation by typing the name, not by ticking a box
+
+A checkbox beside "I understand this cannot be undone" is ticked by the same
+reflex that clicks the button. Typing the organisation's name cannot be done
+by accident and — the case that actually matters — cannot be done in the wrong
+account. The person with two organisations open in two tabs is who this
+protects, and a checkbox would not have.
+
+The warning is built from real counts: "This removes 3 applications, 41
+answers and 2 documents. It cannot be undone." That needed a second noun on
+every record entry — `counted`, a plural noun — because "3 your applications"
+is not a sentence.
+
+### Reachable before anybody signs up
+
+The footer carries both links on every page but the operator console,
+including the signed-out pages and the reviewer's page. The moment somebody
+most needs to know what happens to their data is before they hand any of it
+over, which is the one moment a link behind a sign-in cannot help them.
+
+`npm run smoke` now requires `/privacy` and `/terms` to answer **200** with no
+session, rather than merely not 500. A redirect there would hide them behind
+the door they exist to inform people about.
+
+### Proved by deleting the account the walk just built
+
+The e2e's last leg is the data-rights one, and it ends by erasing the
+organisation the whole run spent four minutes building, then finding
+`/organisation` redirects to sign-in. "Delete everything" is the one claim in
+this product that cannot be half-proved; the only honest check is to do it.
+
+Before that it reads `/privacy` and asserts the real table names are on it
+(`application_shares`, `document_chunks` — this is what a technical reader
+checks the page against) and that the draft banner is showing; downloads the
+export and checks all 21 tables, a legend for each, nothing resembling a
+password, and that the members are named; then mistypes the organisation's
+name and proves nothing was deleted and the account still opens.
+
+Two rig faults came out of writing it, both of the kind this session keeps
+finding:
+
+- **`page.request` does not carry the browser's session cookie.** The export
+  fetch followed the redirect to `/sign-in` and handed back HTML with a 200 on
+  it. It is fetched from inside the page now, with `credentials: 'same-origin'`.
+- **A thrown error skipped the verdict entirely.** The walk died inside
+  `JSON.parse`, and then inside a `page.fill` that was waiting on an element a
+  second `<summary>` click had hidden — printing a stack trace instead of its
+  own report both times, so the run said nothing about the forty checks that
+  had already passed. There is a `catch` now: an exception is recorded as a
+  failure like any other and the verdict still prints.
