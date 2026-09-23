@@ -88,14 +88,15 @@ export default async function HomePage({
               are what most eligibility rules turn on.
             </p>
           )}
+          {/* Finding first, adding second — the person this is for came to
+              find funding, and usually has none in mind yet. */}
           <div className="row" style={{ marginTop: 'var(--s-4)' }}>
-            <a className="btn btn-secondary" href="/opportunities/add">
+            <a className="btn btn-secondary" href="/funders">
+              See who funds work like yours
+            </a>
+            <a className="link-quiet" href="/opportunities/add">
               Add a fund you have found
             </a>
-            <span className="hint">
-              No public register lists what UK trusts have open, so bring us the funder’s page and
-              we will read it with you.
-            </span>
           </div>
         </header>
       )}
@@ -105,11 +106,15 @@ export default async function HomePage({
       {sorted.length === 0 && progress?.complete === true ? (
         <EmptyState
           title="No funds to weigh up yet"
-          action={<a className="btn btn-primary" href="/opportunities/add">Add a fund</a>}
+          action={
+            <a className="btn btn-primary" href="/funders">
+              See who funds work like yours
+            </a>
+          }
         >
-          Bring us a funder’s own guidance page and we will read it into an eligibility check, a
-          deadline and an estimate of the work — so you can see whether it is worth your evenings
-          before you spend them.
+          Start from who has already funded work like yours, where you are, at the size you are
+          asking for. When you find a fund, <a href="/opportunities/add">add it</a> and we check it
+          against you — so you can see whether it is worth your evenings before you spend them.
         </EmptyState>
       ) : null}
 

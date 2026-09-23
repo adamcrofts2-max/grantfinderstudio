@@ -182,15 +182,15 @@ describe('recommend', () => {
 });
 
 describe('drafting mode', () => {
-  const capable = { writerAvailable: true, usableFacts: 20 };
+  const capable = { writerAvailable: true, usableFacts: 20, unansweredAboutTheWork: 0 };
 
   it('is assisted only when the Writer is available and has facts to work from', () => {
     expect(draftingMode(capable)).toBe('assisted');
   });
 
   it('falls back to unassisted with no Writer, however many facts are confirmed', () => {
-    expect(draftingMode({ writerAvailable: false, usableFacts: 500 })).toBe('unassisted');
-    expect(unassistedReason({ writerAvailable: false, usableFacts: 500 })).toBe(
+    expect(draftingMode({ ...capable, writerAvailable: false, usableFacts: 500 })).toBe('unassisted');
+    expect(unassistedReason({ ...capable, writerAvailable: false, usableFacts: 500 })).toBe(
       'writer_unavailable',
     );
   });
@@ -199,7 +199,7 @@ describe('drafting mode', () => {
     // The Writer refuses to invent, so with a near-empty fact base the human
     // writes most of it anyway. Claiming the fast rate here would be a promise
     // the product cannot keep.
-    const thin = { writerAvailable: true, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING - 1 };
+    const thin = { ...capable, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING - 1 };
     expect(draftingMode(thin)).toBe('unassisted');
     expect(unassistedReason(thin)).toBe('too_few_facts');
   });
@@ -210,8 +210,35 @@ describe('drafting mode', () => {
 
   it('treats exactly the threshold as enough', () => {
     expect(
-      draftingMode({ writerAvailable: true, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING }),
+      draftingMode({ ...capable, usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING }),
     ).toBe('assisted');
+  });
+
+  it('is not met by five facts that say nothing about the work', () => {
+    // Legal name, form, number, date and area — exactly what setup used to
+    // collect, and exactly enough to pass a count. The Writer cannot write a
+    // sentence about work nobody has described to it.
+    const identityOnly = {
+      writerAvailable: true,
+      usableFacts: MIN_FACTS_FOR_ASSISTED_DRAFTING,
+      unansweredAboutTheWork: 3,
+    };
+    expect(draftingMode(identityOnly)).toBe('unassisted');
+    expect(unassistedReason(identityOnly)).toBe('nothing_about_the_work');
+  });
+
+  it('still wants the count once the work is described', () => {
+    const described = { writerAvailable: true, usableFacts: 3, unansweredAboutTheWork: 0 };
+    expect(unassistedReason(described)).toBe('too_few_facts');
+  });
+
+  it('names the missing Writer before the missing work', () => {
+    // Answering the three questions would not make the fast rate available
+    // without a key, so saying "tell us what you do" first would be a
+    // promise it could not keep.
+    expect(
+      unassistedReason({ writerAvailable: false, usableFacts: 0, unansweredAboutTheWork: 3 }),
+    ).toBe('writer_unavailable');
   });
 });
 

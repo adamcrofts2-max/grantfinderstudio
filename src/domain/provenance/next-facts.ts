@@ -15,12 +15,14 @@
  *
  * ## Why this order
  *
- * The first four are what nearly every application form asks for in its first
- * page, in roughly the order it asks: what you do, who for, where, and how
- * big you are. Nothing here is a guess about a particular funder — it is the
+ * The first three are the three questions about the work that the Writer's
+ * gate now requires (see `about-the-work`): what you do, who for, and how
+ * many. After them, what nearly every form asks next: what the work actually
+ * is, and how big you are. Nothing here is a guess about a particular funder — it is the
  * overlap of every form the product has been pointed at.
  */
 
+import { listOfQuestions, type WorkQuestion } from './about-the-work.js';
 import { readableClaim, SUGGESTED_CLAIMS } from './self-declared.js';
 
 export interface FactPrompt {
@@ -49,6 +51,11 @@ export const FACT_PROMPTS: readonly FactPrompt[] = [
     because: 'most eligibility rules turn on who benefits',
   },
   {
+    claim: 'people_supported_last_year',
+    label: 'How many people you supported last year',
+    because: 'it is the number that makes a case concrete rather than earnest',
+  },
+  {
     claim: 'programme_description',
     label: 'What the work actually is',
     because: 'it is the answer to “what will the money pay for”',
@@ -57,11 +64,6 @@ export const FACT_PROMPTS: readonly FactPrompt[] = [
     claim: 'annual_turnover',
     label: 'Your annual turnover',
     because: 'many funders cap or floor the size of organisation they will fund',
-  },
-  {
-    claim: 'people_supported_last_year',
-    label: 'How many people you supported last year',
-    because: 'it is the number that makes a case concrete rather than earnest',
   },
   {
     claim: 'staff_count',
@@ -106,17 +108,50 @@ export function nextFacts(
  * that case rather than congratulating somebody — a checklist that outstays
  * its usefulness is nagging, which is the rule the setup guide already follows.
  */
-export function factShortfall(
-  confirmed: number,
-  needed: number,
-): { short: number; sentence: string } | null {
+export interface Shortfall {
+  short: number;
+  title: string;
+  sentence: string;
+}
+
+export function factShortfall(confirmed: number, needed: number): Shortfall | null {
   if (confirmed >= needed) return null;
   const short = needed - confirmed;
   return {
     short,
+    title: short === 1 ? 'One more fact' : `${short} more facts`,
     sentence:
       confirmed === 0
         ? `The Writer drafts only from facts you have confirmed, and it needs ${needed}.`
         : `${short} more confirmed fact${short === 1 ? '' : 's'} and the Writer can draft for you — it needs ${needed}, and you have ${confirmed}.`,
+  };
+}
+
+/**
+ * What to say when the facts held say nothing about the work.
+ *
+ * Takes precedence over the count. An organisation that registered through
+ * setup has five confirmed facts — every one of them legal identity — and a
+ * count-based card said nothing at all to them, because five is enough. It
+ * is not enough if none of the five says what you do.
+ */
+export function workShortfall(
+  unanswered: readonly WorkQuestion[],
+  confirmed: number,
+): Shortfall | null {
+  if (unanswered.length === 0) return null;
+  const short = unanswered.length;
+  return {
+    short,
+    title:
+      short === 3
+        ? 'Nothing yet about your work'
+        : short === 1
+          ? 'One more thing about your work'
+          : `${short} more things about your work`,
+    sentence:
+      confirmed === 0
+        ? `The Writer drafts only from facts you have confirmed. Start with ${listOfQuestions(unanswered)}.`
+        : `The Writer drafts only from facts you have confirmed. You have ${confirmed}, but none of them says ${listOfQuestions(unanswered)} — and those are the first questions on nearly every form.`,
   };
 }

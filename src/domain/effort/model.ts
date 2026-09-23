@@ -36,6 +36,13 @@ export interface DraftingCapability {
   writerAvailable: boolean;
   /** Confirmed, non-superseded facts the Writer may ground prose in. */
   usableFacts: number;
+  /**
+   * How many of the three questions about the work — what you do, who it is
+   * for, how many you reach — no confirmed fact answers yet. See
+   * `about-the-work`: five facts that are all legal identity used to satisfy
+   * this gate, and the Writer cannot write about work it has never been told.
+   */
+  unansweredAboutTheWork: number;
 }
 
 /**
@@ -49,17 +56,21 @@ export interface DraftingCapability {
 export const MIN_FACTS_FOR_ASSISTED_DRAFTING = 5;
 
 export function draftingMode(capability: DraftingCapability): DraftingMode {
-  return capability.writerAvailable &&
-    capability.usableFacts >= MIN_FACTS_FOR_ASSISTED_DRAFTING
-    ? 'assisted'
-    : 'unassisted';
+  return unassistedReason(capability) === null ? 'assisted' : 'unassisted';
 }
 
 /** Why the faster rate was not applied, for an interface that must explain itself. */
-export type UnassistedReason = 'writer_unavailable' | 'too_few_facts' | null;
+export type UnassistedReason =
+  | 'writer_unavailable'
+  | 'nothing_about_the_work'
+  | 'too_few_facts'
+  | null;
 
 export function unassistedReason(capability: DraftingCapability): UnassistedReason {
   if (!capability.writerAvailable) return 'writer_unavailable';
+  // Before the count, because it is the more useful thing to say: "tell us
+  // what you do" is a question anybody can answer; "one more fact" is not.
+  if (capability.unansweredAboutTheWork > 0) return 'nothing_about_the_work';
   if (capability.usableFacts < MIN_FACTS_FOR_ASSISTED_DRAFTING) return 'too_few_facts';
   return null;
 }

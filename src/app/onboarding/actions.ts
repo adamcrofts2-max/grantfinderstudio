@@ -10,6 +10,7 @@ import {
   type ManualState,
   type ProjectState,
   type SearchState,
+  type WorkState,
   MANUAL_PROFILE_FIELDS,
   PROJECT_FIELDS,
 } from './state';
@@ -23,7 +24,16 @@ import {
   saveSelfDeclaredProfile,
 } from '@/db/onboarding';
 import { JURISDICTIONS, LEGAL_FORMS, type Jurisdiction, type LegalForm } from '@/domain/types';
-import { claimOrganisation, commitOrganisation } from '@/app/session';
+import {
+  claimOrganisation,
+  commitOrganisation,
+  requireOrganisationId,
+  requireUserId,
+} from '@/app/session';
+import { recordSelfDeclaredFact } from '@/db/workspace';
+import { recordAudit } from '@/db/audit';
+import { readWorkAnswers, WORK_CLAIMS } from '@/domain/provenance/about-the-work';
+import { revalidatePath } from 'next/cache';
 
 /** Build a client from the stored operator credential, if there is one. */
 async function buildClient(): Promise<CompaniesHouseClient | null> {
@@ -310,6 +320,75 @@ export async function saveProjectAction(
   return {
     saved: true,
     message: 'Saved. Every fund is now checked against this.',
+    errors: {},
+    values: NO_VALUES,
+  };
+}
+
+/**
+ * What you do, who it is for, and how many you reach.
+ *
+ * Stored as confirmed facts, because the person typing them is the person who
+ * would have confirmed them — the same reasoning as a fact added by hand on
+ * Your organisation, and the same writer, so an answer given here and one
+ * given there land on the same fact rather than two.
+ *
+ * Needs an organisation that already exists. This is the step after it, and
+ * creating one from three sentences about the work would make an organisation
+ * with no legal form — which every eligibility check would then have to
+ * treat as unknown.
+ */
+export async function saveAboutTheWorkAction(
+  _previous: WorkState,
+  formData: FormData,
+): Promise<WorkState> {
+  const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
+
+  const values = readValues(formData, WORK_CLAIMS);
+  const { facts, errors, blank } = readWorkAnswers((claim) => String(formData.get(claim) ?? ''));
+  if (blank) {
+    return {
+      saved: false,
+      message: 'Nothing was saved — answer at least one. A sentence is plenty, and it can be changed later.',
+      errors: {},
+      values,
+    };
+  }
+  if (Object.keys(errors).length > 0) {
+    return { saved: false, message: 'Check the highlighted answers.', errors, values };
+  }
+
+  try {
+    const database = await getDatabase();
+    await database.withTenant(organisationId, async (tx) => {
+      for (const fact of facts) {
+        await recordSelfDeclaredFact(tx, organisationId, userId, fact);
+        await recordAudit(tx, organisationId, {
+          userId,
+          action: 'fact.added',
+          metadata: { claim: fact.claim },
+        });
+      }
+    });
+  } catch (error) {
+    console.error('[grantfinderstudio] could not save the answers about the work:', error);
+    return {
+      saved: false,
+      message: 'Those could not be saved. Nothing has been changed — please try again.',
+      errors: {},
+      values,
+    };
+  }
+
+  // The setup guide on the home page and this page's own heading are both
+  // derived from these facts, so both have to be re-read.
+  revalidatePath('/onboarding');
+  revalidatePath('/organisation');
+  revalidatePath('/');
+  return {
+    saved: true,
+    message: 'Saved, and confirmed — the Writer can use these.',
     errors: {},
     values: NO_VALUES,
   };

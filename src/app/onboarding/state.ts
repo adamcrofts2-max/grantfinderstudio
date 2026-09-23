@@ -122,3 +122,17 @@ export const SPEND_CHOICES = [
   { value: 'capital', label: 'Capital — building work, equipment, vehicles' },
   { value: 'both', label: 'Both' },
 ] as const;
+
+export interface WorkState {
+  saved: boolean;
+  message: string;
+  errors: Record<string, string>;
+  values: FormValues;
+}
+
+export const EMPTY_WORK: WorkState = {
+  saved: false,
+  message: '',
+  errors: {},
+  values: NO_VALUES,
+};

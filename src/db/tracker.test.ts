@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createTestDatabase, ORG_A, ORG_B, type TestDatabase } from './testing/harness.js';
-import { loadTracker, markSubmitted, unmarkSubmitted } from './tracker.js';
+import { loadTracker, markSubmitted, readFactBase, unmarkSubmitted } from './tracker.js';
 
 let t: TestDatabase;
 
@@ -155,5 +155,30 @@ describe('markSubmitted', () => {
       expect(tracker.applications[0]?.submittedOn).toBeNull();
       expect(tracker.applications[0]?.status).toBe('drafting');
     });
+  });
+});
+
+describe('readFactBase', () => {
+  it('counts every confirmed fact but names only the work claims', async () => {
+    const before = await t.asTenant(ORG_A, () => readFactBase(t.db));
+    await t.db.exec(`
+      RESET ROLE;
+      INSERT INTO facts
+        (id, organisation_id, claim, value, source, retrieved_at, confirmed_by, confirmed_at)
+      VALUES
+        ('w1', '${ORG_A}', 'mission', 'We grow trees.', 'user', now(), 'user_a', now()),
+        ('w2', '${ORG_A}', 'programme_description', 'Planting days.', 'user', now(), 'user_a', now()),
+        ('w3', '${ORG_A}', 'beneficiary_groups', 'Unchecked.', 'ai_extraction', now(), NULL, NULL);
+      SET ROLE app_user;
+    `);
+    const base = await t.asTenant(ORG_A, () => readFactBase(t.db));
+    // The two confirmed work facts count; the unchecked one does not.
+    expect(base.usableFacts).toBe(before.usableFacts + 2);
+    expect(base.confirmedWorkClaims.toSorted()).toEqual(['mission', 'programme_description']);
+  });
+
+  it('names nothing when nothing about the work is confirmed', async () => {
+    const base = await t.asTenant(ORG_A, () => readFactBase(t.db));
+    expect(base.confirmedWorkClaims).toEqual([]);
   });
 });

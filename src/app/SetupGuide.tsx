@@ -42,9 +42,9 @@ export function SetupGuide({ progress }: { progress: SetupProgress }) {
         {next.action}
       </a>
 
-      {/* The step's own action can assume something the person has not got —
-          "add a fund you are considering" assumes they have one in mind. This
-          is the way to get one. */}
+      {/* A second way through. On the fund step the button is FINDING one —
+          what somebody with no fund in mind needs — and this is the shortcut
+          for the person who arrived with one already. */}
       {next.alternative === undefined ? null : (
         <p className="setup-alternative">
           <a className="link-quiet" href={next.alternative.href}>

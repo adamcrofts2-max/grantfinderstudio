@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { FACT_PROMPTS, factShortfall, nextFacts } from './next-facts.js';
+import { WORK_QUESTIONS } from './about-the-work.js';
+import { FACT_PROMPTS, factShortfall, nextFacts, workShortfall } from './next-facts.js';
 import { SUGGESTED_CLAIMS } from './self-declared.js';
 
 describe('what to ask for next', () => {
-  it('asks for what an application form asks for first', () => {
-    expect(nextFacts([]).map((p) => p.claim)).toEqual([
-      'mission',
-      'beneficiary_groups',
-      'programme_description',
-    ]);
+  it('asks first for the three things the Writer needs about the work', () => {
+    // The same three the setup step and the drafting gate ask for, so the
+    // page a person is sent to asks the question they were sent to answer.
+    expect(nextFacts([]).map((p) => p.claim)).toEqual(WORK_QUESTIONS.map((q) => q.claim));
   });
 
   it('never asks for something already held', () => {
@@ -68,5 +67,31 @@ describe('how far off the Writer is', () => {
 
   it('reads differently from a standing start', () => {
     expect(factShortfall(0, 5)?.sentence).not.toContain('you have 0');
+  });
+});
+
+describe('workShortfall', () => {
+  const [what, who, howMany] = WORK_QUESTIONS;
+
+  it('says nothing once the work is described', () => {
+    expect(workShortfall([], 8)).toBeNull();
+  });
+
+  it('names what five legal facts leave out', () => {
+    // The case it exists for: name, form, number, date and area, all
+    // confirmed, and nothing about what the organisation does.
+    const shortfall = workShortfall([what!, who!, howMany!], 5);
+    expect(shortfall?.title).toBe('Nothing yet about your work');
+    expect(shortfall?.sentence).toContain('You have 5');
+    expect(shortfall?.sentence).toContain('what you do, who it is for and how many you reach');
+  });
+
+  it('counts down what is left', () => {
+    expect(workShortfall([howMany!], 7)?.title).toBe('One more thing about your work');
+    expect(workShortfall([who!, howMany!], 6)?.title).toBe('2 more things about your work');
+  });
+
+  it('does not tell somebody with nothing that they have none', () => {
+    expect(workShortfall([what!, who!, howMany!], 0)?.sentence).not.toContain('You have 0');
   });
 });

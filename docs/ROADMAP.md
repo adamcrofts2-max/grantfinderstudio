@@ -708,7 +708,10 @@ this cheque before", where no source answers "what is open".
       - [ ] The React #418 on `/grants` still stands on its own — the page
         renders corpus progress AND advances it through `after()` on a
         `force-dynamic` route, so the HTML and the payload the client
-        reconciles against fall either side of that write
+        reconciles against fall either side of that write. Seen again
+        2026-09-23 in the e2e (`/grants?q=1&text=youth&view=grants`, third
+        visit of the run to that URL, the two before it clean); the next run
+        was clean
 - [x] **The e2e provisions itself.** It reported 23 failures of 117 this week,
       every one of them the rig describing itself — an admin account from the
       previous run (which removes the claim flow the console check needs), a
@@ -1193,12 +1196,23 @@ the Anthropic stub. Fixed during the walk:
 
 Found, not fixed — most need a product decision:
 
-- [ ] **Discovery should lead.** After setup the next step is "Add a fund you are
-      considering"; the user came to FIND funding and has none. "See who funds work
-      like yours" — the landing's headline promise — is a small underlined link
-- [ ] **Setup's five facts are all legal details.** The Writer's five-fact gate is
-      met by name, form, number, date and area; nothing about the work. Lead from
-      setup to "what do you do, for whom, how many"
+- [x] **Discovery should lead.** After setup the next step was "Add a fund you are
+      considering", with "See who funds work like yours" a small link. The step is
+      now "Find a fund worth going for", its button goes to /funders, and adding a
+      fund already in mind is the second route; the home page header and empty
+      state lead the same way (2026-09-23)
+- [x] **Setup's five facts are all legal details.** The Writer's gate (and the
+      setup step) now also require confirmed answers to what you do, who it is for
+      and how many you reach — asked on /onboarding straight after the
+      organisation, stored as confirmed facts. A pending answer (read off a
+      website) is sent to be checked, not retyped (2026-09-23)
+- [ ] /funders matches "your kind of work" on the project's name and description
+      only; the confirmed "what you do" answer is not used
+- [ ] The project form asks "Who benefits" as checkboxes and the work step asks
+      "Who is it for" as prose — two answers to one question, neither seeded from
+      the other
+- [ ] The Draft button still drafts when nothing about the work is confirmed; the
+      gate governs estimates and setup, not the button. Say so beside it
 - [ ] **No way to enter eligibility rules by hand.** A typed fund gets none, so
       without an AI key "Weigh what you found" is mostly unavailable
 - [ ] **A typed fund can be neither edited nor removed.** "Remove" exists only on

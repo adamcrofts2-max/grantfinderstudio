@@ -13,9 +13,10 @@
  */
 
 import { withAdmin } from '@/db';
-import { countUsableFacts } from '@/db/tracker';
+import { readFactBase } from '@/db/tracker';
 import type { Queryable } from '@/db/client';
 import { draftingMode, unassistedReason, type DraftingCapability } from '@/domain/effort/model';
+import { unansweredAboutTheWork } from '@/domain/provenance/about-the-work';
 import { readCredentialStatuses } from '@/secrets/store';
 
 /**
@@ -61,9 +62,11 @@ export async function readDrafting(
   tx: Queryable,
   writerAvailable: boolean,
 ): Promise<Drafting> {
+  const base = await readFactBase(tx);
   const capability: DraftingCapability = {
     writerAvailable,
-    usableFacts: await countUsableFacts(tx),
+    usableFacts: base.usableFacts,
+    unansweredAboutTheWork: unansweredAboutTheWork(base.confirmedWorkClaims).length,
   };
   return {
     ...capability,

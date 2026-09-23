@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,874 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,907 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 156 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5749,3 +5749,77 @@ against nine grants would have said nothing. Every time a step "failed" the
 first question was whose fault: twice it was my selector (a hidden
 `reviewerName` beside the visible one; a `<select>` driven like a radio), twice
 the stub, and the rest the product. Only the last kind is on the list above.
+
+## Finding leads, and setup asks about the work
+
+The first two findings of the Future Forests walk, both about what setup
+leads a person to.
+
+### Setup asked who you are and never what you do
+
+The organisation step writes five confirmed facts — legal name, form, company
+number, incorporation date and area — and the facts step, and the Writer's
+drafting gate, were both a count of five. So an organisation the Writer knew not
+one word about was declared ready for it, and the estimates on the tracker and
+the opportunity page were priced at the assisted rate.
+
+`src/domain/provenance/about-the-work.ts` names the three questions every form
+opens with — **what you do** (`mission`, or a `programme_description`), **who it
+is for** (`beneficiary_groups`), **how many you reach**
+(`people_supported_last_year`) — on the claim keys the extractor and the
+hand-typed fact form already use, so an answer from any route lands on the same
+fact. The gate now needs all three confirmed as well as the count:
+`DraftingCapability.unansweredAboutTheWork`, with a new
+`nothing_about_the_work` reason that the tracker's pace note explains in those
+words. `readFactBase` (replacing `countUsableFacts`) and `readSetupCounts`
+return the confirmed work claims by NAME, because "is each question answered"
+is not a count — a mission and a programme description are one answer.
+
+The setup step became **"Tell us about your work"** and moved to second, straight
+after the organisation and before the project: every form asks about the
+organisation first, and a project is one thing it does. It sends the person to
+`/onboarding#work`, a new stage headed "Now — what do you do?" with only the
+still-unanswered questions (`WorkForm`, `saveAboutTheWorkAction`). Answers are
+stored through `recordSelfDeclaredFact`, confirmed on the way in like any fact a
+person types about themselves, and audited as `fact.added`. The action reads the
+three known claims and nothing else, since field names come from the browser; a
+blank answer is skipped, an all-blank submission saves nothing and says so by the
+button rather than under a field scrolled out of view.
+
+If an answer is already held but unconfirmed — the website reader proposed a
+mission — the step says "Check what we found about your work" and goes to
+`/organisation` instead of asking for it again; `readSetupCounts` returns
+`pendingWorkClaims` for that. `/organisation`'s shortfall card now leads with
+"Nothing yet about your work" (`workShortfall`) before the count, and its
+prompts are those three first. The demo seed carries the three as unconfirmed
+facts from its annual report, so the demo shows them being checked.
+
+### Discovery was a link under the wrong button
+
+After setup the next step was "Add a fund you are considering", with "See who
+funds work like yours" — the landing page's headline promise — as a small link
+beneath. The person the product is for came to find funding and has none in
+mind. The step is now **"Find a fund worth going for"**: the button is "See who
+funds work like yours" to `/funders`, and "Already have a fund in mind? Add it"
+is the second route. It is still finished by *adding* a fund — browsing and
+finding nobody is not having something to apply to. The home page header and
+its empty state lead the same way.
+
+### Checked
+
+`npm run verify`: 1,907 tests (8 skipped), lint clean (no warnings), typecheck
+and build clean; `npm run smoke` clean. `npm run e2e` against real Postgres:
+clean at 156 checks on the second run. The first failed one check, the known
+React #418 on `/grants?q=1&text=youth&view=grants` (a page this change does not
+touch), on the third visit to that URL in the run after two clean ones — a
+fourth sighting consistent with the open roadmap item, recorded there. The new
+checks: the
+new ones walk the work stage after the profile, find `/organisation` saying
+"Nothing yet about your work" before it is answered and its first prompt opening
+the form on `mission`, answer it, find the answers held and confirmed, and find
+the next step after the project is finding a fund with its button on `/funders`
+and adding one as the alternative. The accessibility script audits the work
+stage as its own page. Looked at by hand at 1280px and 390px (no sideways
+scroll): the answer boxes are set as prose rather than the answer box's
+monospace, and "Why we ask" — about legal form — only appears while legal
+details are what is being asked.

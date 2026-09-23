@@ -69,6 +69,14 @@ await t.selectOption('#legalForm', { index: 1 });
 await t.selectOption('#jurisdiction', { index: 1 });
 await t.locator('form:has(#legalName) button[type=submit]').click();
 await t.waitForTimeout(3500);
+// Straight after who you are, what you do — its own stage, audited as one.
+await t.goto(`${B}/onboarding#work`, { waitUntil: 'networkidle' });
+results.push(await audit(t, 'onboarding (your work)'));
+await t.fill('#work-mission', 'We teach boat-building to young people on the harbour.');
+await t.fill('#work-beneficiary_groups', 'Young people aged 14 to 19.');
+await t.fill('#work-people_supported_last_year', 'About 40.');
+await t.locator('form:has(#work-mission) button[type=submit]').click();
+await t.waitForTimeout(3500);
 await t.goto(`${B}/onboarding#project`, { waitUntil: 'networkidle' });
 await t.fill('#projectName', 'Harbour Skills Programme');
 await t.fill('#amountSoughtGbp', '18000');

@@ -1022,11 +1022,55 @@ try {
    * project form collapsed inside a <details> — present in the DOM and
    * unclickable. The third time this class of race has cost time here.
    */
-  // Same helper: the project step is a collapsed <details> until the profile
+  // --- what we do: asked straight after who we are ---------------------------
+  //
+  // Setup used to go from legal identity to the project, and confirmed five
+  // facts on the way — name, form, number, date and area. That met the
+  // Writer's five-fact gate with nothing about the work at all.
+  const workReady = await reachField(page, 'mission');
+  if (!workReady) {
+    fail('onboarding did not ask what the organisation does after the profile was saved');
+  } else {
+    ok('onboarding asks what the organisation does, straight after who it is');
+    const heading = await page.locator('h1').first().innerText();
+    if (!/what do you do/i.test(heading)) fail(`the work stage is headed "${heading}"`);
+    else ok('the page is headed with the question');
+
+    // Before answering: the facts page must not be satisfied by five facts
+    // that are all legal identity.
+    await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+    const before = await page.locator('body').innerText();
+    if (!/Nothing yet about your work/i.test(before)) {
+      fail('the facts page is satisfied by legal identity alone');
+    } else ok('the facts page says nothing is known about the work yet');
+    if (!/Worth having because/i.test(before)) fail('no reason is given for a suggested fact');
+    else ok('each suggested fact says why it matters');
+    // And the prompt has to arrive at a form already asking that question.
+    await page.locator('.fact a', { hasText: /Tell us/i }).first().click();
+    await page.waitForLoadState('networkidle');
+    const chosen = await page.locator('select[name="claim"]').inputValue();
+    if (chosen !== 'mission') fail(`the first prompt opened the form on "${chosen}"`);
+    else ok('the first prompt opens the form already asking what you do');
+    await page.goto(`${B}/`, { waitUntil: 'networkidle' });
+    const guide = await page.locator('.setup-hero').first().innerText();
+    if (!/about your work/i.test(guide)) fail(`after the profile the next step is "${guide}"`);
+    else ok('the next step after the profile is the work');
+
+    await reachField(page, 'mission');
+    await page.fill('textarea[name="mission"]', 'We run practical skills and volunteering days for young people in Wells.');
+    await page.fill('textarea[name="beneficiary_groups"]', 'Young people aged 14 to 19 in Somerset.');
+    await page.fill('textarea[name="people_supported_last_year"]', 'About 60, across eight courses.');
+    await page
+      .locator('form', { has: page.locator('textarea[name="mission"]') })
+      .locator('button[type="submit"]')
+      .click();
+  }
+
+  // Same helper: the project step is a collapsed <details> until the work
   // has saved, and polling for visibility alone never opened it.
   const projectReady = await reachField(page, 'projectName');
   if (!projectReady) {
-    fail('onboarding did not move on to the project after the profile was saved');
+    fail('onboarding did not move on to the project after the work was saved');
   } else {
     ok('onboarding moves on to the project');
     await page.fill('input[name="projectName"]', 'Riverside youth skills');
@@ -1050,52 +1094,36 @@ try {
   else ok('the organisation exists and its facts page is reachable');
 
   // --- the journey a person is actually on ----------------------------------
-  //
-  // Three gaps the walkthrough found, each of which left somebody stuck with
-  // the product apparently working.
   await page.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
   const facts = await page.locator('body').innerText();
-
-  // 1. The page used to lead with "Everything is checked" while the setup
-  //    guide was asking for a fifth fact — congratulating somebody it was
-  //    simultaneously chasing.
-  const needsMore = /more fact/i.test(facts) || /One more fact/i.test(facts);
-  if (/Everything is checked/i.test(facts)) {
-    fail('the facts page still congratulates while more are needed');
-  } else ok('the facts page does not congratulate prematurely');
-
-  if (needsMore) {
-    // 2. It has to NAME what is missing. "4 of 5" is a counter, not a question
-    //    anybody can answer.
-    if (!/What you exist to do|Who you are for|What the work actually is/i.test(facts)) {
-      fail('the shortfall is a bare count with no named facts');
-    } else ok('the missing facts are named');
-    if (!/Worth having because/i.test(facts)) fail('no reason is given for a suggested fact');
-    else ok('each suggested fact says why it matters');
-
-    // And the prompt has to arrive at a form already asking that question.
-    await page.locator('.fact a', { hasText: /Tell us/i }).first().click();
-    await page.waitForLoadState('networkidle');
-    const chosen = await page.locator('select[name="claim"]').inputValue();
-    if (chosen === '') fail('the named fact did not carry into the form');
-    else ok(`the form opens already asking for "${chosen}"`);
+  if (/Nothing yet about your work|more things? about your work/i.test(facts)) {
+    fail('the facts page still asks about the work after it was answered');
+  } else ok('the answers about the work are held');
+  for (const answer of ['practical skills and volunteering', 'aged 14 to 19', 'About 60']) {
+    if (!facts.includes(answer)) fail(`the answer "${answer}" is not among the facts`);
   }
+  // Typed by the person, so confirmed as they are typed — never a pile to
+  // check afterwards.
+  if (/\d+ to check/i.test(facts)) fail('the answers arrived unconfirmed');
+  else ok('the answers arrive confirmed');
 
-  // 3. The guided journey never showed anybody where to FIND a fund. Step 4
-  //    assumed you arrive with one in mind.
+  // The guided journey used to lead with "Add a fund you are considering",
+  // with finding one a small underlined link — for a person who came to FIND
+  // funding and has none. Finding is the button now.
   await page.goto(`${B}/`, { waitUntil: 'networkidle' });
   // The NEXT-step card, not the whole page: "See all 5 steps" lists every
-  // step's title, so matching against the body found "Add a fund you are
-  // considering" whatever step was actually in front of the person.
+  // step's title.
   const nextStep = await page.locator('.setup-hero').first().innerText();
-  if (/Add a fund/i.test(nextStep)) {
-    if (!(await page.locator('.setup-alternative a').count())) {
-      fail('the add-a-fund step offers no way to find one');
-    } else ok('the add-a-fund step offers a way to find one');
+  if (!/Find a fund/i.test(nextStep)) {
+    fail(`with the organisation, work and project done, the next step is "${nextStep}"`);
   } else {
-    // Not the step in front of them right now, so assert it from the domain
-    // instead of contriving five confirmed facts in a browser.
-    ok(`the next step is "${nextStep}" — the add-a-fund alternative is unit-tested`);
+    ok('the next step is finding a fund');
+    const go = await page.locator('.setup-go').first().getAttribute('href');
+    if (go !== '/funders') fail(`the step's button goes to ${go}, not /funders`);
+    else ok('the step\'s button is "see who funds work like yours"');
+    const add = await page.locator('.setup-alternative a').first().getAttribute('href');
+    if (add !== '/opportunities/add') fail('the step offers no way to add a fund already in mind');
+    else ok('adding a fund already in mind is the second route');
   }
 
   // The two screens that answer "who would fund us" must point at each other.

@@ -13,6 +13,7 @@
 
 import type { Criterion } from '../domain/eligibility/types.js';
 import { isDecision, type Decision } from '../domain/tracker/decision.js';
+import { WORK_CLAIMS } from '../domain/provenance/about-the-work.js';
 import type { DeadlineType } from '../domain/types.js';
 import { mapCriteria, type CriterionRow } from './criteria-mapper.js';
 import type { QuestionProgress } from '../domain/tracker/schedule.js';
@@ -252,11 +253,22 @@ export async function loadCriteriaFor(
  * drafting differently is that it must be true. `usableFacts` counts only
  * confirmed, non-superseded facts — the Writer refuses to ground prose in
  * anything else, so anything else would not make the drafting faster.
+ *
+ * The work claims come back by name because the gate asks whether each of the
+ * three questions is answered, and a count cannot say that.
  */
-export async function countUsableFacts(tx: Queryable): Promise<number> {
-  const r = await tx.query<{ count: string }>(
-    `SELECT count(*)::text AS count FROM facts
+export async function readFactBase(
+  tx: Queryable,
+): Promise<{ usableFacts: number; confirmedWorkClaims: string[] }> {
+  const r = await tx.query<{ count: string; work: string[] | null }>(
+    `SELECT count(*)::text AS count,
+            array_agg(DISTINCT claim) FILTER (WHERE claim = ANY($1::text[])) AS work
+     FROM facts
      WHERE confirmed_by IS NOT NULL AND superseded_by IS NULL`,
+    [WORK_CLAIMS],
   );
-  return Number(r.rows[0]?.count ?? '0');
+  return {
+    usableFacts: Number(r.rows[0]?.count ?? '0'),
+    confirmedWorkClaims: r.rows[0]?.work ?? [],
+  };
 }

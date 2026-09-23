@@ -156,6 +156,9 @@ export function paceNote(
   if (reason === 'writer_unavailable') {
     return `Assumes you write every answer yourself, at about ${EFFORT_CONSTANTS.wordsPerHour} words an hour. Add an Anthropic key in Settings and the Writer drafts from your confirmed facts, which cuts the writing time roughly to a third.`;
   }
+  if (reason === 'nothing_about_the_work') {
+    return `Assumes you write every answer yourself, at about ${EFFORT_CONSTANTS.wordsPerHour} words an hour. The Writer drafts only from what you have told us, and it knows who you are but not what you do — tell us what you do, who it is for and how many you reach, and these estimates drop sharply.`;
+  }
   return `Assumes you write every answer yourself, at about ${EFFORT_CONSTANTS.wordsPerHour} words an hour. The Writer drafts only from confirmed facts and you have ${usableFacts} — confirm at least ${MIN_FACTS_FOR_ASSISTED_DRAFTING} in Your organisation and these estimates drop sharply.`;
 }
 

@@ -191,7 +191,18 @@ export async function seedDemoData(db: Queryable): Promise<void> {
        'Our Green Skills Programme worked with young people aged 14 to 19 over twelve weeks.', now(), 'high'),
       ('fact_safeguarding', '${DEMO_ORG_ID}', 'safeguarding_policy', 'current, last reviewed September 2025',
        'document', 'annual-report-2025',
-       'We hold a current safeguarding policy, reviewed in September 2025.', now(), 'high')
+       'We hold a current safeguarding policy, reviewed in September 2025.', now(), 'high'),
+      -- The three questions about the work the Writer's gate asks for, so
+      -- the demo shows them being checked rather than typed.
+      ('fact_mission', '${DEMO_ORG_ID}', 'mission', 'to give young people in rural Somerset practical green skills and a route into work',
+       'document', 'annual-report-2025',
+       'We exist to give young people in rural Somerset practical green skills and a route into work.', now(), 'high'),
+      ('fact_beneficiaries', '${DEMO_ORG_ID}', 'beneficiary_groups', 'young people aged 14 to 19 in and around Wells',
+       'document', 'annual-report-2025',
+       'Our participants are young people aged 14 to 19 living in and around Wells.', now(), 'high'),
+      ('fact_reach', '${DEMO_ORG_ID}', 'people_supported_last_year', '86 young people in the year ending 31 March 2025',
+       'document', 'annual-report-2025',
+       'In the year ending 31 March 2025 we worked with 86 young people.', now(), 'medium')
     ON CONFLICT (id) DO NOTHING
   `);
 

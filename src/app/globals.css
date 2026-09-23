@@ -2180,3 +2180,8 @@ summary:focus-visible {
    monospace is right for it; a comment is prose, and the applicant reads it
    set as prose — what you type should look like what they see. */
 .commenting textarea { min-height: 4.5rem; font-family: inherit; }
+
+/* The three questions about the work. Prose about the organisation, read back
+   to the person as prose on Your organisation — so set as prose, like a
+   comment, and shorter than an answer box: a sentence or two is the ask. */
+.work-form textarea.input { min-height: 5rem; font-family: inherit; }

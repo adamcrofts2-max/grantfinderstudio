@@ -4,6 +4,7 @@ import { CompanySearch } from './CompanySearch';
 import { lookupIsAvailable } from './lookup';
 import { ManualProfile } from './ManualProfile';
 import { ProjectForm } from './ProjectForm';
+import { WorkForm } from './WorkForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,9 +37,14 @@ export default async function OnboardingPage() {
   const organisationDone = progress?.steps.find((step) => step.id === 'organisation')?.done === true;
   const projectDone = progress?.steps.find((step) => step.id === 'project')?.done === true;
 
-  // Once we know who they are, the project is the job. The lookup that got
-  // them here stays available, below, rather than in the way.
-  const onTheProject = organisationDone && !projectDone;
+  // Once we know who they are, what they DO is the job — then the project.
+  // Setup used to go straight from legal identity to the project, and the
+  // work itself was never asked about at all. The lookup that got them here
+  // stays available, below, rather than in the way.
+  const workToAsk = progress?.unansweredAboutTheWork ?? [];
+  const onTheWork = organisationDone && workToAsk.length > 0;
+  const onTheProject = organisationDone && !onTheWork && !projectDone;
+  const pastTheOrganisation = onTheWork || onTheProject;
 
   // No lookup configured means the search can only ever fail. Leading with a
   // box that cannot work, and hiding the one that can behind a disclosure, is
@@ -53,14 +59,22 @@ export default async function OnboardingPage() {
       <header className="page-head">
         <p className="eyebrow">Set up</p>
         <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>
-          {onTheProject
-            ? 'Now — what are you trying to fund?'
-            : lookupAvailable
-              ? 'Let’s find your organisation'
-              : 'Tell us about your organisation'}
+          {onTheWork
+            ? 'Now — what do you do?'
+            : onTheProject
+              ? 'Now — what are you trying to fund?'
+              : lookupAvailable
+                ? 'Let’s find your organisation'
+                : 'Tell us about your organisation'}
         </h1>
         <p className="page-sub">
-          {onTheProject ? (
+          {onTheWork ? (
+            <>
+              We know who you are. What you do, who it is for and how many people you reach are
+              the first questions on nearly every application form — and the Writer can only
+              draft from what you tell us, so this is what it will write from.
+            </>
+          ) : onTheProject ? (
             <>
               We know who you are. The amount you need, how long for and who it is for are
               what most eligibility rules actually turn on — and what puts your ask on the
@@ -82,15 +96,17 @@ export default async function OnboardingPage() {
         </p>
       </header>
 
+      {onTheWork ? <WorkForm questions={workToAsk} open /> : null}
+
       {onTheProject ? <ProjectForm open /> : null}
 
-      {onTheProject || !lookupAvailable ? null : (
+      {pastTheOrganisation || !lookupAvailable ? null : (
         <section className="card">
           <CompanySearch />
         </section>
       )}
 
-      {lookupAvailable && !onTheProject ? (
+      {lookupAvailable && !pastTheOrganisation ? (
         <section className="card">
           <h2 className="card-title">Can’t find it, or not registered?</h2>
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
@@ -110,31 +126,39 @@ export default async function OnboardingPage() {
 
       <ManualProfile open={!organisationDone && !lookupAvailable} />
 
-      {onTheProject ? null : <ProjectForm open={projectDone === false && organisationDone} />}
+      {/* Folded while the work is being asked, so there is one question on
+          the page rather than two. */}
+      {onTheProject ? null : (
+        <ProjectForm open={projectDone === false && organisationDone && !onTheWork} />
+      )}
 
-      <section className="card">
-        <h2 className="card-title">Why we ask</h2>
-        <ul
-          style={{
-            margin: 'var(--s-3) 0 0',
-            paddingLeft: '1.1rem',
-            color: 'var(--ink-soft)',
-            fontSize: 'var(--t-sm)',
-          }}
-        >
-          <li style={{ marginBottom: 'var(--s-2)' }}>
-            <strong>Your legal form</strong> decides eligibility. Funders treat CICs limited by
-            guarantee and by shares differently, and many people don’t know which they are.
-          </li>
-          <li style={{ marginBottom: 'var(--s-2)' }}>
-            <strong>Your incorporation date</strong> settles the “must have traded two years”
-            requirement that a lot of funds apply.
-          </li>
-          <li>
-            <strong>Your registered name</strong> is what funders expect on the application.
-          </li>
-        </ul>
-      </section>
+      {/* About the legal details, so only while they are what is being asked.
+          Under "what do you do" it answered a question nobody had. */}
+      {pastTheOrganisation ? null : (
+        <section className="card">
+          <h2 className="card-title">Why we ask</h2>
+          <ul
+            style={{
+              margin: 'var(--s-3) 0 0',
+              paddingLeft: '1.1rem',
+              color: 'var(--ink-soft)',
+              fontSize: 'var(--t-sm)',
+            }}
+          >
+            <li style={{ marginBottom: 'var(--s-2)' }}>
+              <strong>Your legal form</strong> decides eligibility. Funders treat CICs limited by
+              guarantee and by shares differently, and many people don’t know which they are.
+            </li>
+            <li style={{ marginBottom: 'var(--s-2)' }}>
+              <strong>Your incorporation date</strong> settles the “must have traded two years”
+              requirement that a lot of funds apply.
+            </li>
+            <li>
+              <strong>Your registered name</strong> is what funders expect on the application.
+            </li>
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

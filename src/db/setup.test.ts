@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { readSetupCounts } from './setup.js';
-import { createTestDatabase, ORG_A, type TestDatabase } from './testing/harness.js';
+import { createTestDatabase, ORG_A, ORG_B, type TestDatabase } from './testing/harness.js';
 import type { Queryable } from './client.js';
 
 let harness: TestDatabase;
@@ -98,5 +98,28 @@ describe('readSetupCounts', () => {
     await harness.db.query("UPDATE organisation_profiles SET form = NULL WHERE organisation_id = $1", [ORG_A]);
     await harness.db.exec('SET ROLE app_user;');
     expect((await counts()).hasOrganisation).toBe(false);
+  });
+
+  it('names the confirmed claims about the work, and nothing else', async () => {
+    // The fixture holds a confirmed turnover — a fact, but not about the work.
+    expect((await counts()).confirmedWorkClaims).toEqual([]);
+
+    await harness.db.exec('RESET ROLE;');
+    await harness.db.query(
+      `INSERT INTO facts
+         (id, organisation_id, claim, value, source, retrieved_at, confirmed_by, confirmed_at)
+       VALUES
+         ('m', $1, 'mission', 'We grow trees.', 'user', now(), 'user_a', now()),
+         ('p', $1, 'people_supported_last_year', 'About 120', 'ai_extraction', now(), NULL, NULL),
+         ('b', $2, 'beneficiary_groups', 'Not theirs', 'user', now(), 'user_b', now())`,
+      [ORG_A, ORG_B],
+    );
+    await harness.db.exec('SET ROLE app_user;');
+
+    // The unconfirmed one is a guess until somebody says it is right, and
+    // the other tenant's is not theirs at all.
+    const c = await counts();
+    expect(c.confirmedWorkClaims).toEqual(['mission']);
+    expect(c.pendingWorkClaims).toEqual(['people_supported_last_year']);
   });
 });

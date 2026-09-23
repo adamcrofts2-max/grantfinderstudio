@@ -36,6 +36,8 @@ export const readSetupProgress = cache(async (): Promise<SetupProgress | null> =
         hasProject: false,
         confirmedFacts: 0,
         pendingFacts: 0,
+        confirmedWorkClaims: [],
+        pendingWorkClaims: [],
         opportunities: 0,
         applications: 0,
         writerAvailable,

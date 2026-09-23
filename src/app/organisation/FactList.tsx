@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from 'react';
 import { confirmFactAction, correctFactAction } from './actions';
-import { factShortfall, nextFacts } from '@/domain/provenance/next-facts';
+import { unansweredAboutTheWork } from '@/domain/provenance/about-the-work';
+import { factShortfall, nextFacts, workShortfall } from '@/domain/provenance/next-facts';
 import { CONFIRMED_FACTS_NEEDED } from '@/domain/setup/progress';
 import { EMPTY_FACT_ACTION } from './state';
 
@@ -132,17 +133,22 @@ export function FactList({ facts }: { facts: FactView[] }) {
    * product was asking them to satisfy a counter.
    *
    * Nothing here is congratulation until the Writer can actually draft.
+   *
+   * And the count alone was not enough: setup confirms five facts about who
+   * you are, so this card said nothing to somebody whose work the Writer knew
+   * not one word of. The work comes first; the count after it.
    */
-  const shortfall = factShortfall(confirmed.length, CONFIRMED_FACTS_NEEDED);
+  const unanswered = unansweredAboutTheWork(confirmed.map((f) => f.claim));
+  const shortfall =
+    workShortfall(unanswered, confirmed.length) ??
+    factShortfall(confirmed.length, CONFIRMED_FACTS_NEEDED);
   const prompts = shortfall === null ? [] : nextFacts(facts.map((f) => f.claim), 3);
 
   return (
     <>
       {shortfall === null ? null : (
         <section className="card">
-          <h2 className="card-title">
-            {shortfall.short === 1 ? 'One more fact' : `${shortfall.short} more facts`}
-          </h2>
+          <h2 className="card-title">{shortfall.title}</h2>
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
             {shortfall.sentence}
           </p>
