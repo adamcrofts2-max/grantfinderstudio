@@ -122,7 +122,7 @@ export function DecisionForm({
                   id={`decision-amount-${applicationId}`}
                   inputMode="decimal"
                   name="amountAwardedGbp"
-                  placeholder="12500"
+                  placeholder="e.g. 12500"
                   type="text"
                 />
                 <p className="hint">

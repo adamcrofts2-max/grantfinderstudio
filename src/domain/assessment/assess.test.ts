@@ -223,7 +223,9 @@ describe('describeFreshness', () => {
   });
 
   it('shows the retrieval date so the user can judge for themselves', () => {
-    expect(describeFreshness('stale', on).text).toContain('2026-09-01');
+    expect(describeFreshness('stale', on).text).toContain('1 September 2026');
+    // Written as a person reads it, never as the database stores it.
+    expect(describeFreshness('needs_verification', on).text).not.toMatch(/\d{4}-\d{2}-\d{2}/u);
   });
 });
 

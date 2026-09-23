@@ -121,7 +121,7 @@ export function RuleForm({
             id={fid('conditions')}
             className="input"
             name="conditions"
-            placeholder="An asset lock in your articles"
+            placeholder="e.g. An asset lock in your articles"
             defaultValue={was('conditions')}
           />
           {problem('conditions')}
@@ -136,7 +136,7 @@ export function RuleForm({
             className="input input-short"
             name="minYears"
             inputMode="decimal"
-            placeholder="2"
+            placeholder="e.g. 2"
             defaultValue={was('minYears')}
           />
           <p className="hint">Often phrased as “two years of accounts”. Half years are fine: 1.5.</p>
@@ -164,7 +164,7 @@ export function RuleForm({
             id={fid('regions')}
             className="input"
             name="regions"
-            placeholder="Somerset, Devon, Dorset"
+            placeholder="e.g. Somerset, Devon, Dorset"
             defaultValue={was('regions')}
           />
           <p className="hint">
@@ -204,7 +204,7 @@ export function RuleForm({
                 className="input"
                 name="min"
                 inputMode="numeric"
-                placeholder={range.money ? '1000' : '6'}
+                placeholder={range.money ? 'e.g. 1000' : 'e.g. 6'}
                 defaultValue={was('min')}
               />
               {problem('min')}
@@ -218,7 +218,7 @@ export function RuleForm({
                 className="input"
                 name="max"
                 inputMode="numeric"
-                placeholder={range.money ? '25000' : '24'}
+                placeholder={range.money ? 'e.g. 25000' : 'e.g. 24'}
                 defaultValue={was('max')}
               />
               {problem('max')}

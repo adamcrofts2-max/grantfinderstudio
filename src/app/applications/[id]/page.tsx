@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import { notFound } from 'next/navigation';
 import { getDatabase } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
@@ -262,7 +263,7 @@ export default async function ApplicationPage({
         <p className="page-sub">
           {answered} of {questions.length} questions answered · written from{' '}
           {confirmed.length} confirmed fact{confirmed.length === 1 ? '' : 's'}
-          {application.deadline ? ` · deadline ${application.deadline}` : null}
+          {application.deadline ? ` · deadline ${formatDate(application.deadline)}` : null}
         </p>
       </header>
 
@@ -321,7 +322,9 @@ export default async function ApplicationPage({
       <section className="card">
         <div className="row-between" style={{ alignItems: 'center' }}>
           <div>
-            <h2 className="card-title">Readiness — {readiness.percent}%</h2>
+            {/* The figure once, as the figure. It was also in the title, so the
+                card read "Readiness — 38%" and then "38%" beside it. */}
+            <h2 className="card-title">Readiness</h2>
             <p className="card-sub" style={{ marginTop: 'var(--s-1)' }}>
               How complete this is, not how likely it is to win.
             </p>
@@ -340,7 +343,9 @@ export default async function ApplicationPage({
               </p>
             ) : null}
           </div>
-          <span className="metric-value">{readiness.percent}%</span>
+          <span className="metric-value" data-readiness={readiness.percent}>
+            {readiness.percent}%
+          </span>
         </div>
 
         {/* THE BREAKDOWN.
@@ -463,9 +468,9 @@ export default async function ApplicationPage({
           <div className="row" style={{ marginTop: 'var(--s-4)' }}>
             <CopyButton
               text={wholeApplication}
-              label={`Copy all ${answered} answers`}
+              label={answered === 1 ? 'Copy the answer' : `Copy all ${answered} answers`}
               unsupportedCount={unsupported}
-              variant="primary"
+              variant="secondary"
             />
           </div>
         </section>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { Figure } from './Figure';
+import { CAST, type CastMember } from './cast';
 
 /**
  * An empty state built around a figure rather than an apologetic paragraph.
@@ -18,20 +18,24 @@ export function EmptyState({
   title,
   children,
   action,
+  figure,
 }: {
   title: string;
+  /**
+   * Which of the cast stands here — chosen per screen, doing that screen's
+   * job. One drawing across every empty state wore thin; see `cast.tsx`.
+   */
+  figure: CastMember;
   children: ReactNode;
   /** The one thing to do next. Empty states without one are just apologies. */
   action?: ReactNode;
 }) {
+  const Drawing = CAST[figure];
   return (
     <section className="card">
       <div className="empty">
         <div className="figure-stage">
-          <div className="figure-disc" />
-          <div className="figure-art">
-            <Figure />
-          </div>
+          <Drawing />
         </div>
         <div>
           <h2 className="card-title">{title}</h2>

@@ -45,7 +45,10 @@ export function OutcomeBadge({ outcome }: { outcome: CriterionOutcome }) {
 const RECOMMENDATION = {
   strong: { label: 'Strong opportunity', className: 'pill pill-positive' },
   worth_considering: { label: 'Worth considering', className: 'pill pill-accent' },
-  conditional: { label: 'Only if…', className: 'pill pill-caution' },
+  // Not "Only if…": a badge that trails off is not a verdict. What the
+  // conditional recommendation means is that something must be checked
+  // before the time is worth spending — so it says that.
+  conditional: { label: 'Check first', className: 'pill pill-caution' },
   not_recommended: { label: 'Probably not worth it', className: 'pill pill-negative' },
 } as const satisfies Record<Recommendation, { label: string; className: string }>;
 

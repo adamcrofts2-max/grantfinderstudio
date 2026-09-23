@@ -140,7 +140,7 @@ export function OutcomesPanel({
               className="input"
               id="outcome-indicator"
               name="indicator"
-              placeholder="Destination survey at 6 months"
+              placeholder="e.g. Destination survey at 6 months"
               type="text"
             />
           </div>
@@ -152,13 +152,13 @@ export function OutcomesPanel({
               className="input"
               id="outcome-target"
               name="target"
-              placeholder="25 of 60"
+              placeholder="e.g. 25 of 60"
               type="text"
             />
           </div>
         </div>
         <div className="row" style={{ marginTop: 'var(--s-4)' }}>
-          <button className="btn btn-primary" disabled={adding} type="submit">
+          <button className="btn btn-secondary" disabled={adding} type="submit">
             {adding ? 'Adding…' : 'Add this row'}
           </button>
         </div>

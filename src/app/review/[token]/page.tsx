@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
@@ -257,7 +258,7 @@ export default async function ReviewPage({
           {application.amountRequestedGbp === null
             ? null
             : ` · for ${money(application.amountRequestedGbp)}`}
-          {application.deadline === null ? null : ` · deadline ${application.deadline}`}
+          {application.deadline === null ? null : ` · deadline ${formatDate(application.deadline)}`}
         </p>
       </header>
 

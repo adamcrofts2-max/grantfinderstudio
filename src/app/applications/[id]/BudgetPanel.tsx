@@ -169,7 +169,7 @@ export function BudgetPanel({
             className="input"
             id="budget-description"
             name="description"
-            placeholder="Youth worker, 2 days a week for 12 months"
+            placeholder="e.g. Youth worker, 2 days a week for 12 months"
             type="text"
           />
           <p className="hint">
@@ -206,7 +206,7 @@ export function BudgetPanel({
               id="budget-amount"
               inputMode="decimal"
               name="amountGbp"
-              placeholder="18000"
+              placeholder="e.g. 18000"
               type="text"
             />
           </div>
@@ -215,7 +215,7 @@ export function BudgetPanel({
           {COST_CATEGORIES.find((c) => c.id === 'overheads')?.hint}
         </p>
         <div className="row" style={{ marginTop: 'var(--s-4)' }}>
-          <button className="btn btn-primary" disabled={adding} type="submit">
+          <button className="btn btn-secondary" disabled={adding} type="submit">
             {adding ? 'Adding…' : 'Add this line'}
           </button>
         </div>

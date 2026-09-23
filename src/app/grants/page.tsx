@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import { after } from 'next/server';
 
 import { getDatabase } from '@/db';
@@ -116,7 +117,7 @@ function GrantRow({ grant }: { grant: FoundGrant }) {
       <div className="fact-main">
         <div className="fact-body">
           <p className="fact-claim">
-            {grant.awardedOn}
+            {formatDate(grant.awardedOn)}
             {grant.funderName === null ? '' : ` · ${grant.funderName}`}
           </p>
           <p className="fact-value">

@@ -29,7 +29,7 @@ export function GrantSearchForm({
             className="input"
             name="text"
             defaultValue={text}
-            placeholder="youth skills Somerset"
+            placeholder="e.g. youth skills Somerset"
             style={{ minWidth: 0 }}
           />
           <button className="btn btn-primary" type="submit" style={{ flex: '0 0 auto' }}>

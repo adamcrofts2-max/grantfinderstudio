@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import { EmptyState } from '@/app/illustration/EmptyState';
 import { FindTheirPage } from '@/app/FindTheirPage';
 import { getDatabase } from '@/db';
@@ -94,7 +95,7 @@ function ProspectCard({
               <ul className="list" style={{ marginTop: 'var(--s-2)' }}>
                 {prospect.matchingAwards.slice(0, 8).map((a) => (
                   <li key={a.id}>
-                    {gbp(a.amountGbp)} · {a.awardedOn}
+                    {gbp(a.amountGbp)} · {formatDate(a.awardedOn)}
                     {a.recipientName === null ? '' : ` · ${a.recipientName}`}
                     {a.region === null ? '' : ` · ${a.region}`}
                     {a.tags.length === 0 ? '' : ` · ${a.tags.join(', ')}`}
@@ -220,6 +221,7 @@ export default async function FundersPage() {
 
       {organisation === null ? (
         <EmptyState
+          figure="Welcome"
           title="We do not know who you are yet"
           action={<a className="btn btn-primary" href="/onboarding">Add your organisation</a>}
         >

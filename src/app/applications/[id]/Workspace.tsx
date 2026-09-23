@@ -125,7 +125,7 @@ function Question({
             Your answer
           </label>
           <textarea
-            className="input"
+            className="input answer-box"
             id={`answer-${question.id}`}
             name="content"
             onChange={(event) => setText(event.target.value)}
@@ -166,7 +166,15 @@ function Question({
           <input type="hidden" name="questionId" value={question.id} />
           <input type="hidden" name="applicationId" value={applicationId} />
           <button className="btn btn-secondary" type="submit" disabled={drafting}>
-            {drafting ? 'Writing…' : question.answer ? 'Draft again' : 'Draft from my facts'}
+            {/* "Draft again" only over a draft. Over words the person wrote
+                themselves it offered to redo something the Writer never did. */}
+            {drafting
+              ? 'Writing…'
+              : !question.answer
+                ? 'Draft from my facts'
+                : claims.length > 0
+                  ? 'Draft again'
+                  : 'Draft from my facts instead'}
           </button>
         </form>
         <span className="hint">
@@ -197,7 +205,7 @@ function Question({
           <CopyButton
             text={answerText}
             unsupportedCount={unsupportedCount}
-            variant="primary"
+            variant="secondary"
           />
           <span className="hint">Plain text, ready to paste into the funder’s form.</span>
         </div>

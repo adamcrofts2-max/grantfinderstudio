@@ -127,6 +127,8 @@
   --fig-fill:   var(--surface);
   --fig-accent: var(--accent);
   --fig-muted:  var(--line-strong);
+  /* A tint of the accent for glass, light and paper — never a second hue. */
+  --fig-wash:   var(--accent-bg);
 
   /* The ink that goes ON a filled accent or caution surface.
      A token rather than a hardcoded #fff, because in dark mode the fills
@@ -308,7 +310,7 @@ a:hover { color: var(--accent-hover); }
 .nav-item[aria-current="page"] {
   background: var(--accent-bg); color: var(--accent); font-weight: 600;
 }
-.nav-icon { width: 1rem; text-align: center; flex: 0 0 auto; }
+.nav-icon { width: 18px; height: 18px; flex: 0 0 auto; }
 
 .main { min-width: 0; }
 
@@ -391,7 +393,9 @@ a:hover { color: var(--accent-hover); }
   border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   font: inherit; font-size: var(--t-base);
 }
-.input::placeholder { color: var(--ink-faint); }
+.input::placeholder { color: var(--ink-faint); font-style: italic; }
+/* Italic, and short examples start "e.g.": the September walk read a greyed
+   "Somerset" and "18000" as values already filled in, and skipped them. */
 .input:hover { border-color: var(--ink-faint); }
 .input-mono { font-family: var(--font-mono); font-size: var(--t-sm); }
 .input[aria-invalid="true"] { border-color: var(--negative); }
@@ -759,6 +763,14 @@ details[open] > .funder-summary .chev-toggle::after { content: 'Close'; }
   background: var(--caution-bg); color: var(--caution);
   box-shadow: inset 0 -2px 0 var(--caution);
 }
+
+/* The answer box. Prose, set as prose: it was the monospace of a code box,
+   which reads as a form field for a machine. What is copied to the funder's
+   portal is plain text either way. */
+textarea.input.answer-box { font-family: inherit; line-height: 1.6; }
+/* Wider screens only: at 820px and under, every control is 16px so iOS does
+   not zoom (see the block that says so), and this must not undo that. */
+@media (min-width: 821px) { textarea.input.answer-box { font-size: var(--t-base); } }
 
 /* A draft with what each sentence stands on — the landing page's promise,
    drawn the way the landing draws it. */
@@ -1238,20 +1250,43 @@ summary:focus-visible {
    the line art inverts on its own rather than staying black-on-black. */
 
 .figure { display: block; width: 100%; height: auto; }
-.figure-stage {
-  position: relative; display: grid; place-items: center;
-  width: 100%; max-width: 260px; aspect-ratio: 1;
-  margin-inline: auto;
+/* No disc behind the figure any more: the cast wears the accent tint, and a
+   tinted disc swallowed it. Each figure carries its own ground shadow. */
+.figure-stage { width: 100%; max-width: 280px; margin-inline: auto; }
+
+/* The first minute. The welcome figure beside the heading, and the five steps
+   ahead so the first form reads as step one of something. */
+.first-run { display: grid; grid-template-columns: 1fr 200px; gap: var(--s-5); align-items: center; }
+.first-run > div:last-child { order: -1; }
+.first-run-figure { width: 200px; }
+.first-run-steps {
+  list-style: none; margin: var(--s-4) 0 0; padding: 0;
+  display: grid; gap: var(--s-2); font-size: var(--t-sm); color: var(--ink-soft);
 }
-.figure-disc {
-  position: absolute; inset: 0; border-radius: var(--r-full);
-  background: var(--accent-bg); border: 1px solid var(--accent-line);
+.first-run-steps li { display: flex; gap: var(--s-2); align-items: center; }
+.first-run-n {
+  width: 22px; height: 22px; flex: none; border-radius: var(--r-full);
+  display: grid; place-items: center; font-size: var(--t-xs); font-weight: 700;
+  border: 1px solid var(--line-strong); color: var(--ink-soft);
 }
-.figure-art { position: relative; width: 62%; }
+.first-run-steps .is-now { color: var(--ink); font-weight: 650; }
+.first-run-steps .is-now .first-run-n {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+@media (max-width: 700px) {
+  .first-run { grid-template-columns: 1fr; }
+  .first-run > div:last-child { order: 0; }
+  .first-run-figure { width: 160px; }
+}
+
+/* The 404 — the one page that is nothing but a figure and a way back. */
+.lost { text-align: center; padding-block: var(--s-7) var(--s-7); }
+.lost-figure { max-width: 260px; margin: 0 auto var(--s-5); }
+.lost .page-sub { max-width: 32rem; margin-inline: auto; }
 
 /* An empty state built around a figure rather than an apologetic paragraph. */
 .empty {
-  display: grid; grid-template-columns: 220px 1fr; gap: var(--s-6);
+  display: grid; grid-template-columns: 260px 1fr; gap: var(--s-6);
   align-items: center;
 }
 @media (max-width: 700px) {
@@ -1345,6 +1380,38 @@ summary:focus-visible {
 /* ---------- The shell while somebody is still settling in -----------------
    The menu is folded away rather than removed: the same links are one tap
    under "All sections", so nobody who knows where they are going is stopped. */
+
+/* On a phone the full menu was the whole first screen of every page — nine
+   rows and a sign-out before a word of content. Once setup is done (the
+   guided shell folds it already), it becomes one row under the brand that
+   scrolls sideways, with sign-out beside the brand. Desktop is untouched. */
+@media (max-width: 820px) {
+  /* minmax(0, …): a plain 1fr track grows to its content's minimum width, and
+     a sideways-scrolling row's minimum is the whole row — which pushed every
+     page off the right of the screen. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .shell:not(.shell-guided) .sidebar {
+    min-width: 0;
+    flex-direction: row; flex-wrap: wrap; align-items: center;
+    gap: var(--s-3); padding: var(--s-3) var(--s-4);
+  }
+  .shell:not(.shell-guided) .brand { flex: 1 1 auto; }
+  .shell:not(.shell-guided) .brand br { display: none; }
+  .shell:not(.shell-guided) .brand-sub { margin-left: var(--s-2); }
+  .shell:not(.shell-guided) .nav-foot { margin: 0; padding: 0; }
+  .shell:not(.shell-guided) .nav-signout { width: auto; font-size: var(--t-sm); }
+  .shell:not(.shell-guided) .nav {
+    order: 3; flex: 1 0 100%; flex-direction: row; gap: var(--s-1);
+    overflow-x: auto; scrollbar-width: none;
+    margin-inline: calc(-1 * var(--s-4)); padding-inline: var(--s-4);
+  }
+  .shell:not(.shell-guided) .nav::-webkit-scrollbar { display: none; }
+  .shell:not(.shell-guided) .nav-label { display: none; }
+  .shell:not(.shell-guided) .nav .nav-item {
+    flex: 0 0 auto; white-space: nowrap; gap: var(--s-2);
+    padding: var(--s-2) var(--s-3); font-size: var(--t-sm);
+  }
+}
 
 .nav-progress {
   display: flex; align-items: baseline; gap: var(--s-2); margin: 0;
@@ -1535,6 +1602,7 @@ summary:focus-visible {
   padding-left: var(--s-5); border-left: 2px solid var(--accent-line);
 }
 .lp-steps-list p { margin: 0; color: var(--ink-soft); font-size: var(--t-base); line-height: 1.65; }
+.lp-step-art { max-width: 240px; margin-bottom: var(--s-2); }
 .lp-step-n {
   width: 34px; height: 34px; border-radius: var(--r-full);
   display: grid; place-items: center;
@@ -2230,9 +2298,9 @@ summary:focus-visible {
 .commenting .part-head { margin-top: 0; }
 .commenting form { margin-top: var(--s-4); }
 /* Shorter than an answer box, and PROPORTIONAL where `textarea.input` is
-   monospaced. An answer is text that gets pasted into a funder's portal, and
-   monospace is right for it; a comment is prose, and the applicant reads it
-   set as prose — what you type should look like what they see. */
+   monospaced — a comment is prose, and the applicant reads it set as prose:
+   what you type should look like what they see. (The answer box itself went
+   proportional in the September 2026 design pass, for the same reason.) */
 .commenting textarea { min-height: 4.5rem; font-family: inherit; }
 
 /* The three questions about the work. Prose about the organisation, read back

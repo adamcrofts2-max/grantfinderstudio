@@ -1,4 +1,5 @@
 import { Highlight } from '@/app/marks';
+import { Finder, Weigher, Writer } from '@/app/illustration/cast';
 import {
   DistributionExample,
   DraftExample,
@@ -100,9 +101,14 @@ export function Landing({ erased = false }: { erased?: boolean }) {
           </div>
         </section>
 
+        {/* Characters at the front door — the direction chosen on 2026-09-08.
+            Each does the step it stands over; none stands beside a number. */}
         <section className="lp-steps" aria-label="How it works">
           <ol className="lp-steps-list">
             <li>
+              <div className="lp-step-art">
+                <Finder />
+              </div>
               <span className="lp-step-n" aria-hidden="true">1</span>
               <h2 className="lp-step-h">Find who to ask</h2>
               <p>
@@ -111,6 +117,9 @@ export function Landing({ erased = false }: { erased?: boolean }) {
               </p>
             </li>
             <li>
+              <div className="lp-step-art">
+                <Weigher />
+              </div>
               <span className="lp-step-n" aria-hidden="true">2</span>
               <h2 className="lp-step-h">Weigh what you found</h2>
               <p>
@@ -119,6 +128,9 @@ export function Landing({ erased = false }: { erased?: boolean }) {
               </p>
             </li>
             <li>
+              <div className="lp-step-art">
+                <Writer />
+              </div>
               <span className="lp-step-n" aria-hidden="true">3</span>
               <h2 className="lp-step-h">Write it</h2>
               <p>

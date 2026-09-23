@@ -2,10 +2,23 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
 import { Bricolage_Grotesque } from 'next/font/google';
+import {
+  Building2,
+  CalendarClock,
+  FileText,
+  Landmark,
+  LogOut,
+  PenLine,
+  Plus,
+  Scale,
+  Search,
+  type LucideIcon,
+} from 'lucide-react';
 import './globals.css';
 import { readSession } from './session';
 import { signOutAction } from './(auth)/actions';
 import { readSetupProgress } from './setup';
+import { NavIntoView } from './NavIntoView';
 
 /**
  * The display face.
@@ -29,20 +42,56 @@ export const metadata: Metadata = {
     'Funding intelligence for UK Community Interest Companies — which opportunities are worth your time, and why.',
 };
 
-const NAV = [
-  { href: '/', label: 'Opportunities', icon: '◎' },
+/**
+ * The sections, each with a line icon from one set (Lucide) in place of the
+ * single-character glyphs that rendered differently on every platform — and
+ * gave two sections the same house.
+ *
+ * "Find your company" is not here. It is a setup step, reached from the
+ * guide; once setup is done it was a second link to a page the person had
+ * finished with, under the same icon as the organisation they had set up.
+ */
+const NAV: ReadonlyArray<{ href: string; label: string; Icon: LucideIcon }> = [
+  { href: '/', label: 'Opportunities', Icon: Scale },
   // The grants come before the funder summaries deliberately: "who like us
   // has been funded" is the question people actually arrive with, and the
   // funder-level view is one level up from it.
-  { href: '/grants', label: 'Search grants', icon: '⌕' },
-  { href: '/funders', label: 'Who funds this', icon: '◈' },
-  { href: '/opportunities/add', label: 'Add a fund', icon: '＋' },
-  { href: '/tracker', label: 'Tracker', icon: '◷' },
-  { href: '/applications', label: 'Applications', icon: '✎' },
-  { href: '/organisation', label: 'Your organisation', icon: '⌂' },
-  { href: '/documents', label: 'Documents', icon: '❒' },
-  { href: '/onboarding', label: 'Find your company', icon: '⌂' },
+  { href: '/grants', label: 'Search grants', Icon: Search },
+  { href: '/funders', label: 'Who funds this', Icon: Landmark },
+  { href: '/opportunities/add', label: 'Add a fund', Icon: Plus },
+  { href: '/tracker', label: 'Tracker', Icon: CalendarClock },
+  { href: '/applications', label: 'Applications', Icon: PenLine },
+  { href: '/organisation', label: 'Your organisation', Icon: Building2 },
+  { href: '/documents', label: 'Documents', Icon: FileText },
 ];
+
+/** Whether a nav item is the page being shown — `/` only exactly. */
+function isCurrent(href: string, pathname: string): boolean {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLinks({ pathname }: { pathname: string }) {
+  // The longest matching prefix wins, so /opportunities/add lights "Add a
+  // fund" and not a parent.
+  const current = NAV.filter((item) => isCurrent(item.href, pathname))
+    .toSorted((a, b) => b.href.length - a.href.length)[0]?.href;
+  return (
+    <>
+      {NAV.map(({ href, label, Icon }) => (
+        <a
+          key={href}
+          className="nav-item"
+          href={href}
+          aria-current={href === current ? 'page' : undefined}
+        >
+          <Icon className="nav-icon" aria-hidden="true" size={18} strokeWidth={1.75} />
+          {label}
+        </a>
+      ))}
+    </>
+  );
+}
 
 /**
  * Two links, on every page that is not the operator console.
@@ -136,15 +185,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     <details className="nav-more">
                       <summary>All sections</summary>
                       <div className="nav">
-                        {NAV.map((item) => (
-                          <a key={item.href} className="nav-item" href={item.href}>
-                            <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                            {item.label}
-                          </a>
-                        ))}
+                        <NavLinks pathname={pathname} />
                         <form action={signOutAction}>
                           <button className="nav-item nav-signout" type="submit">
-                            <span className="nav-icon" aria-hidden="true">⇥</span>
+                            <LogOut className="nav-icon" aria-hidden="true" size={18} strokeWidth={1.75} />
                             Sign out
                           </button>
                         </form>
@@ -155,16 +199,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   <>
                     <div className="nav">
                       <span className="nav-label">Funding</span>
-                      {NAV.map((item) => (
-                        <a key={item.href} className="nav-item" href={item.href}>
-                          <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                          {item.label}
-                        </a>
-                      ))}
+                      <NavLinks pathname={pathname} />
                     </div>
+                    <NavIntoView />
                     <form action={signOutAction} className="nav-foot">
                       <button className="nav-item nav-signout" type="submit">
-                        <span className="nav-icon" aria-hidden="true">⇥</span>
+                        <LogOut className="nav-icon" aria-hidden="true" size={18} strokeWidth={1.75} />
                         Sign out
                       </button>
                     </form>

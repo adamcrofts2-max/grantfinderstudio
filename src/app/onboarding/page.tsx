@@ -1,4 +1,5 @@
 import { readSetupProgress } from '@/app/setup';
+import { Welcome } from '@/app/illustration/cast';
 
 import { CompanySearch } from './CompanySearch';
 import { lookupIsAvailable } from './lookup';
@@ -54,46 +55,72 @@ export default async function OnboardingPage() {
   // override this used to read. See `lookupIsAvailable`.
   const lookupAvailable = await lookupIsAvailable();
 
+  // The very first minute, and the one screen the design brief allows a
+  // real first-run moment: nobody has told us anything yet.
+  const firstRun = !organisationDone;
+  const steps = progress?.steps ?? [];
+
   return (
     <div className="page page-narrow">
-      <header className="page-head">
-        <p className="eyebrow">Set up</p>
-        <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>
-          {onTheWork
-            ? 'Now — what do you do?'
-            : onTheProject
-              ? 'Now — what are you trying to fund?'
-              : lookupAvailable
-                ? 'Let’s find your organisation'
-                : 'Tell us about your organisation'}
-        </h1>
-        <p className="page-sub">
-          {onTheWork ? (
-            <>
-              We know who you are. What you do, who it is for and how many people you reach are
-              the first questions on nearly every application form — and the Writer can only
-              draft from what you tell us, so this is what it will write from.
-            </>
-          ) : onTheProject ? (
-            <>
-              We know who you are. The amount you need, how long for and who it is for are
-              what most eligibility rules actually turn on — and what puts your ask on the
-              charts beside what each funder really gives.
-            </>
-          ) : lookupAvailable ? (
-            <>
-              We’ll look you up on the Companies House register so you don’t have to type your
-              details — and so we get your legal form exactly right. It decides which funds you
-              can apply to.
-            </>
-          ) : (
-            <>
-              Your legal form and where you are based decide which funds you can apply to at
-              all, so these few answers are what make every eligibility check worth trusting.
-              It takes about a minute.
-            </>
-          )}
-        </p>
+      <header className={firstRun ? 'page-head first-run' : 'page-head'}>
+        {firstRun ? (
+          <div className="first-run-figure">
+            <Welcome />
+          </div>
+        ) : null}
+        <div>
+          <p className="eyebrow">{firstRun ? 'Welcome' : 'Set up'}</p>
+          <h1 className="page-title" style={{ marginTop: 'var(--s-2)' }}>
+            {onTheWork
+              ? 'Now — what do you do?'
+              : onTheProject
+                ? 'Now — what are you trying to fund?'
+                : lookupAvailable
+                  ? 'Let’s find your organisation'
+                  : 'Tell us about your organisation'}
+          </h1>
+          <p className="page-sub">
+            {onTheWork ? (
+              <>
+                We know who you are. What you do, who it is for and how many people you reach are
+                the first questions on nearly every application form — and the Writer can only
+                draft from what you tell us, so this is what it will write from.
+              </>
+            ) : onTheProject ? (
+              <>
+                We know who you are. The amount you need, how long for and who it is for are
+                what most eligibility rules actually turn on — and what puts your ask on the
+                charts beside what each funder really gives.
+              </>
+            ) : lookupAvailable ? (
+              <>
+                We’ll look you up on the Companies House register so you don’t have to type your
+                details — and so we get your legal form exactly right. It decides which funds you
+                can apply to.
+              </>
+            ) : (
+              <>
+                Your legal form and where you are based decide which funds you can apply to at
+                all, so these few answers are what make every eligibility check worth trusting.
+                It takes about a minute.
+              </>
+            )}
+          </p>
+          {/* What is ahead, so the first form is step one of something rather
+              than the whole of it. Titles only — the guide on the home page
+              carries the reasons. */}
+          {firstRun && steps.length > 0 ? (
+            <ol className="first-run-steps" aria-label="The five steps">
+              {steps.map((step, index) => (
+                <li key={step.id} className={index === 0 ? 'is-now' : undefined}>
+                  <span className="first-run-n" aria-hidden="true">{index + 1}</span>
+                  {step.title}
+                  {index === 0 ? <span className="sr-only"> (you are here)</span> : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
       </header>
 
       {onTheWork ? <WorkForm questions={workToAsk} open /> : null}

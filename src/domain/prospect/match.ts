@@ -30,6 +30,7 @@ import {
   type Award,
 } from '../funder/behaviour.js';
 import type { Jurisdiction } from '../types.js';
+import { formatDate } from '../time/format.js';
 
 export const PROSPECT_CONSTANTS = {
   /**
@@ -432,7 +433,7 @@ export function assessProspect(
 
   if (base.mayBeDormant && last !== null) {
     reasons.push(
-      `Nothing published since ${last.awardedOn}. That may mean they have stopped giving, or simply stopped publishing — worth checking before you spend time on them.`,
+      `Nothing published since ${formatDate(last.awardedOn)}. That may mean they have stopped giving, or simply stopped publishing — worth checking before you spend time on them.`,
     );
   }
 

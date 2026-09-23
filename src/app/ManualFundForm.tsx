@@ -106,7 +106,7 @@ export function ManualFundForm({
           id={fid('funderName')}
           className="input"
           name="funderName"
-          placeholder="The Wells Trust"
+          placeholder="e.g. The Wells Trust"
           aria-invalid={error('funderName') !== undefined}
           aria-describedby={error('funderName') === undefined ? undefined : `${fid('funderName')}-error`}
           required
@@ -122,7 +122,7 @@ export function ManualFundForm({
           id={fid('title')}
           className="input"
           name="title"
-          placeholder="Community Buildings Fund"
+          placeholder="e.g. Community Buildings Fund"
           aria-invalid={error('title') !== undefined}
           required
           defaultValue={was('title')}
@@ -154,7 +154,7 @@ export function ManualFundForm({
             Smallest grant <span className="hint">(optional)</span>
           </label>
           <input id={fid('minAmountGbp')} className="input" name="minAmountGbp" inputMode="numeric"
-            placeholder="5000"
+            placeholder="e.g. 5000"
           defaultValue={was('minAmountGbp')}
         />
           {problem('minAmountGbp')}
@@ -164,7 +164,7 @@ export function ManualFundForm({
             Largest grant <span className="hint">(optional)</span>
           </label>
           <input id={fid('maxAmountGbp')} className="input" name="maxAmountGbp" inputMode="numeric"
-            placeholder="25000"
+            placeholder="e.g. 25000"
           defaultValue={was('maxAmountGbp')}
         />
           {problem('maxAmountGbp')}

@@ -436,6 +436,7 @@ export default async function TrackerPage() {
 
       {rows.length === 0 ? (
         <EmptyState
+          figure="Planner"
           title="Nothing to track yet"
           action={<a className="btn btn-primary" href="/">See your opportunities</a>}
         >

@@ -32,6 +32,7 @@ import {
   type RecommendationResult,
 } from '../effort/model.js';
 import { evaluateEligibility } from '../eligibility/engine.js';
+import { formatDate } from '../time/format.js';
 import type { Criterion, CriterionResult, EligibilityVerdict } from '../eligibility/types.js';
 import type { ApplicantProfile, DeadlineType, Freshness, ProjectRequest } from '../types.js';
 
@@ -162,7 +163,7 @@ export function describeDeadline(
 
 /** Say plainly how much to trust the record in front of you. */
 export function describeFreshness(freshness: Freshness, retrievedAt: string): Notice {
-  const on = retrievedAt.slice(0, 10);
+  const on = formatDate(retrievedAt);
   switch (freshness) {
     case 'current':
       return { tone: 'neutral', text: `Checked against the funder on ${on}.` };

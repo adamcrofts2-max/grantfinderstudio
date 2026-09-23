@@ -2,6 +2,61 @@
 
 Ordered by phase. Tick only what genuinely shipped — built, tested, verified.
 
+## The finish line (written 2026-09-23)
+
+What stands between this and a product a real CIC can sign up to and rely on.
+Not a second list: each line points at items already below, grouped by what it
+takes to close them. Everything not named here is polish or post-launch.
+
+### A. Only the owner can do these — nothing ships without them
+- [ ] Rotate the three credentials pasted into earlier sessions (Anthropic key,
+      Neon `neondb_owner` password, `APP_ENCRYPTION_KEY`) — see Deployment
+- [ ] Deploy (Vercel + Neon) and verify Companies House and 360Giving against the
+      real APIs from there; this sandbox's network policy blocks both
+- [ ] A real Anthropic key on the deployment, and a processor agreement with
+      Anthropic listed on the privacy page
+- [ ] Fill in `src/domain/privacy/operator.ts` (legal name, address, ICO
+      registration, contact), get the privacy notice and terms legally reviewed,
+      and state a backup retention period
+- [ ] Decide pricing (the landing deliberately says nothing until then)
+- [ ] Decide: merge `/funders` and `/grants` into one screen, or keep two
+
+### B. Engineering needed before real users
+- [ ] Load the real 360Giving corpus on the deployment, then take the landing's
+      "In build" note down — until then "find" has nothing to find
+- [ ] Password reset — needs a mailer, and there is none. Without it a forgotten
+      password is a lost account
+- [ ] Invite a colleague: membership management, `authorise()` on every action,
+      an organisation switcher
+- [ ] Uploads over 1 MB fail with a framework error; cap a `.docx`'s decompressed
+      size before reading it
+- [ ] A script Content-Security-Policy with per-request nonces
+- [ ] Run the Writer and the Critic against the real model and read the output;
+      an evaluation suite so a prompt change cannot quietly regress
+- [ ] Axe accessibility sweep and the e2e in CI, not only on a developer's machine
+- [ ] Export an application as DOCX/PDF — the most common thing a bid writer
+      asks for after "copy"
+
+### C. Design, to finish the job this pass started
+- [ ] One date style everywhere (the tracker's "Sun, 1 Nov 2026" or the rest's
+      "1 November 2026" — pick one)
+- [ ] Button hierarchy by consequence on every screen, not only the application;
+      a destructive style for remove and reject
+- [ ] Stat tiles on the home, tracker and organisation screens; application
+      progress as a segmented bar; the effort composition bar
+- [ ] Real drop zones on the two upload screens
+- [ ] "Who benefits" has nothing for an environmental CIC; one answer to "who is
+      it for" rather than the checkbox and the prose asking twice
+- [ ] A professional illustrator's pass over `illustration/cast.tsx` — optional;
+      the hand-authored set is production quality, not placeholder
+
+### D. After launch
+Watchlist without an application, pipeline states, a subscribable calendar
+feed, the vetted bid-writer referral, "organisations like mine", charity-register
+financials, re-reading a fund when its guidance changes, OCR and retrieval over
+documents — all below, and none of them needed for someone to find a funder,
+weigh a fund and write the bid.
+
 ## Phase 0 — Tooling
 - [x] TypeScript strict configuration
 - [x] Vitest with coverage thresholds
@@ -357,7 +412,7 @@ rendered as a sentence.
       readiness score and a collapsed row
 - [ ] Stat tiles on the three summary screens
 - [x] Validated series palette in tokens, light and dark
-- [ ] Icon set replacing the single-character glyphs
+- [x] Icon set replacing the single-character glyphs
 - [ ] Button hierarchy by consequence
 - [ ] Real drop zones on the two upload screens
 - [x] Guided setup on the home page, derived from real state rather than flags
@@ -711,7 +766,16 @@ this cheque before", where no source answers "what is open".
         reconciles against fall either side of that write. Seen again
         2026-09-23 in the e2e (`/grants?q=1&text=youth&view=grants`, third
         visit of the run to that URL, the two before it clean); the next run
-        was clean
+        was clean. Seen again the same day on a FUND page
+        (`/opportunities/<typed fund>`), which also renders corpus data (the
+        funder's awards) while the e2e's background load writes them; 20
+        rounds of the same save-then-open sequence on a settled corpus: none
+- [ ] `npm run accessibility` cannot sign in to the console after `npm run e2e`
+      has claimed it with its own admin; give it the e2e's provisioning (or a
+      flag to skip the console) so the sweep runs after the e2e in CI
+- [ ] Playwright is not a declared dependency: the scripts use a copy linked into
+      `node_modules`, and any `npm install` prunes the link. Declare it as a dev
+      dependency pinned to the machine's browser build, or document the link
 - [x] **The e2e provisions itself.** It reported 23 failures of 117 this week,
       every one of them the rig describing itself — an admin account from the
       previous run (which removes the claim flow the console check needs), a
@@ -1027,7 +1091,7 @@ Postgres.
       audit-logged, visible to the customer while live. NOT an admin-initiated
       view: build it the day a real customer is stuck
 - [ ] An audit trail of what an operator changed in the shared catalogue
-- [ ] First-run moment on onboarding
+- [x] First-run moment on onboarding — the Welcome figure and the five steps ahead (2026-09-23)
 - [ ] **Nothing to find.** A real deployment has no funders, no awards and no
       opportunities — those are seeded only by the demo module. Every chart is
       empty by construction until either 360Giving ingestion lands or funds are
@@ -1041,8 +1105,8 @@ annotation inside the working screens.**
 - [x] Display typeface on headings (Bricolage Grotesque, self-hosted)
 - [x] Annotation marks — highlighter, ink circle, margin note — both schemes
 - [x] Line-character figure and empty states on tracker, applications, funders
-- [ ] Replace the placeholder figure with real illustration
-- [ ] More than one figure — one drawing across three empty states will wear thin
+- [x] Replace the placeholder figure with real illustration — a hand-authored six-figure set (`illustration/cast.tsx`); a professional illustrator's pass remains optional, not blocking (2026-09-23)
+- [x] More than one figure — one drawing across three empty states will wear thin
 - [x] Landing page, built for real rather than mocked
 - [x] Re-position it: the first version led with "this is not a search engine",
       which was true and badly under-sold. Finding funders IS half the product
@@ -1060,7 +1124,7 @@ annotation inside the working screens.**
 - [ ] Take the "In build" marker off the Find section — it must not be there
       when real users arrive, so either the 360Giving corpus lands first or the
       section comes out
-- [ ] Replace the placeholder line-character art. It is no longer on the
+- [x] Replace the placeholder line-character art. It is no longer on the
       landing page (the product's own charts carry the hero instead) but it
       still fronts three empty states. Finding from a generation pass, worth
       keeping: **raster art cannot carry this product's dark mode.** Every
@@ -1070,7 +1134,7 @@ annotation inside the working screens.**
       mask tinted by `currentColor` — which themes perfectly but gives up the
       two-tone accent. Generated images are therefore reference for
       hand-authored SVG, not the asset itself
-- [ ] Decide whether the empty states want a character at all. Replacing the
+- [x] Decide whether the empty states want a character at all. Replacing the
       hero figure with the product's own chart made the landing page markedly
       better; an empty tracker may be better served by a small diagram of what
       will appear there than by a figure
@@ -1239,16 +1303,16 @@ Found, not fixed — most need a product decision:
       by a render test and a stubbed walk, not by `npm run e2e`
 - [ ] Say why /grants orders funders as it does; one vocabulary for the last
       clause (verdict or range, not both); fit badges as on /funders
-- [ ] Dates as ISO in several places — grant rows, the fund card, the application
+- [x] Dates as ISO in several places — grant rows, the fund card, the application
       header, the reviewer page, the facts page, "last retrieved"
-- [ ] Placeholders that read as values ("Somerset", "Youth worker…", "18000")
-- [ ] The answer box is monospace; two primary buttons per question; the copy
+- [x] Placeholders that read as values ("Somerset", "Youth worker…", "18000")
+- [x] The answer box is monospace; two primary buttons per question; the copy
       preview repeats the box
-- [ ] "Only if…" as a verdict badge; "Draft again" on answers the user wrote;
+- [x] "Only if…" as a verdict badge; "Draft again" on answers the user wrote;
       "all 2 claims"; "100%" twice on the readiness card
 - [x] "Remove this fund" with no confirmation — now folded behind one, see above
 - [ ] After "Add this fund" you stay on the full form with a one-line success
-- [ ] "Find your company" stays in the nav after setup, with "Your organisation"'s icon
+- [x] "Find your company" stays in the nav after setup, with "Your organisation"'s icon
 - [ ] Stale hint under "Kind of cost" (Overheads text while Staff is chosen)
 - [ ] "Who benefits" is people only; an environmental CIC has nothing to tick
 - [ ] Rows saved before the deadline fix still read "date not confirmed" beside

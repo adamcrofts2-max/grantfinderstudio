@@ -1435,10 +1435,13 @@ try {
       // `budgets`, `budget_lines` and `outcomes` were in the schema from 0001
       // with nothing writing to them, while the readiness card said "No
       // budget has been built" and scored the application down for it.
-      const readiness = () => {
-        const el = page.locator('body');
-        return el.innerText().then((t) => Number(/Readiness — (\d+)%/u.exec(t)?.[1] ?? '-1'));
-      };
+      // Read from the figure itself: the title no longer repeats it.
+      const readiness = () =>
+        page
+          .locator('[data-readiness]')
+          .first()
+          .getAttribute('data-readiness')
+          .then((value) => Number(value ?? '-1'));
       const before = await readiness();
 
       const line = async (desc, category, amount) => {

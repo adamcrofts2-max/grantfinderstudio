@@ -105,6 +105,7 @@ export default async function HomePage({
           moment is worse than either. */}
       {sorted.length === 0 && progress?.complete === true ? (
         <EmptyState
+          figure="Finder"
           title="No funds to weigh up yet"
           action={
             <a className="btn btn-primary" href="/funders">

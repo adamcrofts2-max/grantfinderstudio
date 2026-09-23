@@ -20,6 +20,9 @@
  *     no questions pasted in yet is not "nothing to do".
  */
 
+import { formatDate } from '../time/format.js';
+
+export { formatDate };
 import { EFFORT_CONSTANTS, type DraftingMode } from '../effort/model.js';
 import type { DeadlineType } from '../types.js';
 
@@ -201,22 +204,6 @@ function bucketFor(daysRemaining: number): TimeBucket {
   if (daysRemaining <= SCHEDULE_CONSTANTS.thisWeekDays) return 'this_week';
   if (daysRemaining <= SCHEDULE_CONSTANTS.thisMonthDays) return 'this_month';
   return 'later';
-}
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-] as const;
-
-/**
- * "16 November 2026". Deterministic and locale-free: this string ends up
- * inside sentences the user reads, and an ISO date there reads like a leak.
- */
-export function formatDate(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-');
-  const name = MONTHS[Number(month) - 1];
-  if (year === undefined || day === undefined || name === undefined) return isoDate;
-  return `${Number(day)} ${name} ${year}`;
 }
 
 /** Capitalise a phrase that has become the start of a sentence. */

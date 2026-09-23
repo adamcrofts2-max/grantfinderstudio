@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import { FindTheirPage } from '@/app/FindTheirPage';
 import { gbp } from '@/app/components';
 import { canCharacterise, whyThisFunder } from '@/domain/grants/funders';
@@ -120,7 +121,7 @@ function Row({ funder, context }: { funder: FunderSummary; context: FunderRankCo
                 {funder.examples.map((example) => (
                   <li key={example.id}>
                     <span className="funder-example-amount">{gbp(example.amountGbp)}</span>{' '}
-                    <span className="funder-example-when">{example.awardedOn}</span>
+                    <span className="funder-example-when">{formatDate(example.awardedOn)}</span>
                     {example.recipientName === null ? null : <> · {example.recipientName}</>}
                     {example.title === null ? null : (
                       <span className="funder-example-title">{example.title}</span>

@@ -100,7 +100,7 @@ export function AddFact({
               className="input"
               name="customClaim"
               defaultValue={was('customClaim')}
-              placeholder="Accreditations"
+              placeholder="e.g. Accreditations"
             />
             <p className="hint">
               Use this when the list has nothing for what you mean. Anything you type here is

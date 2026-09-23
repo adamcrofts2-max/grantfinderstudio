@@ -40,7 +40,7 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
         <div className="field" style={{ marginTop: 'var(--s-4)' }}>
           <label className="label" htmlFor="projectName">Project name</label>
           <input id="projectName" className="input" name="projectName" required
-            placeholder="Green Skills Programme"
+            placeholder="e.g. Green Skills Programme"
               defaultValue={was('projectName')}
             />
           {error('projectName') ? (
@@ -64,7 +64,7 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
               How much you need <span className="hint">(optional)</span>
             </label>
             <input id="amountSoughtGbp" className="input" name="amountSoughtGbp"
-              inputMode="numeric" placeholder="25000"
+              inputMode="numeric" placeholder="e.g. 25000"
               defaultValue={was('amountSoughtGbp')}
             />
             <p className="hint">In pounds. This decides which funds are the right size.</p>
@@ -78,7 +78,7 @@ export function ProjectForm({ open = false }: { open?: boolean }) {
               Over how many months <span className="hint">(optional)</span>
             </label>
             <input id="durationMonths" className="input" name="durationMonths"
-              inputMode="numeric" placeholder="12"
+              inputMode="numeric" placeholder="e.g. 12"
               defaultValue={was('durationMonths')}
             />
             {error('durationMonths') ? (

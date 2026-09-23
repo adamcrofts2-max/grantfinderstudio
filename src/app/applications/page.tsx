@@ -38,6 +38,7 @@ export default async function ApplicationsPage() {
 
       {applications.length === 0 ? (
         <EmptyState
+          figure="Writer"
           title="Nothing started yet"
           action={<a className="btn btn-primary" href="/">See your opportunities</a>}
         >

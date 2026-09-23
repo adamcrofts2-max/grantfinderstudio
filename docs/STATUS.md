@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,961 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,964 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5942,4 +5942,91 @@ never drafts, so the labels were walked against the Anthropic stub: a draft
 shows "Area of operation · confirmed" under its sentence, the same after a
 reload, the edited-box note appears, and a reviewer given a link sees the same
 list. Looked at by hand at 1280px and 390px, no sideways scroll.
+
+## A design pass: the cast, the icons, the phone menu, and the finish line
+
+Asked to make the site better as a designer would, using the line characters
+chosen on 2026-09-08, and to say what is needed to finish the product.
+
+### What the audit found
+
+Sixty-four screenshots, light and dark, desktop and phone, of a populated
+account and a brand-new one. The product was honest and legible and had lost
+its front door: the one figure was placeholder art that almost nobody saw (a
+new account is sent straight to onboarding, a bare form), the landing's three
+steps were numbered circles, the navigation was nine mismatched Unicode glyphs
+(two of them the same house), and on a phone the menu was the entire first
+screen of every page.
+
+### The cast
+
+`src/app/illustration/cast.tsx` — six hand-authored SVG figures in one family:
+**Finder** (a glass over a funder's grants), **Weigher** (the fund against your
+time on a level scale), **Writer** (an easel sheet, three lines ticked, the pen
+on the fourth), **Planner** (a card pinned to a calendar, one day circled),
+**Welcome** (a wave at an open, lit door) and **Lost** (a map without this page
+on it). Built from shared parts — head, five hair shapes, body, limbs drawn as
+an outlined tube (an ink stroke under a fill stroke) — so they read as one cast.
+The rules, stated in the file: black line, white fill, clothing in a tint of the
+accent (`--fig-wash`, new) and the accent itself spent on the one object that
+matters in each scene. Every colour is a token, so each figure inverts on its
+own in dark mode — checked on a preview sheet in both schemes before any of them
+went on a page. Never beside a number.
+
+Placed: over the landing's find / weigh / write; one per empty state (home →
+Finder, tracker → Planner, applications → Writer, funders → Welcome) instead of
+one figure everywhere; a first-run moment on onboarding (Welcome beside the
+heading, and the five setup steps with the current one marked); and a new
+`not-found.tsx` with Lost, worded so it accuses nobody — it is also what a fund
+or application that is not yours answers with. The disc behind the old figure
+went: it was the same tint as the new clothing and swallowed it. The placeholder
+`Figure.tsx` is deleted.
+
+### Navigation
+
+Lucide (`lucide-react`, as the design brief specified — tree-shaken, not a
+font): one icon family, `aria-hidden`, beside every label. The current page is
+marked (`aria-current`, which had a style and was never set). "Find your
+company" left the full menu — a setup step, reached from the guide. On a phone
+the finished shell's menu is now one row under the brand that scrolls sideways,
+with sign-out beside the brand, and the current section is scrolled into view
+on arrival (`NavIntoView`). The first attempt pushed every page off the right
+edge — a `1fr` track grows to a scrolling row's full width — and `minmax(0, 1fr)`
+fixed it; the capture script now fails loudly on any sideways overflow.
+
+### The walkthrough's visual findings
+
+Placeholders are italic and short example values start "e.g." (twenty of them),
+because "Somerset" and "18000" read as filled in. Dates reach the screen as
+"23 September 2026" through `formatDate`, now in `src/domain/time/format.ts`
+(the tracker re-exports it): the freshness notice, grant rows, funder examples,
+the "nothing published since" line, and the application and reviewer headers.
+The application page shows readiness once (the e2e reads it from
+`data-readiness`), "Copy the answer" for one, and one primary action per card —
+budget and outcome "add" buttons, and copy, are secondary. The answer box is
+set as prose, at 16px on phones so iOS does not zoom (the zoom guard is
+mid-file, so the larger desktop size applies only above 820px). "Only if…"
+became "Check first"; "Draft again" appears only over a draft.
+
+### The finish line
+
+At the top of `docs/ROADMAP.md`, the 127 open items grouped by what closes
+them: what only the owner can do (credentials, deploy, a real key, the
+operator's legal details and review, pricing, the /funders–/grants decision);
+the engineering needed before real users (the real corpus, password reset,
+invites and `authorise()` everywhere, uploads over 1 MB, a nonce CSP, the Writer
+against the real model with an eval suite, CI for axe and the e2e, DOCX/PDF
+export); the design still to do; and what can wait until after launch.
+
+### Checked
+
+`npm run verify`: 1,964 tests (8 skipped), lint clean, build clean;
+`npm run smoke` clean. `npm run e2e`: one run failed one check — a React #418
+on a fund page, right after saving the fund's details, while the e2e's corpus
+load was writing the funder's awards; the re-run was clean at 172, and twenty
+rounds of the same save-then-open sequence on a settled corpus produced none.
+Recorded against the open #418 item. Axe: every customer screen clean (the
+console leg could not sign in after the e2e had claimed the console — rig
+state, now a roadmap item). `npm install` for Lucide pruned the Playwright copy
+the scripts use; relinked, and noted on the roadmap.
 

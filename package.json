@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
+    "lucide-react": "^1.47.0",
     "mammoth": "^1.12.2",
     "next": "^15.5.25",
     "pg": "^8.23.0",

@@ -167,7 +167,7 @@ export function SharePanel({
                 className="input"
                 id="share-who"
                 name="reviewerName"
-                placeholder="Jan, our treasurer"
+                placeholder="e.g. Jan, our treasurer"
                 type="text"
               />
               <p className="hint">

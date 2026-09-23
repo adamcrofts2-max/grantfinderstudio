@@ -90,7 +90,7 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
           <label className="label" htmlFor="region">
             County or area you work in <span className="hint">(optional)</span>
           </label>
-          <input id="region" className="input" name="region" placeholder="Somerset"
+          <input id="region" className="input" name="region" placeholder="e.g. Somerset"
             defaultValue={was('region')}
           />
           <p className="hint">Many funders restrict by area, so this decides real eligibility.</p>
@@ -100,7 +100,7 @@ export function ManualProfile({ open = false }: { open?: boolean }) {
           <label className="label" htmlFor="companyNumber">
             Company number <span className="hint">(optional)</span>
           </label>
-          <input id="companyNumber" className="input input-mono" name="companyNumber" placeholder="12345678"
+          <input id="companyNumber" className="input input-mono" name="companyNumber" placeholder="e.g. 12345678"
             defaultValue={was('companyNumber')}
           />
           {error('companyNumber') ? (
