@@ -178,11 +178,14 @@ export function ManualFundForm({
       <div className="field" style={{ marginTop: 'var(--s-4)' }}>
         <label className="label" htmlFor={fid('deadlineKind')}>The closing date</label>
         <select key={selectKey(state.values, 'deadlineKind')} id={fid('deadlineKind')} className="input" name="deadlineKind"
+          aria-invalid={error('deadlineKind') !== undefined}
+          aria-describedby={error('deadlineKind') === undefined ? undefined : `${fid('deadlineKind')}-error`}
           defaultValue={was('deadlineKind') === '' ? 'unknown' : was('deadlineKind')}>
           {DEADLINE_KINDS.map((kind) => (
             <option key={kind} value={kind}>{DEADLINE_LABEL[kind] ?? kind}</option>
           ))}
         </select>
+        {problem('deadlineKind')}
         <p className="hint">
           Kept apart from the date itself, so an estimate can never be shown as though the
           funder published it.

@@ -128,6 +128,22 @@ describe('a deadline that contradicts itself', () => {
     expect(result.fund?.deadline).toBeNull();
   });
 
+  it('refuses a date left under "I do not know yet" instead of dropping it', () => {
+    // Found by the September 2026 walkthrough. The dropdown defaults to
+    // "I do not know yet", so typing the date and leaving the dropdown alone
+    // — the obvious thing to do — stored the date, marked it unknown, and the
+    // fund then said "We do not know this fund's deadline". The same small
+    // dishonesty as the rolling case above, from the other side.
+    const result = readManualFund({ ...base, deadlineKind: 'unknown' });
+    expect(result.fund).toBeNull();
+    expect(result.errors['deadlineKind']).toMatch(/you have given a date/iu);
+    expect(result.errors['deadlineKind']).toMatch(/published/iu);
+  });
+
+  it('still accepts "I do not know yet" with no date at all', () => {
+    expect(readManualFund({ ...base, deadlineKind: 'unknown', deadline: '' }).errors).toEqual({});
+  });
+
   it('accepts a date with a kind that admits one', () => {
     expect(readManualFund({ ...base, deadlineKind: 'confirmed' }).errors).toEqual({});
     expect(readManualFund({ ...base, deadlineKind: 'estimated' }).errors).toEqual({});

@@ -59,7 +59,9 @@ export function BudgetPanel({
           <p className="card-sub" style={{ marginTop: 'var(--s-1)' }}>
             {lines.length === 0
               ? 'What the money would be spent on. Most funders ask for this, and it is the line-by-line detail an assessor checks first.'
-              : `${lines.length} line${lines.length === 1 ? '' : 's'}, checked against what this funder has told us.`}
+              : known.length === 0
+                ? `${lines.length} line${lines.length === 1 ? '' : 's'}. There are no funder rules on record to check them against — only the total.`
+                : `${lines.length} line${lines.length === 1 ? '' : 's'}, checked against what this funder has told us.`}
           </p>
         </div>
         {lines.length === 0 ? null : (

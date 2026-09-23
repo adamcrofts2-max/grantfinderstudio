@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { createProvider } from '@/ai/providers/anthropic';
 import { ANALYST, analystOutputSchema, buildAnalystPrompt } from '@/ai/agents/analyst';
 import { runAgent } from '@/ai/run';
+import { AiRefusalError, AiSchemaError } from '@/ai/types';
+import { findFunderById } from '@/db/catalogue';
 import { getDatabase, withAdmin } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { recordAudit } from '@/db/audit';
@@ -40,6 +42,7 @@ export async function addOpportunityAction(
   const userId = await requireUserId();
   const guidance = String(formData.get('guidance') ?? '').trim();
   const sourceUrlRaw = String(formData.get('sourceUrl') ?? '').trim();
+  const pickedFunderId = String(formData.get('funderId') ?? '').trim();
 
   if (guidance.length < MIN_GUIDANCE_CHARS) {
     return {
@@ -83,16 +86,42 @@ export async function addOpportunityAction(
       buildAnalystPrompt(guidance, sourceUrl ?? 'pasted funder guidance'),
     );
     analysis = analystOutputSchema.parse(result.output);
-  } catch {
+  } catch (error) {
+    // SAID, not swallowed. This used to be a bare `catch`, so a dead key, an
+    // outage and a malformed reply all reached the applicant as "we could
+    // not make sense of that guidance" — blaming their paste — and reached
+    // the operator as nothing at all. The name and message only: they carry
+    // schema paths and status codes, never the guidance itself.
+    console.error(
+      '[grantfinderstudio] reading pasted guidance failed:',
+      error instanceof Error ? `${error.name}: ${error.message}` : error,
+    );
+    if (error instanceof AiSchemaError || error instanceof AiRefusalError) {
+      return {
+        ok: false,
+        message:
+          'We could not make sense of that guidance. Nothing has been saved — try pasting the eligibility and deadline sections.',
+      };
+    }
     return {
       ok: false,
       message:
-        'We could not make sense of that guidance. Nothing has been saved — try pasting the eligibility and deadline sections.',
+        'The service that reads guidance did not answer. Nothing has been saved — your text is still here, so try again in a minute, or type the fund in yourself below.',
     };
   }
 
-  // Funders are shared reference data, so this insert takes the admin path.
-  const funderId = await withAdmin((tx) => ensureFunder(tx, analysis.funderName, organisationId));
+  // The funder they came from, when they came from one — so the fund joins
+  // THAT award history, as the page promised, instead of whichever row the
+  // model's spelling of the name happens to match. Looked up with ownership,
+  // because the owner connection bypasses row-level security and the id
+  // arrived from a form. Otherwise the name the analyst read, as before.
+  const funderId = await withAdmin(async (tx) => {
+    if (pickedFunderId !== '') {
+      const picked = await findFunderById(tx, pickedFunderId, organisationId);
+      if (picked !== null) return picked.id;
+    }
+    return ensureFunder(tx, analysis.funderName, organisationId);
+  });
 
   const database = await getDatabase();
   let opportunityId: string;
@@ -117,7 +146,14 @@ export async function addOpportunityAction(
       return opportunity;
     });
     opportunityId = stored.id;
-  } catch {
+  } catch (error) {
+    // Logged for the same reason as the read above: a failure after the
+    // model has already been paid for is the one an operator most needs to
+    // see, and a bare catch showed them nothing.
+    console.error(
+      '[grantfinderstudio] storing a read fund failed:',
+      error instanceof Error ? `${error.name}: ${error.message}` : error,
+    );
     return { ok: false, message: 'We read the guidance but could not save it. Please try again.' };
   }
 

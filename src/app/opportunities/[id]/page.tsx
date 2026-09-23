@@ -5,6 +5,7 @@ import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import {
   loadAwards,
+  loadAwardSources,
   loadCriteria,
   loadOpportunity,
   loadOrganisation,
@@ -18,6 +19,13 @@ import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/compo
 import { Circled } from '@/app/marks';
 
 export const dynamic = 'force-dynamic';
+
+/** "this month", "last month", "3 months ago" — never "1 months ago". */
+function monthsAgo(months: number): string {
+  if (months <= 0) return 'this month';
+  if (months === 1) return 'last month';
+  return `${months} months ago`;
+}
 
 export default async function OpportunityPage({
   params,
@@ -40,6 +48,7 @@ export default async function OpportunityPage({
     if (!organisation || !project) return null;
     const { criteria } = await loadCriteria(tx, opportunity.id);
     const awards = await loadAwards(tx, opportunity.funderId);
+    const awardSources = await loadAwardSources(tx, opportunity.funderId);
     const application = await findApplicationForOpportunity(tx, opportunity.id);
     const drafting = await readDrafting(tx, writerAvailable);
     return {
@@ -47,6 +56,7 @@ export default async function OpportunityPage({
       organisation,
       project,
       awards,
+      awardSources,
       application,
       assessment: assessOpportunity({
         applicant: organisation.profile,
@@ -145,18 +155,24 @@ export default async function OpportunityPage({
               <p style={{ margin: '0 0 0.6rem' }}>{assessment.amountAssessment.message}</p>
             ) : null}
             {behaviour.regions.length > 0 ? (
-              <p style={{ margin: '0 0 0.6rem', fontSize: '0.9rem', color: 'var(--ink-soft)' }}>
+              <p className="hint" style={{ margin: '0 0 var(--s-2)' }}>
                 Most funded areas:{' '}
                 {behaviour.regions
                   .slice(0, 3)
                   .map((r) => `${r.value} (${r.count})`)
                   .join(', ')}
-                . Most recent award {behaviour.monthsSinceMostRecentAward} months ago.
+                . Most recent award {monthsAgo(behaviour.monthsSinceMostRecentAward)}.
               </p>
             ) : null}
-            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--ink-soft)' }}>
-              Source: {opportunity.attribution ?? 'unknown'}
-              {opportunity.licence ? ` · Licence ${opportunity.licence}` : null}
+            {/* THE AWARDS' source, not the fund's. A fund typed in by hand has
+                none, and this line sits under the award evidence — whose
+                licences, mostly CC BY, make attribution a condition of
+                showing it at all. */}
+            <p className="hint" style={{ margin: 0 }}>
+              Source:{' '}
+              {page.awardSources.length === 0
+                ? 'unknown'
+                : page.awardSources.map((d) => `${d.attribution} (${d.licence})`).join('; ')}
             </p>
           </>
         )}

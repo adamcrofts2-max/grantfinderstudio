@@ -53,9 +53,12 @@ const NAV = [
  * behind a sign-in cannot help them. It is on the review page too — a reviewer
  * is having someone else's data shown to them and has no account here at all.
  */
-function SiteFooter() {
+function SiteFooter({ centred = false }: { centred?: boolean }) {
   return (
-    <footer className="site-foot">
+    // Centred on the signed-out pages, whose content is a centred column; in
+    // the signed-in shell it sits under the main column, which is already
+    // where it belongs.
+    <footer className={centred ? 'site-foot site-foot-centred' : 'site-foot'}>
       <a href="/privacy">What we hold about you</a>
       <span aria-hidden="true">·</span>
       <a href="/terms">Terms of use</a>
@@ -104,7 +107,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         ) : session === null || isReview ? (
           <>
             {children}
-            <SiteFooter />
+            {/* Not on the signed-out front door: it has a footer of its own,
+                and the links are in it. Two footers stacked was the first
+                thing the September 2026 walk saw. */}
+            {pathname === '/' ? null : <SiteFooter centred />}
           </>
         ) : (
           <>

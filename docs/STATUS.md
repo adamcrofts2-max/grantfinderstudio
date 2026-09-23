@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,861 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,874 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5691,3 +5691,61 @@ sign-in and writes **0** rows; every page carries `X-Frame-Options: DENY`,
 and the export redirects a request with no session to sign-in. Smoke clean,
 e2e clean at 150 checks — including the owner's export and erasure, and the
 funder flows under the new row-level security.
+
+## Walked end to end as Future Forests CIC
+
+A community tree nursery in Somerset, from the landing page to a recorded
+£24,000 award, on a production build with the realistic 360Giving stub and the
+Anthropic stub, reading every screen as the applicant. The full list, with
+what was fixed and what was not, is on the roadmap under "Walked end to end".
+
+### What held up
+
+The product's spine is sound. The corpus **loaded itself** on page visits —
+243, 422, then 518 grants — with a loading message that says why it takes a
+minute. The default search was built from the applicant's own words. Nine
+funders came back ranked, and opening the first showed the evidence the whole
+product exists for: Greenwood Trust gave £11,500 to *Sowing Roots CIC —
+Community tree nursery, Dorset*. Four pasted questions parsed with their word
+limits. The Critic's findings that quoted words the application does not
+contain were dropped, and the applicant told so. A reviewer with no account
+read the application, left a comment, and it arrived beside the answer it was
+about. The outcome loop read as intended.
+
+### What the walk fixed
+
+Two of them were found only because a failure was finally logged. The paste
+path's bare `catch` had hidden that the **analyst's JSON schema never told the
+model the date format the validator demanded** — `deadline` went out as a bare
+string, the Zod regex wanted YYYY-MM-DD, and a page reading "5pm on 31 January
+2027" could be answered faithfully, rejected twice, and reported to the user as
+guidance we "could not make sense of". `format: 'date'` is a supported
+structured-output keyword (checked against the API reference rather than
+assumed — `pattern` is not), the prompt now says it with that exact example,
+and a test pins the schema to the validator. The same action ignored the funder
+the person had come from.
+
+A deadline typed with its kind left at the default was stored and then called
+unknown — the same "small dishonesty" the code already refused for a rolling
+fund with a date, from the other side. Two budget sentences claimed checks
+nobody ran. The award evidence was attributed to nothing, under a CC BY
+licence. The rest was craft: a landing with two footers (mine), no favicon, a
+table 5px wider than a phone.
+
+### What it found and did not fix
+
+The biggest are decisions, not defects, so they are on the roadmap rather than
+guessed at: **discovery is demoted** to a small link on the very screen after
+setup; **the five facts setup produces are all legal details**, so the Writer
+is offered with nothing true about the work to write from; **a typed fund has no
+eligibility rules and no way to add them**; and **a typed fund can be neither
+edited nor removed**.
+
+### Rig lessons, again
+
+The e2e's own four-funder fixture was the only corpus in the database, so the
+walk had to reset it and let the product load the realistic stub — a walk
+against nine grants would have said nothing. Every time a step "failed" the
+first question was whose fault: twice it was my selector (a hidden
+`reviewerName` beside the visible one; a `<select>` driven like a radio), twice
+the stub, and the rest the product. Only the last kind is on the list above.

@@ -158,7 +158,14 @@ const OUTPUT_JSON_SCHEMA = {
     summary: { type: ['string', 'null'] },
     minAmountGbp: { type: ['number', 'null'] },
     maxAmountGbp: { type: ['number', 'null'] },
-    deadline: { type: ['string', 'null'] },
+    // `format: 'date'` so the MODEL is told what the validator above demands.
+    // Until the September 2026 walkthrough this was a bare string: the Zod
+    // regex required YYYY-MM-DD and nothing the model saw said so, so a
+    // guidance page reading "5pm on 31 January 2027" could be answered
+    // faithfully, rejected twice, and reported to the user as guidance we
+    // "could not make sense of". `format: 'date'` is a supported structured
+    // output keyword; `pattern` is not, and this schema is sent as-is.
+    deadline: { type: ['string', 'null'], format: 'date' },
     deadlineKind: {
       type: 'string',
       enum: ['confirmed', 'rolling', 'expected', 'estimated', 'unknown'],
@@ -222,7 +229,7 @@ const OUTPUT_JSON_SCHEMA = {
 
 export const ANALYST: AgentDefinition<AnalystOutput> = {
   name: 'analyst',
-  promptVersion: '2026-09-07.2',
+  promptVersion: '2026-09-23.1',
   maxTokens: 8000,
   // Reading a rule out of guidance and choosing the right shape for it is
   // judgement, not transcription, so this sits above the Extractor.
@@ -239,7 +246,7 @@ export const ANALYST: AgentDefinition<AnalystOutput> = {
     '2. Every criterion must carry the exact wording it came from in sourceSpan. If you cannot quote it, do not propose it.',
     '3. Prefer omitting a rule to guessing its shape. A missing criterion leaves an honest unknown; a wrong one produces a confident falsehood.',
     '4. Propose a criterion ONLY for a stated REQUIREMENT — something that decides whether an application is accepted at all. A preference or priority is not a requirement: "we are particularly interested in", "we look favourably on", "priority will be given to", "we especially welcome" describe what a funder likes, not who may apply. Put those in summary and propose no criterion, because a criterion is applied as a hard pass or fail and would wrongly exclude an eligible applicant.',
-    '5. deadlineKind is `confirmed` ONLY when an explicit closing date is stated. Use `rolling` when applications are accepted at any time, and `unknown` when no date is given. Never invent a date.',
+    '5. deadlineKind is `confirmed` ONLY when an explicit closing date is stated. Use `rolling` when applications are accepted at any time, and `unknown` when no date is given. Never invent a date. Write any deadline as YYYY-MM-DD — "5pm on 31 January 2027" is 2027-01-31 — and put a closing time, if one is given, in the summary instead.',
     '6. For a legal_form criterion, set cicTreatment from what the guidance actually says. Use `not_stated` when it does not mention community interest companies — that is the common case and it is not a failure.',
     '7. "Registered charities only" is cicTreatment `charity_only`. A requirement for an asset lock is `asset_locked_only`, which is NOT the same thing — every CIC has a statutory asset lock, so that condition is met by all of them.',
     `   The permitted values are exactly: ${CIC_TREATMENTS.join(', ')}.`,

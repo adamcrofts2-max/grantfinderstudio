@@ -286,7 +286,8 @@ export function Landing({ erased = false }: { erased?: boolean }) {
           <p>Grant Finder Studio — funding intelligence for UK community interest companies.</p>
           <p>
             Awarded-grant data from <span className="lp-foot-em">360Giving</span>, used under
-            CC BY 4.0. <a href="/sign-in">Sign in</a>
+            CC BY 4.0. <a href="/privacy">What we hold about you</a> ·{' '}
+            <a href="/terms">Terms of use</a> · <a href="/sign-in">Sign in</a>
           </p>
         </div>
       </footer>

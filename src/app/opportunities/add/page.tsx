@@ -104,7 +104,7 @@ export default async function AddOpportunityPage({
           there IS one hides the better path. */}
       {writerAvailable ? (
         <>
-          <AddOpportunity ready />
+          <AddOpportunity ready funderId={funder?.id} />
           <details className="card" id="by-hand" style={{ marginTop: 'var(--s-5)' }}>
             <summary className="paste-summary">
               <span>Or type it in yourself</span>
@@ -163,7 +163,7 @@ export default async function AddOpportunityPage({
                   service — it is not something you can turn on yourself.
                 </span>
               </p>
-              <AddOpportunity ready={false} />
+              <AddOpportunity ready={false} funderId={funder?.id} />
             </div>
           </details>
         </>

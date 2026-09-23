@@ -35,6 +35,15 @@ function factIds(prompt) {
  * anything the moment a schema changed.
  */
 function fromSchema(schema, context) {
+  // `anyOf` is how a nullable enum has to be written for the real API — it
+  // rejects an enum beside a type array — so the analyst's `jurisdiction` is
+  // one. The stub used to see no `type`, fall through to a string, and fail
+  // the validator; the first non-null branch is the honest answer.
+  const branches = schema?.anyOf ?? schema?.oneOf;
+  if (Array.isArray(branches) && branches.length > 0) {
+    const real = branches.find((b) => b?.type !== 'null') ?? branches[0];
+    return fromSchema(real, context);
+  }
   const type = Array.isArray(schema?.type) ? schema.type.find((t) => t !== 'null') : schema?.type;
 
   if (Array.isArray(schema?.enum) && schema.enum.length > 0) return schema.enum[0];
@@ -63,6 +72,16 @@ function fromSchema(schema, context) {
     case 'null':
       return null;
     default: {
+      // A DATE, when the schema asks for one. The analyst's `deadline` is
+      // pattern-constrained to YYYY-MM-DD, and the generic "<key> from the
+      // stub" failed it — twice, the agent's retry included — so the whole
+      // paste-the-guidance path could not be walked through this stub at
+      // all. Found by the September 2026 walkthrough. Four months ahead, so
+      // it reads as a real deadline rather than one already passed.
+      const pattern = typeof schema?.pattern === 'string' ? schema.pattern : '';
+      if (schema?.format === 'date' || pattern.includes('\\d{4}-\\d{2}-\\d{2}')) {
+        return new Date(Date.now() + 120 * 86_400_000).toISOString().slice(0, 10);
+      }
       // Strings carry the interesting part, so they are named after the field
       // they fill — a draft full of "string" proves nothing about rendering.
       const key = context.key ?? 'text';

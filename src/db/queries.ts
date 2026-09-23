@@ -204,6 +204,31 @@ export async function loadAwards(tx: Queryable, funderId: string): Promise<Award
 }
 
 /**
+ * Where a funder's awards came from, for the line under the evidence.
+ *
+ * The opportunity page used to print the FUND's attribution here — which a
+ * fund typed in by hand does not have — so it read "Source: unknown" directly
+ * under "Based on 58 awarded grants", when every one of those grants carried
+ * its publisher and licence. The licences are mostly CC BY, which is a
+ * condition of showing the data at all. Found by the September 2026
+ * walkthrough.
+ */
+export async function loadAwardSources(
+  tx: Queryable,
+  funderId: string,
+): Promise<Array<{ licence: string; attribution: string }>> {
+  const r = await tx.query<{ licence: string; attribution: string }>(
+    `SELECT DISTINCT d.licence, d.attribution
+       FROM funder_awards a
+       JOIN source_datasets d ON d.id = a.source_dataset_id
+      WHERE a.funder_id = $1
+      ORDER BY d.attribution`,
+    [funderId],
+  );
+  return r.rows;
+}
+
+/**
  * The criteria the eligibility engine is allowed to decide on.
  *
  * Verified only, and this filter is load-bearing. The architecture's rule is

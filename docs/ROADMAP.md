@@ -1163,6 +1163,69 @@ Billing · push/email notifications (superseded in part: the tracker exports to 
 calendar, which reminds them without us building a channel) · post-award reporting · human marketplace · predictive matching ·
 integrations · public API · white label · learned organisational voice · theory-of-change generation
 
+## Walked end to end as Future Forests CIC (2026-09-23)
+
+Sign-up to a recorded award, on a production build with the realistic
+360Giving stub (518 grants, loaded by the product itself on page visits) and
+the Anthropic stub. Fixed during the walk:
+
+- [x] The analyst's JSON schema said `deadline: string`; the validator demanded
+      YYYY-MM-DD and nothing told the model. `format: 'date'`, the format in the
+      prompt, prompt version bumped
+- [x] The paste-guidance action swallowed every failure in a bare `catch`, blaming
+      the applicant's text; both catches now log, and an outage says so
+- [x] The paste path ignored the funder the person came from; it now carries it
+- [x] A date typed with the kind left at "I do not know yet" was stored and then
+      reported as "We do not know this fund's deadline"; now asked, not dropped
+- [x] "Source: unknown" under the award evidence — it printed the fund's
+      attribution; now the awards' own (360Giving, CC BY 4.0)
+- [x] "The budget is consistent with the funder's rules" said of a fund with no
+      rules; both budget lines now say only what was checked
+- [x] "Readiness — 100%" stood alone while eligibility was uncounted; now caveated
+      with the component's own reason
+- [x] Two footers on the landing (introduced by the data-rights work); centred
+      footer on the other signed-out pages
+- [x] No favicon: a 404 on every page and a blank tab; the brand mark as `icon.svg`
+- [x] The budget table overflowed a 390px screen by 5px
+- [x] "1 months ago", "across the 1 a funder actually decided"
+- [x] The Anthropic stub could not walk the paste path (ignored date formats and
+      `anyOf`); both handled
+
+Found, not fixed — most need a product decision:
+
+- [ ] **Discovery should lead.** After setup the next step is "Add a fund you are
+      considering"; the user came to FIND funding and has none. "See who funds work
+      like yours" — the landing's headline promise — is a small underlined link
+- [ ] **Setup's five facts are all legal details.** The Writer's five-fact gate is
+      met by name, form, number, date and area; nothing about the work. Lead from
+      setup to "what do you do, for whom, how many"
+- [ ] **No way to enter eligibility rules by hand.** A typed fund gets none, so
+      without an AI key "Weigh what you found" is mostly unavailable
+- [ ] **A typed fund can be neither edited nor removed.** "Remove" exists only on
+      the paste path's review screen; a mistake means a duplicate forever
+- [ ] **The draft does not show what the landing promises**: per-sentence fact
+      labels. It shows one count line ("all 2 claims traced")
+- [ ] **The trail goes cold at a funder with no website**: offer a "find their
+      funding page" search link
+- [ ] Say why /grants orders funders as it does; one vocabulary for the last
+      clause (verdict or range, not both); fit badges as on /funders
+- [ ] Dates as ISO in several places — grant rows, the fund card, the application
+      header, the reviewer page, the facts page, "last retrieved"
+- [ ] Placeholders that read as values ("Somerset", "Youth worker…", "18000")
+- [ ] The answer box is monospace; two primary buttons per question; the copy
+      preview repeats the box
+- [ ] "Only if…" as a verdict badge; "Draft again" on answers the user wrote;
+      "all 2 claims"; "100%" twice on the readiness card
+- [ ] "Remove this fund" with no confirmation; after "Add this fund" you stay on
+      the full form with a one-line success
+- [ ] "Find your company" stays in the nav after setup, with "Your organisation"'s icon
+- [ ] Stale hint under "Kind of cost" (Overheads text while Staff is chosen)
+- [ ] "Who benefits" is people only; an environmental CIC has nothing to tick
+- [ ] Rows saved before the deadline fix still read "date not confirmed" beside
+      "No deadline recorded" on the tracker
+- [ ] The landing's hard-coded "In build — the corpus is being loaded" note: remove
+      once the deployed corpus has loaded
+
 ## Found by walking the site as a user (2026-09-15)
 
 Fifteen findings, four fixed in the same pass. The eleven below are friction

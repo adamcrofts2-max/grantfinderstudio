@@ -57,6 +57,12 @@ export interface ReadinessInput {
   evidenceProvided: number;
   budgetSubmittable: boolean;
   budgetHasLines: boolean;
+  /**
+   * Whether any verified funder rule was checked against the budget. Absent
+   * means no: the weaker sentence is the default, so a caller that forgets
+   * this cannot make the card claim a check nobody ran.
+   */
+  budgetRulesChecked?: boolean;
   outcomesDefined: number;
   attachmentsRequired: number;
   attachmentsProvided: number;
@@ -187,7 +193,12 @@ export function assessReadiness(input: ReadinessInput): ReadinessResult {
     detail: !input.budgetHasLines
       ? 'No budget has been built yet.'
       : input.budgetSubmittable
-        ? 'The budget is consistent with the funder’s rules.'
+        ? // "Consistent with the funder's rules" was said even when the funder
+          // had none on record, so the only check made was the total. Found
+          // by the September 2026 walk, on a fund typed in by hand.
+          input.budgetRulesChecked === true
+          ? 'The budget is consistent with the funder’s rules.'
+          : 'The budget adds up to what you are asking for. There are no funder rules on record to check it against.'
         : 'The budget has problems that would be noticed by an assessor.',
   });
   if (input.budgetHasLines && !input.budgetSubmittable) {

@@ -236,6 +236,7 @@ export default async function ApplicationPage({
     evidenceProvided: 0,
     budgetSubmittable: budget.isSubmittable,
     budgetHasLines: budgetLines.length > 0,
+    budgetRulesChecked: funderRules.known.length > 0,
     outcomesDefined: outcomes.length,
     attachmentsRequired: 0,
     attachmentsProvided: 0,
@@ -319,6 +320,20 @@ export default async function ApplicationPage({
             <p className="card-sub" style={{ marginTop: 'var(--s-1)' }}>
               How complete this is, not how likely it is to win.
             </p>
+            {/* A green 100% beside an eligibility check nobody could run read
+                as "good to go" for a fund with no rules on record — found on
+                the September 2026 walk. The number stays; it just does not
+                stand alone. */}
+            {readiness.components.find((c) => c.id === 'eligibility')?.score === null ? (
+              <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
+                <span aria-hidden="true">⚠</span>
+                <span>
+                  This does not include eligibility.{' '}
+                  {readiness.components.find((c) => c.id === 'eligibility')?.detail} Whether
+                  you can apply at all is still for you to check with the funder.
+                </span>
+              </p>
+            ) : null}
           </div>
           <span className="metric-value">{readiness.percent}%</span>
         </div>

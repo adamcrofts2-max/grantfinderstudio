@@ -19,6 +19,31 @@ const complete: ReadinessInput = {
   answersOverWordLimit: 0,
 };
 
+const budget = (input: ReadinessInput) =>
+  assessReadiness(input).components.find((c) => c.id === 'budget')?.detail ?? '';
+
+describe('what the budget line claims was checked', () => {
+  /**
+   * Found by the September 2026 walk: a fund typed in by hand has no rules on
+   * record, the only check made was the total, and the card still said "The
+   * budget is consistent with the funder's rules".
+   */
+  it('claims consistency with the rules only when rules were checked', () => {
+    expect(budget({ ...complete, budgetRulesChecked: true })).toMatch(/consistent with the funder/u);
+  });
+
+  it('says only what was checked when there were no rules', () => {
+    const line = budget({ ...complete, budgetRulesChecked: false });
+    expect(line).not.toMatch(/funder’s rules\./u);
+    expect(line).toMatch(/adds up to what you are asking for/u);
+    expect(line).toMatch(/no funder rules on record/u);
+  });
+
+  it('defaults to the weaker claim when a caller does not say', () => {
+    expect(budget(complete)).toMatch(/no funder rules on record/u);
+  });
+});
+
 describe('assessReadiness', () => {
   it('reports a complete application as fully ready', () => {
     const r = assessReadiness(complete);

@@ -1854,6 +1854,7 @@ summary:focus-visible {
   color: var(--ink-faint); font-size: var(--t-sm);
 }
 .site-foot a { color: var(--ink-soft); }
+.site-foot-centred { justify-content: center; }
 .site-foot a:hover { color: var(--ink); }
 
 /* The generated notice. One card per table, because the unit of the document
@@ -2003,6 +2004,18 @@ summary:focus-visible {
 }
 /* Money lines up, so the column can be read as a column. */
 .budget-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The last column needs no gutter after it, and on a phone four columns of
+   --s-3 gutter pushed "Remove" 5px past a 390px screen, so the whole
+   application page slid sideways under a thumb. Found on the September 2026
+   walk. */
+.budget-table th:last-child,
+.budget-table td:last-child { padding-right: 0; }
+@media (max-width: 640px) {
+  .budget-table th,
+  .budget-table td { padding-right: var(--s-2); }
+  .budget-table th:last-child,
+  .budget-table td:last-child { padding-right: 0; }
+}
 .budget-table .muted { color: var(--ink-soft); }
 .budget-table tfoot th,
 .budget-table tfoot td { font-weight: 650; border-bottom: none; padding-top: var(--s-4); }

@@ -139,6 +139,21 @@ export function readManualFund(input: ManualFundInput): ManualFundResult {
     errors['deadline'] =
       'You have said applications are rolling, which means there is no closing date. Clear the date, or choose the kind that matches it.';
   }
+  /**
+   * The same dishonesty from the other side. The dropdown defaults to
+   * "I do not know yet", so typing the date and leaving the dropdown alone —
+   * the obvious thing to do — saved the date as unknown, and the fund then
+   * said "We do not know this fund's deadline" about a date the person had
+   * just given it. Found by the September 2026 walkthrough.
+   *
+   * Asked, not guessed: whether a date is the funder's own, expected, or
+   * somebody's estimate is exactly the distinction this field exists to keep,
+   * and picking "confirmed" for them would state more certainty than we have.
+   */
+  if (deadlineKind === 'unknown' && deadline !== '') {
+    errors['deadlineKind'] =
+      'You have given a date. Say where it comes from — the funder published it, it is expected, or it is your estimate — so we know how far to trust it.';
+  }
 
   const jurisdictionRaw = input.jurisdiction.trim();
   const jurisdiction: Jurisdiction | null =

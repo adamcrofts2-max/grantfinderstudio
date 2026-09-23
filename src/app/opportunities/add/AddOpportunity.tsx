@@ -13,7 +13,18 @@ import { IDLE } from './state';
  * fund is the design rather than a gap in it. Saying so plainly is better than
  * an empty search box that implies a database we do not have.
  */
-export function AddOpportunity({ ready = true }: { ready?: boolean }) {
+export function AddOpportunity({
+  ready = true,
+  funderId,
+}: {
+  ready?: boolean;
+  /**
+   * The funder the person arrived from, when they did. Carried so the fund
+   * joins THAT funder's award history rather than whichever row the model's
+   * spelling of the name happens to match.
+   */
+  funderId?: string | undefined;
+}) {
   const [state, add, adding] = useActionState(addOpportunityAction, IDLE);
   const [guidance, setGuidance] = useState('');
 
@@ -21,6 +32,7 @@ export function AddOpportunity({ ready = true }: { ready?: boolean }) {
 
   return (
     <form className="card" action={add}>
+      {funderId === undefined ? null : <input name="funderId" type="hidden" value={funderId} />}
       <h2 className="card-title">Paste the funder’s guidance</h2>
       <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
         The eligibility section and the deadline are the parts that matter. We turn them into

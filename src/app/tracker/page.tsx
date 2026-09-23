@@ -473,9 +473,16 @@ export default async function TrackerPage() {
                 </p>
                 {outcomes.askedGbp > 0 ? (
                   <p className="hint" style={{ marginTop: 'var(--s-2)' }}>
-                    Against {gbp(outcomes.askedGbp)} asked for across the{' '}
-                    {outcomes.awarded + outcomes.rejected} a funder actually decided.
-                    Applications nobody answered are left out of both halves.
+                    {/* One decided application read "across the 1 a funder
+                        actually decided" — found on the September 2026 walk. */}
+                    {outcomes.awarded + outcomes.rejected === 1
+                      ? `Against the ${gbp(outcomes.askedGbp)} you asked for.`
+                      : `Against ${gbp(outcomes.askedGbp)} asked for across the ${
+                          outcomes.awarded + outcomes.rejected
+                        } applications a funder actually decided.`}
+                    {outcomes.noReply > 0
+                      ? ' Applications nobody answered are left out of both halves.'
+                      : null}
                   </p>
                 ) : null}
               </section>

@@ -165,6 +165,42 @@ describe('ANALYST definition', () => {
   });
 });
 
+describe('the deadline, as the model is asked for it and as it is checked', () => {
+  /**
+   * Found by the September 2026 walkthrough. The validator required
+   * YYYY-MM-DD and the schema the model saw said only "string", so a page
+   * reading "5pm on 31 January 2027" could be answered faithfully, rejected
+   * twice, and reported to the applicant as guidance we "could not make sense
+   * of". The two halves must say the same thing.
+   */
+  const deadline = (
+    ANALYST.outputSchema as { properties: Record<string, { type: unknown; format?: string }> }
+  ).properties['deadline'];
+
+  it('tells the model it is a date, in a keyword structured outputs supports', () => {
+    expect(deadline?.format).toBe('date');
+    // `pattern` is not a supported structured-output keyword, and this
+    // schema is sent as-is, so it must not be the way the date is described.
+    expect(deadline).not.toHaveProperty('pattern');
+  });
+
+  it('still lets the model say there is no deadline', () => {
+    expect(deadline?.type).toEqual(['string', 'null']);
+  });
+
+  it('says the format in the prompt too, with the example that used to fail', () => {
+    expect(ANALYST.system).toContain('YYYY-MM-DD');
+    expect(ANALYST.system).toContain('2027-01-31');
+  });
+
+  it('accepts what `format: date` produces and refuses the prose form', () => {
+    const base = analystOutputSchema.shape;
+    expect(base.deadline.safeParse('2027-01-31').success).toBe(true);
+    expect(base.deadline.safeParse(null).success).toBe(true);
+    expect(base.deadline.safeParse('31 January 2027').success).toBe(false);
+  });
+});
+
 describe('preferences are not requirements', () => {
   it('tells the model that a preference must not become a criterion', () => {
     // Found live: the Analyst turned "we are particularly interested in young
