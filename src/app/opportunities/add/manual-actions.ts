@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { getDatabase, withAdmin } from '@/db';
 import { ensureFunderNamed, findFunderById, insertManualFund } from '@/db/catalogue';
 import { readManualFund } from '@/domain/opportunity/manual';
-import { requireOrganisationId } from '@/app/session';
+import { requireOrganisationId, requireUserId } from '@/app/session';
+import { recordAudit } from '@/db/audit';
 import { MANUAL_FUND_FIELDS, type ManualFundFormState } from '@/app/manualFundState';
 import { NO_VALUES, readValues } from '@/app/formValues';
 
@@ -29,6 +30,7 @@ export async function addOwnFundAction(
   formData: FormData,
 ): Promise<ManualFundFormState> {
   const organisationId = await requireOrganisationId();
+  const userId = await requireUserId();
 
   const read = (name: string): string => String(formData.get(name) ?? '');
   const values = readValues(formData, MANUAL_FUND_FIELDS);
@@ -80,9 +82,19 @@ export async function addOwnFundAction(
       );
     });
     const database = await getDatabase();
-    opportunityId = await database.withTenant(organisationId, (tx) =>
-      insertManualFund(tx, fund, funderId, organisationId),
-    );
+    opportunityId = await database.withTenant(organisationId, async (tx) => {
+      const id = await insertManualFund(tx, fund, funderId, organisationId);
+      // The paste route has always recorded this; typing a fund in did not,
+      // so the trail showed funds being changed and removed that it never
+      // saw arrive.
+      await recordAudit(tx, organisationId, {
+        userId,
+        action: 'opportunity.added',
+        entityId: id,
+        metadata: { funderName: fund.funderName },
+      });
+      return id;
+    });
   } catch (error) {
     console.error('[grantfinderstudio] could not add a fund by hand:', error);
     return {

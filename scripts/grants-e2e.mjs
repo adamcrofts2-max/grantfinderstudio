@@ -1231,6 +1231,120 @@ try {
 
     await oppLink.click();
     await page.waitForLoadState('networkidle');
+    const fundUrl = page.url();
+
+    // --- rules for a fund typed in by hand ---------------------------------
+    //
+    // A typed fund had no rules and no way to get any, so its eligibility
+    // could only ever read "we cannot yet tell" — without an API key, the
+    // product's middle step was mostly unavailable.
+    const bare = await page.locator('body').innerText();
+    if (!/no eligibility rules yet/i.test(bare)) fail('a typed fund with no rules does not say so');
+    else ok('a typed fund with no rules says so');
+    const addRules = page.locator('a', { hasText: /Add their rules/i }).first();
+    if (!(await addRules.count())) fail('no way to add rules to a typed fund');
+    else {
+      await addRules.click();
+      await page.waitForLoadState('networkidle');
+      const addRule = async (kind, fill) => {
+        await page.selectOption('select[name="kind"]', kind);
+        await fill();
+        await page.locator('button', { hasText: /Add this rule/i }).click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1200);
+      };
+      // One the e2e organisation meets (it is in Somerset) and one it cannot
+      // (incorporated in 2021), so the verdict has to move both ways.
+      await addRule('region', () => page.fill('input[name="regions"]', 'Somerset, Devon'));
+      await addRule('organisation_age', () => page.fill('input[name="minYears"]', '10'));
+      const edit = await page.locator('body').innerText();
+      if (!/Only in Somerset and Devon/.test(edit) || !/Existing for at least 10 years/.test(edit)) {
+        fail(`the typed rules are not listed: ${edit.slice(0, 300)}`);
+      } else ok('rules typed from the guidance are listed on the fund');
+
+      // A rule with no terms is refused, not stored.
+      await page.selectOption('select[name="kind"]', 'amount');
+      await page.locator('button', { hasText: /Add this rule/i }).click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(800);
+      if (!/a range with neither is not a rule/i.test(await page.locator('body').innerText())) {
+        fail('an amount rule with no amounts was not refused');
+      } else ok('a rule with no terms is refused and says why');
+
+      await page.goto(fundUrl, { waitUntil: 'networkidle' });
+      const judged = await page.locator('body').innerText();
+      if (!/Somerset is within the funder/.test(judged)) fail('the typed area rule was not applied');
+      else ok('the typed area rule is checked, and passes');
+      if (!/You are not eligible for this fund/.test(judged)) {
+        fail('a typed rule the organisation fails did not make it ineligible');
+      } else ok('a typed rule the organisation fails makes the fund ineligible');
+
+      await page.goto(fundUrl + '/edit', { waitUntil: 'networkidle' });
+      await page
+        .locator('li.rule-in-use', { hasText: /10 years/ })
+        .locator('button', { hasText: /Stop using this/i })
+        .click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      await page.goto(fundUrl, { waitUntil: 'networkidle' });
+      if (/You are not eligible for this fund/.test(await page.locator('body').innerText())) {
+        fail('taking a rule out of use did not change the verdict');
+      } else ok('taking a rule out of use changes the verdict back');
+
+      // --- and the fund's own details can be corrected --------------------
+      await page.goto(fundUrl + '/edit', { waitUntil: 'networkidle' });
+      await page.locator('#details summary').click();
+      const title = page.locator('#details input[name="title"]');
+      if ((await title.inputValue()) !== 'Community Grants Programme') {
+        fail('the details form does not open on the fund as it is');
+      } else ok('the details form opens on the fund as it is');
+      await title.fill('Community Grants Programme 2027');
+      await page.locator('#details button', { hasText: /Save changes/i }).click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      await page.goto(fundUrl, { waitUntil: 'networkidle' });
+      if (!/Community Grants Programme 2027/.test(await page.locator('h1').innerText())) {
+        fail('a corrected title did not take');
+      } else ok('a typed fund can be corrected');
+
+      // Back to no rules. The readiness checks further down are about a fund
+      // with nothing published on who may apply, and they stay about that.
+      await page.goto(fundUrl + '/edit', { waitUntil: 'networkidle' });
+      await page
+        .locator('li.rule-in-use', { hasText: /Somerset/ })
+        .locator('button', { hasText: /Stop using this/i })
+        .click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      if (!/No rules yet/.test(await page.locator('#rules').innerText())) {
+        fail('the last rule would not come out of use');
+      } else ok('and every rule can be taken out again');
+    }
+
+    // --- and a fund added by mistake can be removed ------------------------
+    await page.goto(`${B}/opportunities/add`, { waitUntil: 'networkidle' });
+    await page.fill('input[name="funderName"]', 'Stub Trust 1');
+    await page.fill('input[name="title"]', 'A fund added by mistake');
+    await page.locator('button').filter({ hasText: /Add this fund/iu }).first().click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1200);
+    const openIt = page.locator('a', { hasText: /Open it/i }).first();
+    if (!(await openIt.count())) fail('adding a second fund offered no way to it');
+    else {
+      await openIt.click();
+      await page.waitForLoadState('networkidle');
+      await page.goto(page.url() + '/edit', { waitUntil: 'networkidle' });
+      await page.locator('#remove summary').click();
+      await page.locator('#remove button', { hasText: /Remove the fund/i }).click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      await page.goto(`${B}/`, { waitUntil: 'networkidle' });
+      if (/A fund added by mistake/.test(await page.locator('body').innerText())) {
+        fail('a removed fund is still on the list');
+      } else ok('a fund added by mistake can be removed');
+    }
+    await page.goto(fundUrl, { waitUntil: 'networkidle' });
+
     const startApp = page.locator('a, button').filter({ hasText: /Start an application/iu }).first();
     if (!(await startApp.count())) fail('no way to start an application from a fund');
     else {
@@ -1268,6 +1382,29 @@ try {
         .evaluate((el) => el.value);
       if (/young people aged 14 to 19/u.test(kept)) ok('and is still there after a reload');
       else fail('a saved answer did not survive a reload');
+
+      // --- removing the fund would take this application with it ------------
+      //
+      // Applications cascade from their fund, and the answers are the
+      // person's own writing. The form asks for a tick; the server must
+      // refuse without one, so the tick is taken off and the form sent.
+      const appUrl = page.url();
+      await page.goto(fundUrl + '/edit', { waitUntil: 'networkidle' });
+      await page.locator('#remove summary').click();
+      const warning = await page.locator('#remove').innerText();
+      if (!/your application for it goes too/i.test(warning) || !/1 of 2 questions answered/.test(warning)) {
+        fail(`removing a fund with an application does not say what goes: ${warning.slice(0, 200)}`);
+      } else ok('removing a fund says its application, and how far along, goes too');
+      await page.locator('#remove input[name="alsoApplication"]').evaluate((el) => {
+        el.required = false;
+      });
+      await page.locator('#remove button', { hasText: /Remove the fund/i }).click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      await page.goto(appUrl, { waitUntil: 'networkidle' });
+      if (!/young people aged 14 to 19/u.test(await page.locator('textarea[name="content"]').first().inputValue())) {
+        fail('the server removed a fund and its application without the tick');
+      } else ok('without the tick, the server keeps the fund and the application');
 
       // --- the budget ------------------------------------------------------
       //

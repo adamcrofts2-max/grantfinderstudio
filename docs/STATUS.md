@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,907 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 156 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,946 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 168 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5823,3 +5823,68 @@ stage as its own page. Looked at by hand at 1280px and 390px (no sideways
 scroll): the answer boxes are set as prose rather than the answer box's
 monospace, and "Why we ask" — about legal form — only appears while legal
 details are what is being asked.
+
+## A fund you added: its rules, its details, and removing it
+
+Items 3 and 4 of the Future Forests walk. A fund typed in by hand had no
+eligibility rules and no way to get any — reading guidance with a model was
+the only route that ever produced one — so without an API key its verdict could
+only be "we cannot yet tell". And it could be neither corrected nor removed.
+
+### Rules by hand
+
+`src/domain/eligibility/hand-rule.ts` reads a rule the person builds: they
+choose the kind — all ten the engine evaluates — and fill in its terms, and it
+checks the terms are complete and consistent (a range needs an end and its ends
+in order; a legal-form rule "with conditions" needs the conditions; nations and
+kinds of cost only from their fixed lists; areas split however they were typed).
+It produces a label and params in exactly the shape `mapCriterion` accepts, so
+the engine treats a typed rule and an extracted one alike — proved per kind in
+`src/db/own-funds.test.ts` by storing it, mapping it back and evaluating it.
+`manual.ts`'s refusal to derive rules from a fund's free-text notes still
+stands; this is a separate, explicit act.
+
+Stored as `proposed_by = 'user'` and verified by the person on the way in, as
+typed facts are. Taking a rule out of use DELETES a typed one and SETS ASIDE one
+read from guidance (rejected by this person, now), keeping the funder's
+sentence and stopping the review screen offering it again. Beneficiary groups
+are ticked from the list the project uses, since the engine matches on those.
+
+### Editing and removing
+
+`/opportunities/[id]/edit` — a 404 for anything this organisation did not add,
+shared catalogue funds included — carries the rules, the fund's details (the
+same `ManualFundForm`, pre-filled, with a bound `editOwnFundAction`; the funder
+is re-resolved only if its name changed), and removal. `src/db/own-funds.ts`
+scopes every statement to `added_by_organisation_id = current_setting(...)` as
+well as RLS, so an attempt on somebody else's fund REPORTS that it changed
+nothing rather than saying "saved". No migration: 0004's `own_write` policies
+already allowed it.
+
+Removing a fund cascades to its application, and the answers are the person's
+own writing. `RemoveFund` (also now on the paste review screen, replacing a
+bare one-click button) says what goes, including "your application for it goes
+too: 1 of 2 questions answered", and asks for a tick that
+`deleteOpportunityAction` requires on the server. Typed funds are now audited
+when added (`opportunity.added`, which only the paste route wrote);
+`opportunity.edited`, `criterion.added` and `criterion.removed` are new, with
+the rule's KIND in metadata and never its terms.
+
+One bug caught by the e2e before it shipped: "Add a rule" was a disclosure open
+only while there were no rules, so saving the first rule re-rendered it closed
+and the second had no form. It is not folded any more.
+
+### Checked
+
+`npm run verify`: 1,946 tests (8 skipped), lint clean, build clean;
+`npm run smoke` clean. `npm run e2e`: clean at 168 checks — a typed fund says it
+has no rules; an area rule it meets and an age rule it cannot are added and
+listed; an amount rule with no amounts is refused with its reason; the fund page
+applies both and reads ineligible; taking the age rule out changes the verdict
+back; the details form opens on the fund as it is and a corrected title takes;
+a second fund added by mistake is removed; and with an application started, the
+removal names it, and — with the tick stripped from the form — the server keeps
+both. Looked at by hand at 1280px and 390px, no sideways scroll; "Stop using
+this" no longer wraps to three lines on a phone, and a typed rule no longer
+repeats its own label underneath.
+

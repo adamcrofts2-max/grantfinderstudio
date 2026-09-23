@@ -1,4 +1,5 @@
 import { categoryLabel, isCostCategory } from '../budget/categories.js';
+import { HAND_RULE_QUESTION, isHandRuleKind } from '../eligibility/hand-rule.js';
 
 /**
  * What an audit trail is allowed to say happened.
@@ -71,9 +72,12 @@ export const AUDIT_ACTIONS = {
 
   // Funds and their rules
   'opportunity.added': 'Fund added',
+  'opportunity.edited': 'Fund details changed',
   'opportunity.removed': 'Fund removed',
   'criterion.verified': 'Eligibility rule verified',
   'criterion.rejected': 'Eligibility rule rejected',
+  'criterion.added': 'Eligibility rule added by hand',
+  'criterion.removed': 'Eligibility rule taken out of use',
 
   // Documents
   'document.uploaded': 'Document uploaded',
@@ -193,6 +197,13 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
       ]
         .filter((part) => part !== null)
         .join(' · ');
+    }
+    case 'criterion.added':
+    case 'criterion.removed': {
+      // The KIND, never the terms: which areas, what amount — the kind is the
+      // shape of the change, and the rule itself is on the fund's own page.
+      const kind = str('kind');
+      return kind !== null && isHandRuleKind(kind) ? HAND_RULE_QUESTION[kind] : '';
     }
     case 'document.uploaded':
       return str('filename') ?? '';

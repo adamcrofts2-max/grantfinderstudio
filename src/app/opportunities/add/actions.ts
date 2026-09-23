@@ -8,6 +8,7 @@ import { ANALYST, analystOutputSchema, buildAnalystPrompt } from '@/ai/agents/an
 import { runAgent } from '@/ai/run';
 import { AiRefusalError, AiSchemaError } from '@/ai/types';
 import { findFunderById } from '@/db/catalogue';
+import { findApplicationForOpportunity } from '@/db/workspace';
 import { getDatabase, withAdmin } from '@/db';
 import { requireOrganisationId, requireUserId } from '@/app/session';
 import { recordAudit } from '@/db/audit';
@@ -213,7 +214,12 @@ export async function deleteOpportunityAction(formData: FormData): Promise<void>
   if (id === '') return;
 
   const database = await getDatabase();
-  await database.withTenant(organisationId, async (tx) => {
+  const removed = await database.withTenant(organisationId, async (tx) => {
+    // The application goes with the fund (it cascades), and its answers are
+    // the person's own writing. The form asks for that to be ticked; this is
+    // where the tick is actually required, because a form is only a request.
+    const application = await findApplicationForOpportunity(tx, id);
+    if (application !== null && formData.get('alsoApplication') !== 'yes') return false;
     // BEFORE the delete: `audit_logs.application_id` cascades from
     // `applications`, and deleting the opportunity takes its applications
     // with it. The line about the deletion is organisation-level, so it
@@ -223,10 +229,16 @@ export async function deleteOpportunityAction(formData: FormData): Promise<void>
       userId,
       action: 'opportunity.removed',
       entityId: id,
+      metadata: { withApplication: application !== null },
     });
     await deletePastedOpportunity(tx, id, organisationId);
+    return true;
   });
+  if (!removed) {
+    redirect(`/opportunities/${id}/edit#remove`);
+  }
   revalidatePath('/');
+  revalidatePath('/tracker');
   // Outside the transaction: `redirect` throws, and throwing inside
   // `withTenant` would roll back the delete it was announcing.
   redirect('/');

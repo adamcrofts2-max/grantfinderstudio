@@ -1213,10 +1213,19 @@ Found, not fixed — most need a product decision:
       the other
 - [ ] The Draft button still drafts when nothing about the work is confirmed; the
       gate governs estimates and setup, not the button. Say so beside it
-- [ ] **No way to enter eligibility rules by hand.** A typed fund gets none, so
-      without an AI key "Weigh what you found" is mostly unavailable
-- [ ] **A typed fund can be neither edited nor removed.** "Remove" exists only on
-      the paste path's review screen; a mistake means a duplicate forever
+- [x] **No way to enter eligibility rules by hand.** A fund you added now has
+      `/opportunities/[id]/edit`, where every kind the engine evaluates can be
+      entered from the guidance (optionally with the funder's sentence), stored
+      verified in the extracted shape, and taken out of use again; the fund page
+      says "no eligibility rules yet — Add their rules" (2026-09-23)
+- [x] **A typed fund can be neither edited nor removed.** The same page corrects
+      its details (pre-filled; renaming the funder re-resolves it) and removes
+      it — behind a confirmation that names the application going with it, and
+      that the server refuses without the tick (2026-09-23)
+- [ ] A fund's typed "smallest / largest grant" is not itself an eligibility
+      rule; the same range has to be entered again as an amount rule to be checked
+- [ ] An area rule matches the profile's area exactly ("Somerset" is not
+      "Wells, Somerset"); say so on the form, or match on containment
 - [ ] **The draft does not show what the landing promises**: per-sentence fact
       labels. It shows one count line ("all 2 claims traced")
 - [ ] **The trail goes cold at a funder with no website**: offer a "find their
@@ -1230,8 +1239,8 @@ Found, not fixed — most need a product decision:
       preview repeats the box
 - [ ] "Only if…" as a verdict badge; "Draft again" on answers the user wrote;
       "all 2 claims"; "100%" twice on the readiness card
-- [ ] "Remove this fund" with no confirmation; after "Add this fund" you stay on
-      the full form with a one-line success
+- [x] "Remove this fund" with no confirmation — now folded behind one, see above
+- [ ] After "Add this fund" you stay on the full form with a one-line success
 - [ ] "Find your company" stays in the nav after setup, with "Your organisation"'s icon
 - [ ] Stale hint under "Kind of cost" (Overheads text while Staff is chosen)
 - [ ] "Who benefits" is people only; an environmental CIC has nothing to tick

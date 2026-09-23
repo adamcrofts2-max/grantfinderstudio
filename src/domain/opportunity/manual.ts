@@ -11,9 +11,11 @@
  * evaluates rules; typing "we fund charities in the South West" into a box
  * does not make a rule, and inventing one from it would be the product
  * guessing on a person's behalf about the thing it exists to be certain
- * about. A hand-entered fund is therefore honest about being unassessed: it
- * carries a deadline, a size and a link, and its eligibility reads `unknown`,
- * which is a first-class answer here rather than a gap.
+ * about. A hand-entered fund therefore arrives unassessed: it carries a
+ * deadline, a size and a link, and its eligibility reads `unknown` until it
+ * has rules. Rules are added as a separate, explicit act — the person choosing
+ * the kind and its terms from the funder's guidance (`eligibility/hand-rule.ts`)
+ * — never derived from what was typed here.
  *
  * Pure and zero I/O, like the rest of the domain.
  */

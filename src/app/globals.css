@@ -1893,6 +1893,36 @@ summary:focus-visible {
 .erase-counts li { display: flex; justify-content: space-between; gap: var(--s-4); padding: 2px 0; }
 .erase-counts .erase-n { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 
+/* ---------- A fund of your own: its rules ----------------------------------
+   The rules the engine applies, each with where it came from and a quiet way
+   to stop using it, then the form for the next one. */
+.rules-in-use { list-style: none; margin: var(--s-4) 0 0; padding: 0; }
+.rule-in-use {
+  display: flex; gap: var(--s-4); align-items: flex-start; justify-content: space-between;
+  border-top: 1px solid var(--line); padding: var(--s-3) 0;
+}
+.rule-in-use-body { min-width: 0; flex: 1 1 auto; }
+.rule-in-use-label { margin: var(--s-1) 0 0; font-weight: 600; }
+.rule-in-use .hint { margin: var(--s-1) 0 0; }
+/* One line, however narrow: wrapped to three words stacked, it read as three
+   separate links on a phone. */
+.rule-in-use form { flex: none; }
+.rule-in-use .link-quiet { white-space: nowrap; }
+.rule-add { margin-top: var(--s-5); border-top: 1px solid var(--line); padding-top: var(--s-4); }
+.rule-add-title { margin: 0; font-size: var(--t-md); font-weight: 650; }
+.rule-form { display: grid; gap: var(--s-4); padding-top: var(--s-3); }
+.rule-form .notice { margin: 0; }
+.rule-form .btn { justify-self: start; }
+/* The funder's sentence, quoted: prose, like a comment, not answer text. */
+.rule-form textarea.input { min-height: 4.5rem; font-family: inherit; }
+.rule-choices { border: 0; padding: 0; margin: 0; display: grid; gap: var(--s-2); }
+.rule-choice {
+  display: flex; gap: var(--s-2); align-items: flex-start;
+  font-size: var(--t-sm); color: var(--ink); line-height: 1.45;
+}
+.rule-choice input { margin-top: 0.2rem; flex: none; }
+.input-short { max-width: 8rem; }
+
 /* ---------- Recording what the funder said --------------------------------
    The form sits INSIDE the tracker row it belongs to, closed, so a page of
    applications waiting on funders is not a page of open forms. */

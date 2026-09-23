@@ -12,6 +12,7 @@ import {
   loadProject,
 } from '@/db/queries';
 import { findApplicationForOpportunity } from '@/db/workspace';
+import { loadOwnFund } from '@/db/own-funds';
 import { isWriterAvailable, readDrafting } from '@/app/drafting';
 import { startApplicationAction } from '@/app/applications/actions';
 import { applicationFeaturesFor } from '@/demo/seed';
@@ -51,7 +52,12 @@ export default async function OpportunityPage({
     const awardSources = await loadAwardSources(tx, opportunity.funderId);
     const application = await findApplicationForOpportunity(tx, opportunity.id);
     const drafting = await readDrafting(tx, writerAvailable);
+    // Whether this organisation ADDED it — not whether it can see it, which
+    // is also true of every shared catalogue fund.
+    const own = (await loadOwnFund(tx, opportunity.id)) !== null;
     return {
+      own,
+      ruleCount: criteria.length,
       opportunity,
       organisation,
       project,
@@ -75,7 +81,8 @@ export default async function OpportunityPage({
   });
 
   if (!page) notFound();
-  const { opportunity, organisation, project, assessment, application } = page;
+  const { opportunity, organisation, project, assessment, application, own, ruleCount } = page;
+  const editHref = `/opportunities/${opportunity.id}/edit`;
 
   const enquiry =
     assessment.openQuestions.length > 0
@@ -106,9 +113,27 @@ export default async function OpportunityPage({
         </div>
         <p style={{ fontSize: 'var(--t-md)', fontWeight: 600 }}>{assessment.headline}</p>
         <p className="page-sub">{assessment.recommendation.reason}</p>
+        {own ? (
+          <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+            You added this fund. <a href={editHref}>Change its details, its rules, or remove it</a>.
+          </p>
+        ) : null}
       </header>
 
       <Card title="1 · Eligibility">
+        {/* A fund typed in by hand arrives with no rules, and until it has
+            some this card can only ever say "we cannot yet tell". The rules
+            are almost always on the funder's page; this is where to put them. */}
+        {own && ruleCount === 0 ? (
+          <div className="notice notice-neutral" style={{ marginBottom: 'var(--s-4)' }}>
+            <span>
+              This fund has no eligibility rules yet, so there is nothing to check you against.
+              Take them from the funder’s guidance — who may apply, where, how much — and each
+              one is checked here.{' '}
+              <a href={`${editHref}#rules`}>Add their rules</a>
+            </span>
+          </div>
+        ) : null}
         <ul className="criteria">
           {assessment.eligibility.results.map((result) => (
             <li key={result.criterionId}>
@@ -131,6 +156,12 @@ export default async function OpportunityPage({
                 ? 'You are not eligible for this fund.'
                 : 'We cannot yet tell whether you are eligible.'}
           </strong>
+          {own && ruleCount > 0 ? (
+            <>
+              {' '}
+              <a href={`${editHref}#rules`}>Change these rules</a>
+            </>
+          ) : null}
         </p>
       </Card>
 

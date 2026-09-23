@@ -13,11 +13,9 @@ import {
   describeParams,
   kindLabel,
 } from '@/app/opportunities/add/state';
-import {
-  deleteOpportunityAction,
-  rejectCriterionAction,
-  verifyCriterionAction,
-} from '@/app/opportunities/add/actions';
+import { rejectCriterionAction, verifyCriterionAction } from '@/app/opportunities/add/actions';
+import { RemoveFund } from '@/app/opportunities/RemoveFund';
+import { findApplicationForOpportunity } from '@/db/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,11 +44,15 @@ export default async function ReviewPage({
   const page = await database.withTenant(organisationId, async (tx) => {
     const review = await loadOpportunityReview(tx, id);
     if (review === null) return null;
-    return { review, proposed: await loadProposedCriteria(tx, id) };
+    return {
+      review,
+      proposed: await loadProposedCriteria(tx, id),
+      application: await findApplicationForOpportunity(tx, id),
+    };
   });
 
   if (page === null) notFound();
-  const { review, proposed } = page;
+  const { review, proposed, application } = page;
   const range = amountRange(review.minAmountGbp, review.maxAmountGbp);
   const done = proposed.length === 0;
 
@@ -140,6 +142,12 @@ export default async function ReviewPage({
           >
             See how you measure up
           </a>
+          {review.origin === 'user' ? (
+            <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+              A rule we missed, or read wrongly?{' '}
+              <a href={`/opportunities/${review.id}/edit#rules`}>Add or change the rules yourself</a>.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -192,12 +200,15 @@ export default async function ReviewPage({
       })}
 
       {review.origin === 'user' ? (
-        <form action={deleteOpportunityAction} style={{ marginTop: 'var(--s-6)' }}>
-          <input type="hidden" name="opportunityId" value={review.id} />
-          <button className="btn btn-secondary" type="submit">
-            Remove this fund
-          </button>
-        </form>
+        <RemoveFund
+          opportunityId={review.id}
+          title={review.title}
+          application={
+            application === null
+              ? null
+              : { answered: application.answered, total: application.total }
+          }
+        />
       ) : null}
     </div>
   );
