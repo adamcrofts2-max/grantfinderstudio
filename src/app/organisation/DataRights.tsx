@@ -25,11 +25,17 @@ import { confirmationPrompt } from '@/domain/privacy/erasure';
 export function DataRights({
   organisationName,
   willRemove,
+  canExport,
+  canErase,
 }: {
   /** Null when onboarding has not given it one yet. */
   organisationName: string | null;
   /** Built on the server from real counts, so it names this account. */
   willRemove: string;
+  /** Admins and owners. Offered only to them; the route checks regardless. */
+  canExport: boolean;
+  /** Owners. Offered only to them; the action checks regardless. */
+  canErase: boolean;
 }) {
   const [state, erase, erasing] = useActionState(eraseOrganisationAction, EMPTY_ERASE);
 
@@ -41,67 +47,79 @@ export function DataRights({
         table, generated from the database itself.
       </p>
 
-      <div className="row" style={{ marginTop: 'var(--s-4)' }}>
-        <a className="btn btn-secondary" href="/api/account/export" download>
-          Download everything we hold
-        </a>
-        <span className="hint">
-          One JSON file, every row, with a legend so it reads without our schema.
-        </span>
-      </div>
-
-      <details className="card paste danger" style={{ marginTop: 'var(--s-5)' }}>
-        <summary className="paste-summary">
-          Delete this organisation
-          <span className="chev chev-toggle" />
-        </summary>
-        <div className="paste-body">
-          <p className="card-sub">{willRemove}</p>
-          <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
-            There is no grace period and no recovery. If you want a copy, take the download
-            above first — afterwards there is nothing left to hand back.
-          </p>
-
-          <form action={erase} style={{ marginTop: 'var(--s-4)' }}>
-            <div className="field">
-              <label className="label" htmlFor="erase-confirm">
-                {confirmationPrompt(organisationName)}
-              </label>
-              <input
-                aria-describedby={state.message === '' ? undefined : 'erase-problem'}
-                aria-invalid={state.message !== ''}
-                autoComplete="off"
-                className="input"
-                defaultValue={state.value}
-                id="erase-confirm"
-                name="confirm"
-                type="text"
-              />
-            </div>
-
-            {state.message === '' ? null : (
-              <p
-                className="notice notice-negative"
-                id="erase-problem"
-                role="alert"
-                style={{ marginTop: 'var(--s-3)' }}
-              >
-                <span aria-hidden="true">✕</span>
-                <span>{state.message}</span>
-              </p>
-            )}
-
-            <button
-              className="btn btn-secondary"
-              disabled={erasing}
-              style={{ marginTop: 'var(--s-4)' }}
-              type="submit"
-            >
-              {erasing ? 'Deleting…' : 'Delete everything, permanently'}
-            </button>
-          </form>
+      {canExport ? (
+        <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+          <a className="btn btn-secondary" href="/api/account/export" download>
+            Download everything we hold
+          </a>
+          <span className="hint">
+            One JSON file, every row, with a legend so it reads without our schema.
+          </span>
         </div>
-      </details>
+      ) : (
+        <p className="hint" style={{ marginTop: 'var(--s-4)' }}>
+          An owner or admin of this organisation can download everything it holds.
+        </p>
+      )}
+
+      {canErase ? (
+        <details className="card paste danger" style={{ marginTop: 'var(--s-5)' }}>
+          <summary className="paste-summary">
+            Delete this organisation
+            <span className="chev chev-toggle" />
+          </summary>
+          <div className="paste-body">
+            <p className="card-sub">{willRemove}</p>
+            <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+              There is no grace period and no recovery. If you want a copy, take the download
+              above first — afterwards there is nothing left to hand back.
+            </p>
+
+            <form action={erase} style={{ marginTop: 'var(--s-4)' }}>
+              <div className="field">
+                <label className="label" htmlFor="erase-confirm">
+                  {confirmationPrompt(organisationName)}
+                </label>
+                <input
+                  aria-describedby={state.message === '' ? undefined : 'erase-problem'}
+                  aria-invalid={state.message !== ''}
+                  autoComplete="off"
+                  className="input"
+                  defaultValue={state.value}
+                  id="erase-confirm"
+                  name="confirm"
+                  type="text"
+                />
+              </div>
+
+              {state.message === '' ? null : (
+                <p
+                  className="notice notice-negative"
+                  id="erase-problem"
+                  role="alert"
+                  style={{ marginTop: 'var(--s-3)' }}
+                >
+                  <span aria-hidden="true">✕</span>
+                  <span>{state.message}</span>
+                </p>
+              )}
+
+              <button
+                className="btn btn-secondary"
+                disabled={erasing}
+                style={{ marginTop: 'var(--s-4)' }}
+                type="submit"
+              >
+                {erasing ? 'Deleting…' : 'Delete everything, permanently'}
+              </button>
+            </form>
+          </div>
+        </details>
+      ) : (
+        <p className="hint" style={{ marginTop: 'var(--s-4)' }}>
+          Only an owner can delete the organisation.
+        </p>
+      )}
     </section>
   );
 }

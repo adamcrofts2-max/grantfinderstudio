@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,822 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,861 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 150 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5548,3 +5548,146 @@ finding:
   own report both times, so the run said nothing about the forty checks that
   had already passed. There is a `catch` now: an exception is recorded as a
   failure like any other and the verdict still prints.
+
+## Security review, September 2026
+
+Phase 11 had carried "Security review of the older surface (documents,
+applications, export)" since the console review. This is that review, widened
+to the data-rights code shipped the day before, since that was the least
+reviewed and most exposed thing in the product. Every finding below was
+**demonstrated before it was fixed**, and every fix has a test that fails
+against the code it replaced.
+
+### Fixed
+
+**1. One organisation's private funder names were shown to every other
+organisation.** *(High — confidentiality, cross-tenant.)* Migration 0004 made a
+pasted *fund* private, and closed with "Funders remain shared… creating a new
+funder row is the platform's job." So the funder's *name* — the relationship
+itself — went into the shared `funders` table. `/funders` reads every row of
+it (`LEFT JOIN`, deliberately keeping funders with no awards), a funder with
+none is tiered `not_characterised`, and that tier renders: another CIC saw
+"Hartley Private Family Trust — They publish no grants at all". Reuse by name
+was the other half — the second organisation to type the same words got the
+first one's row. Two different forms reached the table this way, under two id
+shapes (`funder_user_`, `funder_typed_`), and the manual form's submitted
+`funderId` was looked up on the owner connection, so a posted id could attach
+one CIC's fund to another's private funder.
+
+Fixed as 0004 fixed funds, one table along — in the database, not a `WHERE`
+clause, because a filter on one query leaves every other read of the table
+open. Migration 0029 adds `funders.added_by_organisation_id` (cascading from
+the organisation), backfills both id shapes — including organisation ids that
+themselves contain underscores — and enables row-level security with the same
+`shared_or_own_read` policy. Every writer now sets the owner and reuses only
+shared rows or its own; `findFunderById` takes whose private rows it may
+return when it runs on a connection that bypasses RLS.
+`src/db/funder-privacy.test.ts`: three of its first five tests failed on the
+old code, for exactly the reasons above.
+
+It also exposed a gap in the data-rights work: pasted funds, typed funders and
+their rules live in shared tables, so the export left out precisely the
+research 0004 called sensitive, and the notice described `funders` wrongly.
+`YOURS_IN_SHARED_TABLES` now names them; the export and the delete count
+include them, filtered by the owning column; the privacy page lists them; and
+the schema test asserts their owning columns cascade.
+
+**2. An anonymous GET wrote to the shared funder table.** *(High — integrity,
+unauthenticated.)* `/opportunities/add?funder360=<id>&funderName=<text>`
+created a `funders` row under a real 360Giving funder's id with a name from the
+URL — during render, on the owner connection, with no sign-in. Proved against
+the production build with no cookie at all: one request named a funder
+"Security Probe - not a real funder" in the table every organisation reads,
+where it would have stayed until an ingest of that exact publisher overwrote
+it. **Nothing linked to that branch any more** — every link into the page uses
+`funder=` — so it was deleted rather than hardened, with its helper. The page
+now requires sign-in and reads on the tenant connection.
+`src/app/opportunities/add/page-safety.test.ts` asserts the page holds no
+owner or operator connection, writes nothing and requires an organisation;
+all four assertions fail against the old page.
+
+**3. DNS rebinding in the website reader.** *(Medium — SSRF.)* The fetcher
+resolved a name, checked every answer, then let `fetch` resolve it **again**
+and connect to the second answer. A zero-TTL DNS server answers "public" to
+the check and "127.0.0.1" to the connection. The existing test called
+`localtest.me` "the rebinding case", but a name that always resolves to
+loopback is caught by the pre-check; the attack is a name that changes its
+answer. Now there is one lookup — the socket's. `https.request` is given a
+`guardedLookup` that refuses a private answer inside the connection, handling
+both shapes Node calls it with (`all: true` is the Node 20+ default for
+dual-stack attempts; answering the wrong shape fails every request). A fresh
+socket per hop, so a pooled one can never skip the lookup. No new dependency.
+`src/ingestion/web/rebinding.test.ts` proves it over a real socket: a listener
+on `127.0.0.1:443` — confirmed live by a control connection — receives **zero**
+connections when the resolver answers loopback. A throwaway probe (not
+committed) then proved the happy path still works: a real page over TLS with
+**hostname verification on**, a redirect through the same lookup, and a
+certificate for the wrong name still refused.
+
+**4. The permission matrix was never consulted.** *(Latent → Critical on the
+day invites ship.)* `src/auth/rbac.ts` has held a complete role matrix since
+the start, including `organisation:delete` as owner-only. Nothing called
+`can()` or `assertCan()`. Not exploitable today — onboarding makes exactly one
+member, always the owner — but the first invite would have let a viewer delete
+the organisation and download every colleague's address. Now: `roleOf` (the
+first reader of `memberships.role`, scoped by RLS so it cannot report a role
+in another organisation), `authorise(permission)` returning a verdict rather
+than throwing, a new `organisation:export` for admins and owners, both
+data-rights controls gated **before** they act, and the panel offering only
+what the caller may use. Every other action still checks only "signed in to
+this organisation"; that is recorded, not silently left.
+
+**5. No security headers at all.** *(Low–Medium.)* No framing protection, so
+any site could frame the product over one-click actions. Now on every route:
+`X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`, an explicit
+referrer policy, and `Referrer-Policy: no-referrer` on `/review/*`, whose
+secret is in the path. There is no outbound link on the review page today —
+checked — so this is hardening, stated as such. Deliberately **not** a script
+CSP: Next inlines hydration scripts, and a policy that allowed them would be
+theatre; doing it properly needs nonces.
+
+**6. A bare carriage return passed through the calendar escaper.** *(Low.)*
+`\r?\n` missed a lone `\r`, which several calendar programs treat as a line
+end, so a title could open a property of its own. The text is typed by the
+person downloading the file, so the victim is mostly the attacker; fixed
+anyway, because the escaper's only job is that no input starts a property.
+
+### Checked and found sound
+
+Worth recording, because "reviewed" is only a claim if it says what was
+looked at.
+
+- **Review-link tokens** are 32 bytes from `crypto.randomBytes`, stored only
+  as SHA-256. Not guessable, not recoverable from a copy of the table.
+- **The review page has no outbound links**, so the token in its path cannot
+  leak through a `Referer` header; its responses are `private, no-store`.
+- **IPv4-mapped IPv6** (`::ffff:7f00:1`): Node canonicalises it to the dotted
+  form before the classifier sees it, which the classifier catches. Not
+  reachable through the resolver.
+- **Operator-connection use outside the console** is limited to session
+  handling, share-token lookup by hash, the shared grants corpus and funder
+  creation — the last of which is findings 1 and 2.
+
+### Found, recorded, not fixed here
+
+- **Uploads over 1 MB fail with a framework error.** The app's own limit is
+  15 MB, but Next 15.5 caps a server action's body at 1 MB by default
+  (`action-handler.js`), so the friendly message is never reached. Functional,
+  not security — and raising the cap without the next item would make it one.
+- **A `.docx` is decompressed in full before any limit applies.** `mammoth`
+  unzips into memory and `maxCharacters` applies afterwards, so a zip bomb
+  costs one invocation its memory. Bounded today by the 1 MB cap above.
+- **A script Content-Security-Policy**, which needs per-request nonces.
+- **Role checks on every other action.** `authorise` exists now; the rest of
+  the product should use it before an invite flow ships.
+
+### Verified on the running build, not only in tests
+
+After the fixes, against a fresh production build: the same anonymous request
+that had written "Security Probe - not a real funder" now answers 307 to
+sign-in and writes **0** rows; every page carries `X-Frame-Options: DENY`,
+`frame-ancestors 'none'`, `nosniff` and a referrer policy; `/review/*` carries
+`Referrer-Policy: no-referrer` exactly once, confirming the later rule wins;
+and the export redirects a request with no session to sign-in. Smoke clean,
+e2e clean at 150 checks — including the owner's export and erasure, and the
+funder flows under the new row-level security.

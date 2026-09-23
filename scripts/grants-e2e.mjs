@@ -1706,9 +1706,9 @@ try {
 
         // What it is about to remove, from real counts. A warning in the
         // abstract would not tell somebody which account they are in.
-        const panel = await page.locator('.danger').first().innerText();
-        if (!/This removes .*\d+ .*cannot be undone/su.test(panel)) {
-          fail(`the delete does not say what it would remove: ${panel.slice(0, 200)}`);
+        const dangerText = await page.locator('.danger').first().innerText();
+        if (!/This removes .*\d+ .*cannot be undone/su.test(dangerText)) {
+          fail(`the delete does not say what it would remove: ${dangerText.slice(0, 200)}`);
         } else ok('the delete says what it is about to remove, counted');
 
         // WHAT IT ASKS FOR, read off the page rather than assumed. The prompt
@@ -1716,11 +1716,11 @@ try {
         // which one depends on how far onboarding got.
         const prompt = await page.locator('label[for="erase-confirm"]').first().innerText();
         const named = /—\s*(.+?)\s*—/u.exec(prompt);
-        const wanted = named?.[1] ?? 'DELETE';
+        const confirmWord = named?.[1] ?? 'DELETE';
         ok(`and names what to type to confirm it`);
 
         // A wrong name first. A confirmation that accepts anything is not one.
-        await page.fill('#erase-confirm', `${wanted} but wrong`);
+        await page.fill('#erase-confirm', `${confirmWord} but wrong`);
         await page.locator('button').filter({ hasText: /Delete everything/iu }).first().click();
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(800);
@@ -1736,14 +1736,14 @@ try {
 
         // Now for real.
         await openTheDanger();
-        await page.fill('#erase-confirm', wanted);
+        await page.fill('#erase-confirm', confirmWord);
         await page.locator('button').filter({ hasText: /Delete everything/iu }).first().click();
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(1200);
 
-        const after = await page.locator('body').innerText();
-        if (!/Deleted\./u.test(after)) {
-          fail(`the deletion did not say it had happened: ${after.slice(0, 300)}`);
+        const afterErase = await page.locator('body').innerText();
+        if (!/Deleted\./u.test(afterErase)) {
+          fail(`the deletion did not say it had happened: ${afterErase.slice(0, 300)}`);
         } else ok('the right name deletes it, and the front door says so');
 
         // THE DOOR IS LOCKED. Signed out, because the session row went with

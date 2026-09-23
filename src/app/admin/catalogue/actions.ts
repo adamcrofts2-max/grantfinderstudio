@@ -50,7 +50,8 @@ export async function addSharedFundAction(
   try {
     // NULL organisation: that is what makes it shared.
     await withAdmin(async (tx) => {
-      const funderId = await ensureFunderNamed(tx, fund.funderName, 'funder_shared');
+      // Register data: shared, owned by nobody.
+      const funderId = await ensureFunderNamed(tx, fund.funderName, 'funder_shared', null);
       return insertManualFund(tx, fund, funderId, null);
     });
   } catch (error) {

@@ -19,13 +19,20 @@
 const PRODID = '-//Grant Finder Studio//Funding tracker//EN';
 const DOMAIN = 'grantfinderstudio';
 
-/** Escape per RFC 5545 §3.3.11. Order matters: backslash first. */
+/**
+ * Escape per RFC 5545 §3.3.11. Order matters: backslash first.
+ *
+ * Every line break becomes the two characters \n — CRLF, LF, AND a bare CR.
+ * The bare CR was missing until the September 2026 security review: several
+ * calendar programs end a line on it, which let a title start a property of
+ * its own.
+ */
 function escapeText(value: string): string {
   return value
     .replace(/\\/gu, '\\\\')
     .replace(/;/gu, '\\;')
     .replace(/,/gu, '\\,')
-    .replace(/\r?\n/gu, '\\n');
+    .replace(/\r\n|\r|\n/gu, '\\n');
 }
 
 /**

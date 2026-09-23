@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
 import { getDatabase, withAdmin } from '@/db';
-import { requireOrganisationId, SESSION_COOKIE } from '@/app/session';
+import { SESSION_COOKIE } from '@/app/session';
+import { authorise } from '@/app/authorise';
 import { loadOrganisation } from '@/db/queries';
 import { eraseOrganisation, eraseOrphanedUsers, membersOf } from '@/db/erasure';
 import { confirms } from '@/domain/privacy/erasure';
@@ -38,8 +39,19 @@ export async function eraseOrganisationAction(
   _previous: EraseState,
   formData: FormData,
 ): Promise<EraseState> {
-  const organisationId = await requireOrganisationId();
+  // Owners only. Checked BEFORE the name is compared, so a refusal says who
+  // can do this rather than inviting somebody to keep guessing the name.
+  const who = await authorise('organisation:delete');
   const typed = String(formData.get('confirm') ?? '');
+  if (!who.ok) {
+    return {
+      ...EMPTY_ERASE,
+      value: typed,
+      message:
+        'Only an owner can delete the organisation. Nothing has been deleted — ask an owner if this is what you all want.',
+    };
+  }
+  const { organisationId } = who;
 
   const database = await getDatabase();
   const organisation = await database.withTenant(organisationId, (tx) => loadOrganisation(tx));
@@ -57,9 +69,9 @@ export async function eraseOrganisationAction(
   }
 
   const members = await database.withTenant(organisationId, async (tx) => {
-    const who = await membersOf(tx);
+    const inIt = await membersOf(tx);
     await eraseOrganisation(tx, organisationId);
-    return who;
+    return inIt;
   });
 
   await withAdmin((tx) => eraseOrphanedUsers(tx, members));

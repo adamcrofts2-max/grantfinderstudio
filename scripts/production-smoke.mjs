@@ -79,7 +79,7 @@ const ROUTES = [
  * two are the product's public obligations and a 307 would hide them behind
  * the very door they exist to inform people about.
  */
-const MUST_BE_PUBLIC = ['/privacy', '/terms'];
+const MUST_BE_PUBLIC = new Set(['/privacy', '/terms']);
 
 /**
  * One route's status, or null if it never answered.
@@ -196,7 +196,7 @@ for (const route of ROUTES) {
   const bad =
     status === null ||
     (status >= 500 && route !== '/api/health') ||
-    (MUST_BE_PUBLIC.includes(route) && status !== 200);
+    (MUST_BE_PUBLIC.has(route) && status !== 200);
   if (bad) broken += 1;
   console.log(
     `${route.padEnd(22)} ${status ?? 'TIMEOUT'}${bad ? '  ← SERVER ERROR' : ''}`,

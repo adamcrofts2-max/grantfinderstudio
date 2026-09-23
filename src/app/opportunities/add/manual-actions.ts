@@ -66,10 +66,18 @@ export async function addOwnFundAction(
     const picked = read('funderId').trim();
     const funderId = await withAdmin(async (tx) => {
       if (picked !== '') {
-        const existing = await findFunderById(tx, picked);
+        // The owner connection bypasses row-level security, so the lookup
+        // says whose private funders it may return: a submitted id must not
+        // attach this fund to another organisation's.
+        const existing = await findFunderById(tx, picked, organisationId);
         if (existing !== null) return existing.id;
       }
-      return ensureFunderNamed(tx, fund.funderName, `funder_typed_${organisationId}`);
+      return ensureFunderNamed(
+        tx,
+        fund.funderName,
+        `funder_typed_${organisationId}`,
+        organisationId,
+      );
     });
     const database = await getDatabase();
     opportunityId = await database.withTenant(organisationId, (tx) =>

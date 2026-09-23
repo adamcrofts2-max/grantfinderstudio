@@ -163,3 +163,21 @@ describe('canRemoveMember', () => {
     expect(canRemoveMember('owner', 'owner', 2).allowed).toBe(true);
   });
 });
+
+describe('the two permissions the data-rights controls depend on', () => {
+  it('lets only owners delete the organisation', () => {
+    expect(can('owner', 'organisation:delete')).toBe(true);
+    expect(can('admin', 'organisation:delete')).toBe(false);
+    expect(can('editor', 'organisation:delete')).toBe(false);
+    expect(can('viewer', 'organisation:delete')).toBe(false);
+  });
+
+  it('lets owners and admins, and nobody else, take everything away in one file', () => {
+    // A viewer can READ all of it. The file is a different act: every
+    // colleague's address and every answer, somewhere no access rule follows.
+    expect(can('owner', 'organisation:export')).toBe(true);
+    expect(can('admin', 'organisation:export')).toBe(true);
+    expect(can('editor', 'organisation:export')).toBe(false);
+    expect(can('viewer', 'organisation:export')).toBe(false);
+  });
+});

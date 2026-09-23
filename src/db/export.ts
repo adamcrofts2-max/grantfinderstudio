@@ -20,7 +20,12 @@
  * own rows, so there is no WHERE clause here to forget.
  */
 
-import { PRIVACY_RECORD, type Held } from '../domain/privacy/record.js';
+import {
+  PRIVACY_RECORD,
+  YOURS_IN_SHARED_TABLES,
+  type Held,
+  type OwnedRows,
+} from '../domain/privacy/record.js';
 import type { Queryable } from './client.js';
 
 /** Tables whose rows belong to the organisation and go in the export. */
@@ -129,7 +134,38 @@ export async function exportOrganisation(
     legend[held.table] = { label: held.label, holds: held.holds };
   }
 
+  // Your rows inside the shared tables. Filtered by the owning column rather
+  // than left to row-level security, because RLS on these tables shows the
+  // shared rows too — and an export of every 360Giving funder is not "what
+  // you hold about me".
+  for (const owned of YOURS_IN_SHARED_TABLES) {
+    const rows = await ownedRows(tx, owned, organisationId);
+    data[owned.table] = rows;
+    legend[owned.table] = { label: owned.label, holds: owned.holds };
+  }
+
   return { takenAt: new Date().toISOString(), organisationId, data, legend };
+}
+
+/** The rows of a shared table that belong to one organisation. */
+async function ownedRows(
+  tx: Queryable,
+  owned: OwnedRows,
+  organisationId: string,
+): Promise<unknown[]> {
+  for (const name of [owned.table, owned.owner, owned.via?.parent, owned.via?.key]) {
+    if (name !== undefined && !SAFE_NAME.test(name)) {
+      throw new Error(`Refusing to export with an unexpected name: ${name}`);
+    }
+  }
+  const sql =
+    owned.via === undefined
+      ? `SELECT * FROM ${owned.table} WHERE ${owned.owner} = $1`
+      : `SELECT c.* FROM ${owned.table} c
+           JOIN ${owned.via.parent} p ON p.id = c.${owned.via.key}
+          WHERE p.${owned.owner} = $1`;
+  const { rows } = await tx.query(sql, [organisationId]);
+  return rows;
 }
 
 /**
@@ -142,6 +178,7 @@ export async function exportOrganisation(
  */
 export async function countEverything(
   tx: Queryable,
+  organisationId?: string,
 ): Promise<Array<{ label: string; rows: number }>> {
   const counts: Array<{ label: string; rows: number }> = [];
   for (const held of exportable()) {
@@ -151,6 +188,14 @@ export async function countEverything(
     // `counted`, not `label`: this feeds a sentence, and "3 your applications"
     // is not one.
     if (n > 0) counts.push({ label: held.counted, rows: n });
+  }
+  // What a delete takes from the shared tables, too. Left out, the sentence
+  // understates the erasure by exactly the research somebody most wanted gone.
+  if (organisationId !== undefined) {
+    for (const owned of YOURS_IN_SHARED_TABLES) {
+      const n = (await ownedRows(tx, owned, organisationId)).length;
+      if (n > 0) counts.push({ label: owned.counted, rows: n });
+    }
   }
   return counts;
 }

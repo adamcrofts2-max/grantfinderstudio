@@ -34,54 +34,55 @@ import type { ManualFund } from '../domain/opportunity/manual.js';
 export async function findFunderById(
   tx: Queryable,
   id: string,
+  /**
+   * Whose private funders may be returned, on a connection that bypasses row
+   * level security. Required there, because the id arrives from a form: left
+   * out, a submitted id could attach one organisation's fund to another's
+   * privately typed funder. Omit it only on a connection RLS already scopes.
+   */
+  visibleTo?: string | null,
 ): Promise<{ id: string; name: string; website: string | null } | null> {
   const { rows } = await tx.query<{ id: string; name: string; website: string | null }>(
-    'SELECT id, name, website FROM funders WHERE id = $1',
-    [id],
+    visibleTo === undefined
+      ? 'SELECT id, name, website FROM funders WHERE id = $1'
+      : `SELECT id, name, website FROM funders
+          WHERE id = $1
+            AND (added_by_organisation_id IS NULL OR added_by_organisation_id = $2)`,
+    visibleTo === undefined ? [id] : [id, visibleTo],
   );
   return rows[0] ?? null;
-}
-
-/**
- * Create a funder under an id we choose, or leave the existing row alone.
- *
- * Distinct from `ensureFunderNamed`, which invents an id with a random suffix.
- * That is right when a person typed a name and we have nothing else to key on,
- * and wrong when we DO: a funder met through the corpus search carries a
- * 360Giving organisation id, and `funderIdFor360Giving` turns it into the same
- * id the ingest would use. Passing that as a prefix to `ensureFunderNamed`
- * would append a random suffix and guarantee a second row the day somebody
- * enriched the same funder — the award history and the application built from
- * it would sit side by side, joined to nothing.
- *
- * `ON CONFLICT DO NOTHING` rather than a prior lookup: two people adding a
- * fund from the same funder at the same moment would both pass a check.
- */
-export async function ensureFunderWithId(
-  tx: Queryable,
-  id: string,
-  name: string,
-): Promise<void> {
-  await tx.query(
-    'INSERT INTO funders (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
-    [id, name],
-  );
 }
 
 export async function ensureFunderNamed(
   tx: Queryable,
   name: string,
   idPrefix: string,
+  /**
+   * The organisation this funder is private to, or null for shared register
+   * data the operator is adding. See 0029: a funder somebody typed is the
+   * relationship itself, and it is theirs.
+   */
+  owner: string | null,
 ): Promise<string> {
+  // Reuse a SHARED funder, or one this owner typed before — never another
+  // organisation's. With a null owner, `= $2` is never true, so the operator
+  // only ever reuses shared rows.
   const existing = await tx.query<{ id: string }>(
-    'SELECT id FROM funders WHERE lower(name) = lower($1) LIMIT 1',
-    [name],
+    `SELECT id FROM funders
+      WHERE lower(name) = lower($1)
+        AND (added_by_organisation_id IS NULL OR added_by_organisation_id = $2)
+      ORDER BY (added_by_organisation_id IS NULL) DESC
+      LIMIT 1`,
+    [name, owner],
   );
   const found = existing.rows[0];
   if (found !== undefined) return found.id;
 
   const id = `${idPrefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  await tx.query('INSERT INTO funders (id, name) VALUES ($1, $2)', [id, name]);
+  await tx.query(
+    'INSERT INTO funders (id, name, added_by_organisation_id) VALUES ($1, $2, $3)',
+    [id, name, owner],
+  );
   return id;
 }
 

@@ -52,6 +52,7 @@ export const MIGRATIONS = [
   '0026_corpus_progressed_at.sql',
   '0027_application_decision.sql',
   '0028_decision_needs_a_date.sql',
+  '0029_private_funders.sql',
 ] as const;
 
 /**

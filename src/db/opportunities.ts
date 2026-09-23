@@ -36,15 +36,25 @@ export async function ensureFunder(
   name: string,
   organisationId: string,
 ): Promise<string> {
+  // Shared funders and this organisation's own — never another's. Reuse by
+  // name across organisations was half of the leak 0029 closes: the second
+  // CIC to type "Hartley Family Trust" got the first one's private row.
   const existing = await tx.query<{ id: string }>(
-    'SELECT id FROM funders WHERE lower(name) = lower($1) LIMIT 1',
-    [name],
+    `SELECT id FROM funders
+      WHERE lower(name) = lower($1)
+        AND (added_by_organisation_id IS NULL OR added_by_organisation_id = $2)
+      ORDER BY (added_by_organisation_id IS NULL) DESC
+      LIMIT 1`,
+    [name, organisationId],
   );
   const found = existing.rows[0];
   if (found !== undefined) return found.id;
 
   const id = `funder_user_${organisationId}_${Date.now().toString(36)}`;
-  await tx.query('INSERT INTO funders (id, name) VALUES ($1, $2)', [id, name]);
+  await tx.query(
+    'INSERT INTO funders (id, name, added_by_organisation_id) VALUES ($1, $2, $3)',
+    [id, name, organisationId],
+  );
   return id;
 }
 

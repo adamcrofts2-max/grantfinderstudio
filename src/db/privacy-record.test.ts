@@ -20,6 +20,7 @@ import {
   classifiedTables,
   NOT_ABOUT_YOU,
   PRIVACY_RECORD,
+  YOURS_IN_SHARED_TABLES,
 } from '../domain/privacy/record.js';
 
 let t: TestDatabase;
@@ -115,6 +116,34 @@ describe('the privacy record against the real schema', () => {
       problems,
       `Deleting an organisation would not reach these, so "delete everything" would be a lie: ${problems.join(', ')}`,
     ).toEqual([]);
+  });
+
+  it('takes your rows out of the shared tables with you, too', async () => {
+    // The same promise as the cascade test above, for the three shared tables
+    // that carry some rows owned by one organisation. A pasted fund whose
+    // owning column did not cascade would outlive the account that pasted it.
+    const { rows } = await t.db.query<{ table_name: string; column_name: string; delete_rule: string }>(
+      `SELECT tc.table_name, kcu.column_name, rc.delete_rule
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.referential_constraints rc
+           ON rc.constraint_name = tc.constraint_name
+         JOIN information_schema.key_column_usage kcu
+           ON kcu.constraint_name = tc.constraint_name
+         JOIN information_schema.constraint_column_usage ccu
+           ON ccu.constraint_name = tc.constraint_name
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND ccu.table_name = 'organisations'`,
+    );
+    const cascades = new Set(
+      rows.filter((r) => r.delete_rule === 'CASCADE').map((r) => `${r.table_name}.${r.column_name}`),
+    );
+    for (const owned of YOURS_IN_SHARED_TABLES) {
+      const holder = owned.via?.parent ?? owned.table;
+      expect(
+        cascades.has(`${holder}.${owned.owner}`),
+        `${holder}.${owned.owner} does not cascade from organisations`,
+      ).toBe(true);
+    }
   });
 
   it('gives a reason for every table it excludes', () => {

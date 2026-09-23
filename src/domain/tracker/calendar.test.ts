@@ -135,3 +135,29 @@ describe('toCalendarEvents', () => {
     expect(toIcs(events, NOW)).toContain('TRIGGER:-P7D');
   });
 });
+
+describe('a title that tries to start a new line', () => {
+  /**
+   * Found by the September 2026 security review. The escaper turned CRLF and
+   * LF into the two-character sequence \\n, but a carriage return on its own
+   * went through untouched — and several calendar programs treat a bare CR as
+   * the end of a line. A fund title is typed by the applicant, so the person
+   * who could exploit it is mostly the person downloading the file; it is
+   * fixed because the escaper's whole job is that no input starts a property.
+   */
+  const injected = 'Innocent Fund\rBEGIN:VEVENT\rSUMMARY:Injected';
+
+  it('leaves no raw carriage return anywhere but the line endings', () => {
+    const ics = toIcs(toCalendarEvents([source({ title: injected })]), NOW);
+    // Every CR in the file must be the first half of a CRLF line ending.
+    expect(ics.replace(/\r\n/gu, '')).not.toMatch(/\r/u);
+  });
+
+  it('cannot open a second event from inside a title', () => {
+    const ics = toIcs(toCalendarEvents([source({ title: injected })]), NOW);
+    const lines = ics.split('\r\n');
+    expect(lines.filter((line) => line === 'BEGIN:VEVENT').length).toBe(
+      toCalendarEvents([source({ title: injected })]).length,
+    );
+  });
+});

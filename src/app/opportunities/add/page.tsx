@@ -1,9 +1,9 @@
 import { isWriterAvailable } from '@/app/drafting';
 import { ManualFundForm } from '@/app/ManualFundForm';
 import { EMPTY_MANUAL_FUND } from '@/app/manualFundState';
-import { withAdmin, withOperator } from '@/db';
-import { ensureFunderWithId, findFunderById } from '@/db/catalogue';
-import { funderIdFor360Giving } from '@/db/awards';
+import { getDatabase } from '@/db';
+import { findFunderById } from '@/db/catalogue';
+import { requireOrganisationId } from '@/app/session';
 
 import { AddOpportunity } from './AddOpportunity';
 import { addOwnFundAction } from './manual-actions';
@@ -18,48 +18,48 @@ export default async function AddOpportunityPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Signed in first. Adding a fund is a signed-in feature, and this page used
+  // to render — and WRITE — for anybody at all: see below.
+  const organisationId = await requireOrganisationId();
   const writerAvailable = await isWriterAvailable();
 
   /**
-   * The funder somebody just picked on /funders, if they came from there.
+   * The funder somebody just picked on /funders or /grants, if they came from
+   * there.
    *
    * This is the join that was missing. The product would tell you who had
    * funded work like yours and then send you to a blank form, so the fund you
    * came back with attached to a funder created from whatever you typed —
    * beside, but not joined to, the award history that sent you there.
    *
-   * Operator scope: funders are shared reference data that every tenant reads
-   * and none writes, so there is nothing tenant-specific to leak and no id
-   * here that could name anything but a funder.
+   * READ-ONLY, on the TENANT connection. Row-level security on `funders`
+   * (0029) shows shared funders and this organisation's own, which is exactly
+   * the set a link could legitimately name.
+   *
+   * ## What used to be here
+   *
+   * A second branch took `funder360` and `funderName` from the query string
+   * and, when that funder was not held, CREATED a shared funder row under the
+   * 360Giving id, with the name from the URL, on the owner connection, during
+   * a GET, with no sign-in. The September 2026 security review proved it from
+   * outside: one anonymous request named a funder "Security Probe - not a real
+   * funder" in the table every organisation reads, and it would have stayed
+   * that way until an ingest of that exact publisher overwrote it.
+   *
+   * Nothing linked to it any more — every link into this page uses `funder=` —
+   * so it was removed rather than hardened. A page that renders on GET no
+   * longer holds a write connection at all; `page-safety.test.ts` keeps it
+   * that way.
    */
   const params = await searchParams;
   const wanted = str(params['funder']);
-  /**
-   * A funder found by searching the corpus, which may not be held locally yet.
-   *
-   * The grant search reaches every publisher 360Giving has, so most funders a
-   * person meets there have no row here — the local table holds only the ones
-   * somebody enriched for their distribution charts. Arriving with a 360Giving
-   * org id creates the row on the spot, under the deterministic id the ingest
-   * would use, so a later enrichment of the same funder lands on the same row
-   * rather than beside it.
-   *
-   * Operator path for the lookup, admin for the create: funders are shared
-   * reference data that every tenant reads and none writes.
-   */
-  const wanted360 = str(params['funder360']);
-  const suppliedName = str(params['funderName']);
 
   let funder: { id: string; name: string; website: string | null } | undefined;
   if (wanted !== '') {
-    funder = (await withOperator((tx) => findFunderById(tx, wanted))) ?? undefined;
-  } else if (wanted360 !== '' && suppliedName !== '') {
-    const id = funderIdFor360Giving(wanted360);
-    const existing = await withOperator((tx) => findFunderById(tx, id));
-    if (existing === null) {
-      await withAdmin((tx) => ensureFunderWithId(tx, id, suppliedName));
-    }
-    funder = existing ?? { id, name: suppliedName, website: null };
+    const database = await getDatabase();
+    funder =
+      (await database.withTenant(organisationId, (tx) => findFunderById(tx, wanted))) ??
+      undefined;
   }
 
   return (

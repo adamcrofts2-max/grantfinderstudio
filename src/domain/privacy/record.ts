@@ -89,11 +89,13 @@ const WHILE_OPEN: Retention = { kind: 'while_open' };
  */
 export const NOT_ABOUT_YOU: Record<string, string> = {
   source_datasets: 'The licence and attribution of an open dataset we loaded.',
-  funders: 'UK funders, from open data. The same rows for every organisation.',
+  funders:
+    'UK funders, from open data, the same for everyone — except a funder you typed in yourself, which is private to you. See YOURS_IN_SHARED_TABLES.',
   funder_awards: 'Grants funders published under an open licence. Nothing of yours.',
   opportunities:
-    'Funds. Shared, except for the ones an organisation typed in by hand, which are private to it — a pasted fund can name a relationship nobody else should see.',
-  eligibility_criteria: 'The rules attached to a fund, shared like the fund.',
+    'Funds, shared — except the ones you added by hand, which are private to you. See YOURS_IN_SHARED_TABLES.',
+  eligibility_criteria:
+    'The rules attached to a fund, shared like the fund, and private like it when the fund is yours.',
   corpus_load: 'How far the open-data load has got. Counts and timestamps.',
   app_settings: 'Our own configuration. Nothing of any customer’s.',
   app_credentials: 'Our own API keys, encrypted and write-only.',
@@ -374,6 +376,54 @@ export const PRIVACY_RECORD: readonly Held[] = [
     subject: 'organisation',
     leaves: [],
     kept: WHILE_OPEN,
+  },
+];
+
+/**
+ * Rows of YOURS inside tables that are otherwise everybody's.
+ *
+ * Three tables are shared reference data and also carry some rows owned by
+ * one organisation: a fund you added by hand, the funder you typed into it,
+ * and the rules attached to that fund. They are listed in `NOT_ABOUT_YOU`
+ * because most of each table is not, and they are listed HERE because the
+ * part that is yours must still reach your export and go when you delete
+ * your account. Missing this was a real gap: 0004 called a pasted fund
+ * "one CIC's research", and the export left it out.
+ *
+ * `owner` is the column that says whose a row is; `via` is set when the
+ * table has no such column and inherits ownership through a parent.
+ */
+export interface OwnedRows {
+  table: string;
+  label: string;
+  counted: string;
+  holds: string;
+  owner: string;
+  via?: { parent: string; key: string };
+}
+
+export const YOURS_IN_SHARED_TABLES: readonly OwnedRows[] = [
+  {
+    table: 'opportunities',
+    label: 'Funds you added yourself',
+    counted: 'funds you added',
+    holds: 'The fund, its deadline and amounts, and the guidance text you pasted to describe it.',
+    owner: 'added_by_organisation_id',
+  },
+  {
+    table: 'funders',
+    label: 'Funders you typed in',
+    counted: 'funders you typed in',
+    holds: 'The name of a funder you entered by hand. Private to you: nobody else sees it.',
+    owner: 'added_by_organisation_id',
+  },
+  {
+    table: 'eligibility_criteria',
+    label: 'The rules on funds you added',
+    counted: 'rules on funds you added',
+    holds: 'Each eligibility rule read from your pasted guidance, and whether you confirmed it.',
+    owner: 'added_by_organisation_id',
+    via: { parent: 'opportunities', key: 'opportunity_id' },
   },
 ];
 

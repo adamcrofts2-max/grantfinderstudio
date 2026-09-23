@@ -1,5 +1,5 @@
 import { getDatabase, withAdmin } from '@/db';
-import { requireOrganisationId, requireUserId } from '@/app/session';
+import { authorise } from '@/app/authorise';
 import { recordAudit } from '@/db/audit';
 import {
   exportOrganisation,
@@ -31,8 +31,16 @@ export const dynamic = 'force-dynamic';
  * has already had.
  */
 export async function GET(): Promise<Response> {
-  const organisationId = await requireOrganisationId();
-  const userId = await requireUserId();
+  // Admins and owners. One file carries every colleague's address and every
+  // answer off the platform, which is a different act from reading them here.
+  const who = await authorise('organisation:export');
+  if (!who.ok) {
+    return new Response(
+      'Only an owner or admin of this organisation can download everything it holds. Ask one of them.',
+      { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } },
+    );
+  }
+  const { organisationId, userId } = who;
 
   const database = await getDatabase();
   const { dump, seats } = await database.withTenant(organisationId, async (tx) => {

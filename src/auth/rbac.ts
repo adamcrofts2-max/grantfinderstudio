@@ -16,6 +16,7 @@ export type Permission =
   | 'organisation:read'
   | 'organisation:update'
   | 'organisation:delete'
+  | 'organisation:export'
   // Membership
   | 'member:read'
   | 'member:invite'
@@ -68,9 +69,18 @@ const EDITOR_ADDITIONS: readonly Permission[] = [
   'budget:write',
 ];
 
-/** Managing people and organisation settings, plus destructive content actions. */
+/**
+ * Managing people and organisation settings, plus destructive content actions.
+ *
+ * `organisation:export` is here and not with the readers, although a viewer
+ * can read everything it contains. The difference is the file: one download
+ * carries every colleague's email address and every answer, off the platform,
+ * where none of this product's access rules follow it. Reading a page is not
+ * the same act as taking the building home.
+ */
 const ADMIN_ADDITIONS: readonly Permission[] = [
   'organisation:update',
+  'organisation:export',
   'member:invite',
   'member:remove',
   'document:delete',

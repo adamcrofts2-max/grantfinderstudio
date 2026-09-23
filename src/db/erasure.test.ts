@@ -17,7 +17,8 @@ import {
   seatsIn,
   withMembers,
 } from './export.js';
-import { PRIVACY_RECORD } from '../domain/privacy/record.js';
+import { PRIVACY_RECORD, YOURS_IN_SHARED_TABLES } from '../domain/privacy/record.js';
+import { ensureFunder } from './opportunities.js';
 
 let t: TestDatabase;
 
@@ -151,9 +152,12 @@ describe('eraseOrphanedUsers', () => {
 describe('exportOrganisation', () => {
   it('covers every table the privacy notice says it holds', async () => {
     const dump = await t.asTenant(ORG_A, () => exportOrganisation(t.db, ORG_A));
-    const promised = PRIVACY_RECORD.filter((h) => h.subject === 'organisation').map(
-      (h) => h.table,
-    );
+    // Every table the notice says is the organisation's, AND the owned rows
+    // inside the shared tables — the pasted funds the first version left out.
+    const promised = [
+      ...PRIVACY_RECORD.filter((h) => h.subject === 'organisation').map((h) => h.table),
+      ...YOURS_IN_SHARED_TABLES.map((o) => o.table),
+    ];
     expect(Object.keys(dump.data).toSorted()).toEqual(promised.toSorted());
   });
 
@@ -214,5 +218,74 @@ describe('exportOrganisation', () => {
     // delete confirmation.
     expect(counts.some((c) => c.label === 'applications')).toBe(true);
     expect(counts.every((c) => !c.label.startsWith('Your'))).toBe(true);
+  });
+});
+
+describe('your rows inside the shared tables', () => {
+  /**
+   * A pasted fund, the funder typed into it, and a rule read from it — the
+   * research 0004 called private — for organisation A only.
+   */
+  async function pasteForA(): Promise<{ funderId: string }> {
+    await t.db.exec('RESET ROLE;');
+    const funderId = await ensureFunder(t.db, 'Hartley Private Family Trust', ORG_A);
+    await t.db.exec(`
+      INSERT INTO opportunities
+        (id, funder_id, title, retrieved_at, origin, added_by_organisation_id)
+      VALUES ('opp_pasted_a', '${funderId}', 'Hartley Small Grants', now(), 'user', '${ORG_A}');
+      INSERT INTO eligibility_criteria (id, opportunity_id, kind, label, params)
+      VALUES ('crit_pasted_a', 'opp_pasted_a', 'max_turnover', 'Turnover under £250k', '{}');
+      SET ROLE app_user;`);
+    return { funderId };
+  }
+
+  it('puts them in the export of the organisation that owns them', async () => {
+    const { funderId } = await pasteForA();
+    const dump = await t.asTenant(ORG_A, () => exportOrganisation(t.db, ORG_A));
+    const ids = (table: string) =>
+      (dump.data[table] ?? []).map((row) => (row as { id: string }).id);
+    expect(ids('opportunities')).toEqual(['opp_pasted_a']);
+    expect(ids('funders')).toEqual([funderId]);
+    expect(ids('eligibility_criteria')).toEqual(['crit_pasted_a']);
+  });
+
+  it('keeps shared register rows out, so the export is yours and not the register', async () => {
+    await pasteForA();
+    const dump = await t.asTenant(ORG_A, () => exportOrganisation(t.db, ORG_A));
+    for (const row of dump.data['funders'] ?? []) {
+      expect((row as { added_by_organisation_id: string }).added_by_organisation_id).toBe(ORG_A);
+    }
+    for (const row of dump.data['opportunities'] ?? []) {
+      expect((row as { added_by_organisation_id: string }).added_by_organisation_id).toBe(ORG_A);
+    }
+  });
+
+  it('never hands one organisation another’s', async () => {
+    await pasteForA();
+    const dump = await t.asTenant(ORG_B, () => exportOrganisation(t.db, ORG_B));
+    expect(dump.data['opportunities']).toEqual([]);
+    expect(dump.data['funders']).toEqual([]);
+    expect(dump.data['eligibility_criteria']).toEqual([]);
+  });
+
+  it('counts them in what a delete would take', async () => {
+    await pasteForA();
+    const counts = await t.asTenant(ORG_A, () => countEverything(t.db, ORG_A));
+    const labels = counts.map((c) => c.label);
+    for (const owned of YOURS_IN_SHARED_TABLES) expect(labels).toContain(owned.counted);
+  });
+
+  it('goes when the organisation is erased', async () => {
+    const { funderId } = await pasteForA();
+    await t.asTenant(ORG_A, () => eraseOrganisation(t.db, ORG_A));
+    await t.db.exec('RESET ROLE;');
+    const { rows } = await t.db.query<{ o: string; f: string; c: string }>(
+      `SELECT (SELECT count(*) FROM opportunities WHERE id = 'opp_pasted_a')::text AS o,
+              (SELECT count(*) FROM funders WHERE id = $1)::text AS f,
+              (SELECT count(*) FROM eligibility_criteria WHERE id = 'crit_pasted_a')::text AS c`,
+      [funderId],
+    );
+    await t.db.exec('SET ROLE app_user;');
+    expect(rows[0]).toEqual({ o: '0', f: '0', c: '0' });
   });
 });

@@ -1118,7 +1118,25 @@ annotation inside the working screens.**
       says deletion is true of the live database and unverified of backups
 - [ ] A processor agreement with Anthropic, and a sub-processor list to link from the
       notice
-- [ ] Security review of the older surface (documents, applications, export)
+- [x] **Security review of the older surface and the data-rights work** —
+      six findings, each demonstrated before it was fixed; see STATUS
+- [x] Private funder names no longer reach other organisations: row-level
+      security on `funders` (0029), mirroring what 0004 did for funds
+- [x] The anonymous GET that wrote to shared funders removed, not hardened —
+      nothing linked to it
+- [x] DNS rebinding closed: one lookup, the socket's, refused inside the
+      connection; proved over a real socket
+- [x] The permission matrix consulted for the first time: export for admins
+      and owners, erasure for owners, both checked before they act
+- [x] Security headers: framing, nosniff, referrer policy (none on /review)
+- [x] Pasted funds, typed funders and their rules included in the export and
+      the delete count — the data-rights work had left them out
+- [ ] `authorise()` on every other action before an invite flow ships; today
+      only export and erasure consult a role
+- [ ] Uploads over 1 MB fail with a framework error: Next caps server actions
+      at 1 MB, the app promises 15. Fix together with the next item
+- [ ] Cap a `.docx`'s decompressed size before `mammoth` reads it (zip bomb)
+- [ ] A script Content-Security-Policy with per-request nonces
 - [ ] AI evaluation suite
 - [ ] Performance
 

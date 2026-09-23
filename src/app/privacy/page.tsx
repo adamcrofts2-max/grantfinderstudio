@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import {
   PRIVACY_RECORD,
+  YOURS_IN_SHARED_TABLES,
   RECIPIENTS,
   retentionLine,
   sharedWith,
@@ -197,6 +198,27 @@ export default function PrivacyPage() {
               {rows.map((held) => (
                 <HeldRow held={held} key={held.table} />
               ))}
+              {/* Yours, inside tables that are otherwise everybody's. Listed
+                  with the organisation's own data because that is what they
+                  are — and because an earlier version of this page, and of
+                  the export, left them out. */}
+              {group.id === 'organisation'
+                ? YOURS_IN_SHARED_TABLES.map((owned) => (
+                    <li className="held" key={owned.table}>
+                      <div className="held-head">
+                        <h3 className="held-label">{owned.label}</h3>
+                        <code className="held-table">{owned.table}</code>
+                      </div>
+                      <p className="held-holds">{owned.holds}</p>
+                      <p className="hint">
+                        The rest of this table is shared reference data. Only the rows you
+                        added are yours, and only you can see them.
+                      </p>
+                      <p className="hint">{retentionLine({ kind: 'while_open' })}</p>
+                      <p className="held-leaves held-stays">Never leaves this system.</p>
+                    </li>
+                  ))
+                : null}
             </ul>
           </section>
         );

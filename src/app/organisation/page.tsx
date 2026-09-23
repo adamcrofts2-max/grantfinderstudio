@@ -10,6 +10,7 @@ import { AddFact } from './AddFact';
 import { ReadWebsite } from './ReadWebsite';
 import { FactList, type FactView } from './FactList';
 import { DataRights } from './DataRights';
+import { abilities } from '@/app/authorise';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,9 +44,12 @@ export default async function OrganisationPage({
     // Real counts, so the delete names this account rather than warning in
     // the abstract. Somebody with two organisations open can tell which is
     // which from the sentence.
-    counts: await countEverything(tx),
+    counts: await countEverything(tx, organisationId),
   }));
   const facts = page.facts;
+  // What to OFFER. The route and the action check again for themselves; a
+  // hidden button is a courtesy, never the control.
+  const can = await abilities(['organisation:export', 'organisation:delete'] as const);
 
   // Open the form when this is what somebody was sent here to do. A guide that
   // says "tell us about yourself", links to #add-fact and lands you on a
@@ -100,6 +104,8 @@ export default async function OrganisationPage({
       <DataRights
         organisationName={page.organisation?.name ?? null}
         willRemove={willRemove(page.counts)}
+        canExport={can['organisation:export']}
+        canErase={can['organisation:delete']}
       />
     </div>
   );
