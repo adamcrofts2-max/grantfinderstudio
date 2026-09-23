@@ -18,6 +18,7 @@ import { startApplicationAction } from '@/app/applications/actions';
 import { applicationFeaturesFor } from '@/demo/seed';
 import { Card, gbp, Notice, OutcomeBadge, RecommendationPill } from '@/app/components';
 import { Circled } from '@/app/marks';
+import { FindTheirPage } from '@/app/FindTheirPage';
 
 export const dynamic = 'force-dynamic';
 
@@ -289,13 +290,31 @@ export default async function OpportunityPage({
         <Notice tone={assessment.deadlineNotice.tone}>{assessment.deadlineNotice.text}</Notice>
         <Notice tone={assessment.freshnessNotice.tone}>{assessment.freshnessNotice.text}</Notice>
         <Notice tone="caution">{assessment.verifyNotice}</Notice>
-        {opportunity.sourceUrl ? (
-          <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
+        {/* Where to check it, in the order of how close each gets to the
+            fund itself. The last used to be nothing at all — the trail went
+            cold exactly where the notices above tell you to go and check. */}
+        <p style={{ margin: 'var(--s-2) 0 0', fontSize: 'var(--t-sm)' }}>
+          {opportunity.sourceUrl ? (
             <a href={opportunity.sourceUrl} style={{ color: 'var(--accent)' }}>
               The funder&rsquo;s own page for this fund
             </a>
-          </p>
-        ) : null}
+          ) : opportunity.funderWebsite ? (
+            <a
+              href={opportunity.funderWebsite}
+              rel="noreferrer noopener"
+              style={{ color: 'var(--accent)' }}
+              target="_blank"
+            >
+              {opportunity.funderName}&rsquo;s website
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          ) : (
+            <FindTheirPage
+              funder={{ id: opportunity.funderId, name: opportunity.funderName }}
+              lead="We hold no link for this fund or its funder."
+            />
+          )}
+        </p>
       </Card>
     </div>
   );

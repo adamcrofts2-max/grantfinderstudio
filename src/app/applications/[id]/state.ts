@@ -5,12 +5,21 @@
  * async functions.
  */
 
+import type { ClaimStanding } from '@/domain/provenance/facts';
+import type { SentenceLabel } from '@/domain/provenance/sentence-label';
+
 export interface DraftState {
   questionId: string | null;
   ok: boolean;
   message: string;
   /** Sentences with the fact behind each, for the provenance display. */
-  claims: Array<{ text: string; factId: string | null; factLabel: string | null }>;
+  claims: Array<{
+    text: string;
+    factId: string | null;
+    standing: ClaimStanding;
+    /** What the sentence stands on, in words — see `sentenceLabel`. */
+    label: SentenceLabel;
+  }>;
   /** What the answer still needs from the applicant. */
   gaps: string[];
   wordCount: number;

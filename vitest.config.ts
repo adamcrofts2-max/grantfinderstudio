@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  // The runtime Next compiles components with, so a component can be
+  // rendered in a test exactly as it is in the app.
+  esbuild: { jsx: 'automatic' },
   test: {
     include: ['src/**/*.test.ts'],
     testTimeout: 30_000,

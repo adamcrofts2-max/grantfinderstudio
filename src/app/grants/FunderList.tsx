@@ -1,3 +1,4 @@
+import { FindTheirPage } from '@/app/FindTheirPage';
 import { gbp } from '@/app/components';
 import { canCharacterise, whyThisFunder } from '@/domain/grants/funders';
 import type { FunderRankContext } from '@/domain/grants/funders';
@@ -137,7 +138,9 @@ function Row({ funder, context }: { funder: FunderSummary; context: FunderRankCo
             >
               Add a fund from them
             </a>
-            {funder.funderWebsite === null ? null : (
+            {funder.funderWebsite === null ? (
+              <FindTheirPage funder={{ id: funder.funderId, name: funder.funderName }} />
+            ) : (
               <a
                 className="link-quiet"
                 href={funder.funderWebsite}

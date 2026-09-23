@@ -29,8 +29,10 @@ describe('what to say about a draft', () => {
   });
 
   it('counts what it traced, rather than asserting "every"', () => {
-    expect(draftSummary(figures({ traced: 2 }))).toContain('all 2 claims traced');
+    expect(draftSummary(figures({ traced: 3 }))).toContain('all 3 claims traced');
+    expect(draftSummary(figures({ traced: 2 }))).toContain('both its claims traced');
     expect(draftSummary(figures({ traced: 1 }))).toContain('its one claim traced');
+    expect(draftSummary(figures({ traced: 2 }))).not.toContain('all 2');
   });
 
   it('puts other problems in without the reassurance', () => {

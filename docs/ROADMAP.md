@@ -1226,10 +1226,17 @@ Found, not fixed — most need a product decision:
       rule; the same range has to be entered again as an amount rule to be checked
 - [ ] An area rule matches the profile's area exactly ("Somerset" is not
       "Wells, Somerset"); say so on the form, or match on containment
-- [ ] **The draft does not show what the landing promises**: per-sentence fact
-      labels. It shows one count line ("all 2 claims traced")
-- [ ] **The trail goes cold at a funder with no website**: offer a "find their
-      funding page" search link
+- [x] **The draft does not show what the landing promises**: per-sentence fact
+      labels. Now every sentence shows what it stands on ("Beneficiary groups ·
+      confirmed", "No confirmed fact behind this", "States no fact"), on the
+      workspace and the reviewer's page alike, drawn as the landing draws it;
+      "both its claims" for two (2026-09-23)
+- [x] **The trail goes cold at a funder with no website**: a search for their
+      funding page, plus their Find that Charity entry when the 360Giving id is a
+      register number — on /funders, /grants, the add-a-fund card and the fund
+      page (2026-09-23)
+- [ ] The e2e never drafts (no model key), so the per-sentence labels are proved
+      by a render test and a stubbed walk, not by `npm run e2e`
 - [ ] Say why /grants orders funders as it does; one vocabulary for the last
       clause (verdict or range, not both); fit badges as on /funders
 - [ ] Dates as ISO in several places — grant rows, the fund card, the application

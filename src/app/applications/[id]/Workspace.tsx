@@ -2,7 +2,9 @@
 
 import { useActionState, useState } from 'react';
 import type { ClaimStanding } from '@/domain/provenance/facts';
+import type { SentenceLabel } from '@/domain/provenance/sentence-label';
 import { countWords } from '@/domain/questions/words';
+import { DraftTrace } from '@/app/applications/DraftTrace';
 
 import { draftAnswerAction, saveOwnAnswerAction } from './actions';
 import { EMPTY_DRAFT, EMPTY_WRITE } from './state';
@@ -24,7 +26,13 @@ export interface QuestionView {
    * decides for itself what counts as unsupported. It used to, from `factId
    * === null` alone, and contradicted the action in the same card.
    */
-  claims: Array<{ text: string; factId: string | null; standing?: ClaimStanding }>;
+  claims: Array<{
+    text: string;
+    factId: string | null;
+    standing?: ClaimStanding;
+    /** Resolved with the standing, by the same caller. */
+    label: SentenceLabel;
+  }>;
 }
 
 /**
@@ -45,11 +53,6 @@ function standingOf(claim: {
   standing?: ClaimStanding;
 }): ClaimStanding {
   return claim.standing ?? (claim.factId === null ? 'no_claim' : 'supported');
-}
-
-function readable(claim: string): string {
-
-  return claim.replaceAll('_', ' ');
 }
 
 function Question({
@@ -89,7 +92,7 @@ function Question({
       ? []
       : result?.ok && result.claims.length > 0
         ? result.claims
-        : question.claims.map((c) => ({ ...c, factLabel: null }));
+        : question.claims;
 
   // The box is the truth about the answer's length once anybody has typed in
   // it, and `countWords` is the same function the Writer checks its own draft
@@ -200,34 +203,28 @@ function Question({
         </div>
       ) : null}
 
-      {claims.length > 0 ? (
-        <div className="answer">
-          {claims.map((claim, index) => (
-            <span
-              key={`${question.id}-${index}`}
-              className={standingOf(claim) === 'unsupported' ? 'claim claim-unsupported' : 'claim'}
-              title={
-                standingOf(claim) === 'unsupported'
-                  ? 'Nothing in your confirmed facts supports this'
-                  : standingOf(claim) === 'no_claim'
-                    ? 'No factual claim, so nothing to evidence'
-                    : `From: ${readable(
-                        ('factLabel' in claim && claim.factLabel) || claim.factId || 'a fact',
-                      )}`
-              }
-            >
-              {claim.text}{' '}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      {/* What each sentence stands on, shown rather than hovered. The
+          landing page promises exactly this picture; it used to be the same
+          prose again with the provenance in tooltips, which a phone never
+          shows. */}
+      <DraftTrace
+        heading="What each sentence stands on"
+        note={
+          claims.length > 0 && text.trim() !== claims.map((c) => c.text).join(' ').trim()
+            ? 'You have edited the answer since it was drafted. This is the draft as it was written — save your own words and it goes, because it would no longer describe them.'
+            : null
+        }
+        sentences={claims.map((claim) => ({ text: claim.text, label: claim.label }))}
+      />
 
       {unsupportedCount > 0 ? (
         <p className="notice notice-caution" style={{ marginTop: 'var(--s-2)' }}>
           <span aria-hidden="true">⚠</span>
           <span>
-            Highlighted sentences have nothing behind them. Either evidence them or take them
-            out — an assessor will ask.
+            {unsupportedCount === 1
+              ? 'One sentence has no confirmed fact behind it.'
+              : `${unsupportedCount} sentences have no confirmed fact behind them.`}{' '}
+            Either evidence them or take them out — an assessor will ask.
           </span>
         </p>
       ) : null}

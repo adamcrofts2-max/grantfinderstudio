@@ -682,6 +682,27 @@ try {
   else ok('the funder is named');
   if (!/Add a fund from them/.test(loaded)) fail('no link through to adding a fund');
   else ok('the link through to a fund is there');
+
+  // A funder with no website used to end the trail: a sentence saying to go
+  // and search for them, with no link. The stub funders publish no website,
+  // which is exactly that case.
+  await page.goto(`${B}/grants?q=1&text=somerset`, { waitUntil: 'networkidle' });
+  const searchLinks = page.locator('a[href^="https://duckduckgo.com/?q="]');
+  if ((await searchLinks.count()) === 0) {
+    fail('a funder with no website offers no way to find their page');
+  } else {
+    const href = await searchLinks.first().getAttribute('href');
+    const query = new URL(href).searchParams.get('q') ?? '';
+    if (!/^"Stub Trust \d" grants how to apply$/u.test(query)) fail(`the search asks the wrong thing: ${query}`);
+    else ok('a funder with no website offers a search for their funding page');
+    const rel = await searchLinks.first().getAttribute('rel');
+    if (!/noreferrer/u.test(rel ?? '')) fail('the search link tells the search engine where it came from');
+    else ok('and sends no referrer with it');
+  }
+  // The stub ids only LOOK like charity numbers, so no register link.
+  if (await page.locator('a[href^="https://findthatcharity.uk/"]').count()) {
+    fail('a register link was offered for an identifier that is not a register number');
+  } else ok('and no register link for an identifier it cannot vouch for');
   // £9,000 is STUB-4's 2019 grant. It matched every word of the search and is
   // absent because of the window, which is the only way to tell a dropped
   // grant from one that was never published.
@@ -1232,6 +1253,9 @@ try {
     await oppLink.click();
     await page.waitForLoadState('networkidle');
     const fundUrl = page.url();
+    if (!(await page.locator('a[href^="https://duckduckgo.com/?q="]').count())) {
+      fail('a fund with no link, from a funder with no website, leaves no way to check it');
+    } else ok('a fund with no link offers a search for the funder’s page');
 
     // --- rules for a fund typed in by hand ---------------------------------
     //

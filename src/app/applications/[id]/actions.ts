@@ -16,6 +16,7 @@ import { isShareLength, SHARE_DAYS, shareExpiry } from '@/domain/review/share';
 import { isCostCategory } from '@/domain/budget/categories';
 import { rethrowControlFlow } from '@/app/control-flow';
 import { claimStanding, countUnsupported, usableFacts } from '@/domain/provenance/facts';
+import { citedFactClaim, sentenceLabel } from '@/domain/provenance/sentence-label';
 import { MAX_ANSWER_LENGTH, countWords } from '@/domain/questions/words';
 import { draftSummary } from '@/domain/provenance/draft-summary';
 import { providerFromStore } from '@/ai/provider-from-store';
@@ -122,8 +123,6 @@ export async function draftAnswerAction(
     };
   }
 
-  const byId = new Map(confirmed.map((fact) => [fact.id, fact]));
-
   await database.withTenant(organisationId, async (tx) => {
     await saveAnswer(
       tx,
@@ -176,14 +175,18 @@ export async function draftAnswerAction(
       unsupported: countUnsupported(standings),
       notes,
     }),
-    claims: sentences.map((s, index) => ({
-      text: s.text,
-      factId: s.factId,
-      factLabel: s.factId === null ? null : (byId.get(s.factId)?.claim ?? null),
-      // The same function the page uses, so a draft just written and the same
-      // draft read back tomorrow cannot disagree about what is supported.
-      standing: standings[index] ?? claimStanding(s.factId, confirmed),
-    })),
+    claims: sentences.map((s, index) => {
+      // The same functions the page uses, so a draft just written and the
+      // same draft read back tomorrow cannot disagree about what is supported
+      // or what it is called.
+      const standing = standings[index] ?? claimStanding(s.factId, confirmed);
+      return {
+        text: s.text,
+        factId: s.factId,
+        standing,
+        label: sentenceLabel(standing, citedFactClaim(s.factId, confirmed)),
+      };
+    }),
     gaps: checked.gaps,
     wordCount: checked.wordCount,
   };

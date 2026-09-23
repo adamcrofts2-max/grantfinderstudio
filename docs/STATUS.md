@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,946 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 168 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,961 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -5887,4 +5887,59 @@ removal names it, and — with the tick stripped from the form — the server ke
 both. Looked at by hand at 1280px and 390px, no sideways scroll; "Stop using
 this" no longer wraps to three lines on a phone, and a typed rule no longer
 repeats its own label underneath.
+
+## Every sentence shows what it stands on; no funder is a dead end
+
+Items 5 and 6 of the Future Forests walk.
+
+### The draft, as the landing page draws it
+
+The landing shows a drafted answer with each sentence followed by the fact it
+rests on — "Beneficiary groups · confirmed" — and the unsupported one flagged.
+The product already drafted that way and stored it (`answer_fact_refs`), and
+then showed a count line and the same prose again with the provenance in hover
+`title` tooltips: invisible on a phone, undiscovered on a laptop, and after a
+reload the "label" was the fact's raw id.
+
+`src/domain/provenance/sentence-label.ts` turns a sentence's standing and the
+fact it cites into words, and `citedFactClaim` resolves the fact by id or claim
+exactly as `claimStanding` does, so a sentence can never be "supported" and
+unnamed. The draft action and the application page both label through it, so a
+draft just written and the same draft reloaded read the same. `DraftTrace`
+(`src/app/applications/`) draws the list — hooks-free, so the applicant's
+workspace (client) and the reviewer's page (server) render the identical thing.
+If the box has been edited since the draft, it says the list is the draft as
+written. The summary says "both its claims" rather than "all 2 claims".
+
+Vitest now compiles JSX with the automatic runtime, as Next does, so a
+component can be rendered in a test: `DraftTrace.test.ts` pins that the labels
+are page text and not a `title` attribute.
+
+### No funder is a dead end
+
+360Giving often carries no website for a funder, and the card that had just
+shown a funder giving £15k to work like yours in your county ended in "search
+for their name to find their funding page" — with no link.
+`src/domain/grants/find-their-page.ts` builds the way on: a web search for
+their funding page (name quoted, stray quotes removed), and — when the org-id
+is a charity or company register number (`GB-CHC`, `GB-SC`, `GB-NIC`, `GB-COH`)
+— their Find that Charity entry, which shows the register's details, usually
+including the website. Both URL formats were checked against the sites' own
+indexed pages (the sites themselves are behind this environment's egress
+policy). Stub ids that merely look like register numbers get no register link.
+Links open in a new tab with `noreferrer`; the product sends nobody the name.
+Used on `/funders`, `/grants`, the add-a-fund card and the fund page's "Before
+you apply", which also now links the funder's own website when there is no
+fund page (`funderWebsite` joins `OpportunityWithSource`).
+
+### Checked
+
+`npm run verify`: 1,961 tests (8 skipped), lint clean, build clean. `npm run
+e2e`: clean at 172 checks — new: a funder with no website offers a search whose
+query is the quoted name, with no referrer and no register link for a stub id,
+and a typed fund with no link offers the same. The e2e has no model key and
+never drafts, so the labels were walked against the Anthropic stub: a draft
+shows "Area of operation · confirmed" under its sentence, the same after a
+reload, the edited-box note appears, and a reviewer given a link sees the same
+list. Looked at by hand at 1280px and 390px, no sideways scroll.
 

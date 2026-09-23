@@ -9,6 +9,8 @@ import { loadComments } from '@/db/comments';
 import { loadCriteria, loadOrganisation, loadProject } from '@/db/queries';
 import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { claimStanding, usableFacts, type Fact } from '@/domain/provenance/facts';
+import { citedFactClaim, sentenceLabel } from '@/domain/provenance/sentence-label';
+import { DraftTrace } from '@/app/applications/DraftTrace';
 import { daysLeft, isNewVisit, refusalMessage } from '@/domain/review/share';
 import { verdictForReviewer } from '@/domain/review/verdict';
 import { readableClaim } from '@/domain/provenance/self-declared';
@@ -153,6 +155,10 @@ export default async function ReviewPage({
               text: claim.claimText,
               factId: claim.factId,
               standing: claimStanding(claim.factId, facts),
+              label: sentenceLabel(
+                claimStanding(claim.factId, facts),
+                citedFactClaim(claim.factId, facts),
+              ),
             }));
       questions.push({
         id: question.id,
@@ -359,25 +365,13 @@ export default async function ReviewPage({
                 described in a footnote. An answer the applicant typed
                 themselves has no breakdown, and then it is shown whole. */}
             {question.claims.length > 0 ? (
-              <div className="answer" style={{ marginTop: 'var(--s-4)' }}>
-                {question.claims.map((claim, index) => (
-                  <span
-                    className={claim.standing === 'unsupported' ? 'claim claim-unsupported' : 'claim'}
-                    key={`${question.id}-${index}`}
-                    title={
-                      claim.standing === 'unsupported'
-                        ? 'Nothing in their confirmed facts supports this'
-                        : claim.standing === 'no_claim'
-                          ? 'No factual claim, so nothing to evidence'
-                          : `From: ${readableClaim(
-                              byId.get(claim.factId ?? '')?.claim ?? claim.factId ?? 'a fact',
-                            )}`
-                    }
-                  >
-                    {claim.text}{' '}
-                  </span>
-                ))}
-              </div>
+              <DraftTrace
+                heading="What each sentence stands on"
+                sentences={question.claims.map((claim) => ({
+                  text: claim.text,
+                  label: claim.label,
+                }))}
+              />
             ) : (
               <div className="answer" style={{ marginTop: 'var(--s-4)' }}>
                 {question.answer}
@@ -389,8 +383,8 @@ export default async function ReviewPage({
                 <span aria-hidden="true">⚠</span>
                 <span>
                   {unsupported === 1
-                    ? 'The highlighted sentence has nothing behind it.'
-                    : `${unsupported} highlighted sentences have nothing behind them.`}{' '}
+                    ? 'One sentence has no confirmed fact behind it.'
+                    : `${unsupported} sentences have no confirmed fact behind them.`}{' '}
                   Either evidence or remove, before this goes anywhere.
                 </span>
               </p>

@@ -1,3 +1,4 @@
+import { FindTheirPage } from '@/app/FindTheirPage';
 import { isWriterAvailable } from '@/app/drafting';
 import { ManualFundForm } from '@/app/ManualFundForm';
 import { EMPTY_MANUAL_FUND } from '@/app/manualFundState';
@@ -95,6 +96,14 @@ export default async function AddOpportunityPage({
               </>
             )}
           </p>
+          {funder.website === null ? (
+            <p style={{ marginTop: 'var(--s-3)' }}>
+              <FindTheirPage
+                funder={funder}
+                lead="We hold no website for them. To find what they have open:"
+              />
+            </p>
+          ) : null}
         </section>
       )}
 

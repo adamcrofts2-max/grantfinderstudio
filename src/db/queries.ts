@@ -113,6 +113,7 @@ interface OpportunityRow {
   summary: string | null;
   funder_id: string;
   funder_name: string;
+  funder_website: string | null;
   deadline: string | null;
   deadline_kind: OpportunitySummary['deadlineType'];
   freshness_state: OpportunitySummary['freshness'];
@@ -125,6 +126,8 @@ interface OpportunityRow {
 export interface OpportunityWithSource extends OpportunitySummary {
   summary: string | null;
   funderId: string;
+  /** The funder's own website, where their data gave one. Not the fund's page. */
+  funderWebsite: string | null;
   sourceUrl: string | null;
   licence: string | null;
   attribution: string | null;
@@ -136,6 +139,7 @@ function toSummary(row: OpportunityRow): OpportunityWithSource {
     title: row.title,
     summary: row.summary,
     funderId: row.funder_id,
+    funderWebsite: row.funder_website,
     funderName: row.funder_name,
     deadline: row.deadline,
     deadlineType: row.deadline_kind,
@@ -148,7 +152,7 @@ function toSummary(row: OpportunityRow): OpportunityWithSource {
 }
 
 const OPPORTUNITY_SELECT = `
-  SELECT o.id, o.title, o.summary, o.funder_id, f.name AS funder_name,
+  SELECT o.id, o.title, o.summary, o.funder_id, f.name AS funder_name, f.website AS funder_website,
          o.deadline::text AS deadline, o.deadline_kind, o.freshness_state,
          o.retrieved_at::text AS retrieved_at, o.source_url,
          d.licence, d.attribution

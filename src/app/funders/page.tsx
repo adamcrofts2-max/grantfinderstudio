@@ -1,4 +1,5 @@
 import { EmptyState } from '@/app/illustration/EmptyState';
+import { FindTheirPage } from '@/app/FindTheirPage';
 import { getDatabase } from '@/db';
 import { requireOrganisationId } from '@/app/session';
 import { loadAllFunderAwards, loadOrganisation, loadProject } from '@/db/queries';
@@ -119,10 +120,10 @@ function ProspectCard({
           Add a fund from them
         </a>
         {website === null ? (
-          <span className="hint">
-            No website published in their grant data, so search for their name to find their
-            funding page.
-          </span>
+          <FindTheirPage
+            funder={{ id: prospect.funderId, name: prospect.funderName }}
+            lead="No website in their grant data."
+          />
         ) : (
           <a
             className="btn btn-secondary btn-small"

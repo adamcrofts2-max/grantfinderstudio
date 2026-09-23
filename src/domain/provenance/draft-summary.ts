@@ -60,5 +60,8 @@ export function draftSummary(figures: DraftFigures): string {
     return `${words}, but it states none of your confirmed facts — check that it answers the question.`;
   }
 
-  return `${words}, ${traced === 1 ? 'its one claim' : `all ${traced} claims`} traced to a confirmed fact.`;
+  // "all 2 claims" reads like a template, because it is one.
+  const which =
+    traced === 1 ? 'its one claim' : traced === 2 ? 'both its claims' : `all ${traced} claims`;
+  return `${words}, ${which} traced to a confirmed fact.`;
 }

@@ -13,6 +13,7 @@ import { evaluateEligibility } from '@/domain/eligibility/engine';
 import { since } from '@/domain/time/since';
 import { daysLeft, shareStanding } from '@/domain/review/share';
 import { claimStanding, usableFacts } from '@/domain/provenance/facts';
+import { citedFactClaim, sentenceLabel } from '@/domain/provenance/sentence-label';
 import { assessReadiness } from '@/domain/readiness/readiness';
 import { validateBudget } from '@/domain/budget/validate';
 import { restrictionsFromCriteria } from '@/domain/budget/restrictions';
@@ -97,6 +98,10 @@ export default async function ApplicationPage({
           ? (await loadClaimRefs(tx, q.id)).map((c) => ({
               text: c.claimText,
               factId: c.factId,
+              label: sentenceLabel(
+                claimStanding(c.factId, facts),
+                citedFactClaim(c.factId, facts),
+              ),
               /**
                * Resolved HERE, where the fact base is.
                *
