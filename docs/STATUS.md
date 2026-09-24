@@ -1,10 +1,10 @@
 # STATUS
 
-**Last updated:** 2026-09-22
+**Last updated:** 2026-09-24
 
 ## What exists
 
-**1,994 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 173 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,994 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 185 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -6145,3 +6145,58 @@ publish for that work ("Environment and conservation"), which is how the funder
 match compares them — a test holds it. The same list feeds the rule form, so a
 funder's environmental rule and an applicant's choice meet.
 
+
+## Password reset, and a mailer to send it
+
+"Forgot your password?" on sign-in → `/forgot-password` → an email → a link
+to `/reset-password` → a new password → back to sign-in with a notice. Before
+this a forgotten password was a lost account.
+
+**The link.** 256 bits from the CSPRNG (the session token generator), stored
+only as its SHA-256 in `password_resets` (0030, admin scope and revoked from
+PUBLIC like `sessions` — a copy of the table resets nobody's password). Thirty
+minutes, once: using it is one conditional `DELETE … RETURNING`, so two clicks
+cannot both succeed, and using it deletes every other link for the account. It
+is built on `APP_URL` — never the request's Host header, which the requester
+controls and which would let anyone point YOUR reset email at THEIR server —
+and the token rides in the fragment (`#token=…`), which no browser sends to a
+server or puts in a Referer. The page reads it into the form and wipes it from
+the address bar at once.
+
+**Nothing about who has an account.** The reply is word for word the same for
+an address with an account and one without, and the account is looked up and
+the email sent in `after()`, once the response has gone, so the stopwatch says
+nothing either. The rate limit — three emails an hour per address on its own
+`reset-address` axis, plus the shared per-origin limit — counts every request,
+for every address, before any lookup. Only an account with a password gets a
+link; an operator's sandbox has none and must not gain one this way.
+
+**Choosing the new password** happens in one transaction: claim the link,
+check the password against that account's address, hash, store. A refused
+password (too short, contains the address) throws inside the transaction, so
+the claim rolls back and the link still works — a typo does not spend it. A
+made-up token costs one indexed DELETE and never a hash. On success every
+session for the account ends and the address's failed-sign-in count clears.
+
+**The mailer** (`src/mail/mailer.ts`) is an interface with two adapters:
+Resend over plain `fetch` (one POST — a dependency would be more to audit than
+the call), and in development the server log. In production without
+`RESEND_API_KEY`, `MAIL_FROM` and `APP_URL` there is no mailer, and the form
+says so rather than promising an email that never comes. `/api/health` reports
+a half-configured set, and an `APP_URL` that is not https (a token in the
+clear). The privacy notice now lists Resend as a recipient of your address and
+the link, and the reset links as something held for at most a day.
+
+### Checked
+- Unit: the link's shape, the fragment parser (refuses anything but a token),
+  the https rule, the email's words, the mailer's request and its refusal (no
+  key in the error), which mailer is chosen, the configuration checks.
+- PGlite: once only, expiry swept or not, clearing one account's links and no
+  one else's, cascade with the account; the table added to the credential
+  tables the tenant and operator roles are refused.
+- e2e, through the REAL Resend adapter into a stub inbox the walk runs itself:
+  the same reply with and without an account, no email to a stranger, the link
+  on the configured origin, the token gone from the address bar, a short
+  password refused without spending the link, the new one saved, a second
+  browser's session ended, old password refused, new one accepted, the link
+  dead on a second use — **clean at 185 checks**. Axe clean on both new pages.

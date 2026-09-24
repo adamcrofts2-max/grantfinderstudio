@@ -132,7 +132,8 @@ export async function checkSignUpLimit(): Promise<LimitVerdict> {
  * lands on the sweep is the one request that pays for it.
  */
 const SWEEP_ODDS = 0.02;
-const SWEEP_AFTER_SECONDS = Math.max(THROTTLE.address.windowSeconds, THROTTLE.origin.windowSeconds) * 4;
+const SWEEP_AFTER_SECONDS =
+  Math.max(...Object.values(THROTTLE).map((policy) => policy.windowSeconds)) * 4;
 
 async function sweepOccasionally(): Promise<void> {
   if (Math.random() >= SWEEP_ODDS) return;
@@ -179,4 +180,31 @@ export async function recordFailedSignUp(): Promise<void> {
  */
 export async function clearSignInLimit(email: string): Promise<void> {
   await withAdmin((tx) => clearAttempt(tx, attemptKey('address', email)));
+}
+
+/**
+ * May another reset email go out?
+ *
+ * By address, so one inbox cannot be flooded, and by origin, so one place
+ * cannot flood many. Checked BEFORE the account is looked up and counted
+ * whether or not the account exists — a limit that only ever tripped for real
+ * accounts would say which addresses are real.
+ */
+export async function checkResetLimit(email: string): Promise<LimitVerdict> {
+  const [byAddress, byOrigin] = await Promise.all([
+    verdictFor('reset-address', email, THROTTLE.reset),
+    verdictFor('origin', await origin(), THROTTLE.origin),
+  ]);
+  if (byAddress.allowed && byOrigin.allowed) return { allowed: true, retryAfterSeconds: 0 };
+  return {
+    allowed: false,
+    retryAfterSeconds: Math.max(byAddress.retryAfterSeconds, byOrigin.retryAfterSeconds),
+  };
+}
+
+/** Count one reset request against both axes. Every request, not just failures. */
+export async function recordResetRequest(email: string): Promise<void> {
+  await bump('reset-address', email, THROTTLE.reset);
+  await bump('origin', await origin(), THROTTLE.origin);
+  await sweepOccasionally();
 }

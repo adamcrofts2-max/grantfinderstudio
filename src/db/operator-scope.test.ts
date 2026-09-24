@@ -58,6 +58,7 @@ const SECRET_TABLES = [
   'admin_accounts',
   'admin_sessions',
   'sessions',
+  'password_resets',
   'app_credentials',
 ] as const;
 

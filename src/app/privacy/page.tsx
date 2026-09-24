@@ -81,7 +81,7 @@ function HeldRow({ held }: { held: Held }) {
 }
 
 function Recipients() {
-  const order: Recipient[] = ['anthropic', 'companies_house', 'reviewer'];
+  const order: Recipient[] = ['anthropic', 'companies_house', 'email_provider', 'reviewer'];
   return (
     <ul className="stack" style={{ marginTop: 'var(--s-4)' }}>
       {order.map((id) => {

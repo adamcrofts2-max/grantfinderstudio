@@ -26,7 +26,7 @@ import { ACCOUNT_CONSTANTS } from '../auth/account.js';
 import { SHARE_DAYS } from '../review/share.js';
 
 /** Who, outside this system, ever sees a given kind of data. */
-export type Recipient = 'anthropic' | 'companies_house' | 'reviewer';
+export type Recipient = 'anthropic' | 'companies_house' | 'reviewer' | 'email_provider';
 
 
 
@@ -40,6 +40,11 @@ export const RECIPIENTS: Record<Recipient, { name: string; what: string; why: st
     name: 'Companies House',
     what: 'A company name or number you typed, to look up.',
     why: 'To fill your organisation’s legal details from the public register rather than asking you to type them twice.',
+  },
+  email_provider: {
+    name: 'Resend, who deliver our email',
+    what: 'Your email address and the password reset link, when you ask for one.',
+    why: 'To get the link to your inbox. It is the only email we send, and only when you ask for it — nothing else goes to them.',
   },
   reviewer: {
     name: 'Somebody you share an application with',
@@ -118,7 +123,7 @@ export const PRIVACY_RECORD: readonly Held[] = [
     holds: 'An email address, and a name if you gave one.',
     why: 'To let you back in, and to say who confirmed a fact when more than one of you uses the account.',
     subject: 'person',
-    leaves: [],
+    leaves: ['email_provider'],
     kept: WHILE_OPEN,
   },
   {
@@ -144,6 +149,21 @@ export const PRIVACY_RECORD: readonly Held[] = [
       kind: 'days',
       days: ACCOUNT_CONSTANTS.sessionDays,
       note: 'A session expires and is swept. Signing out ends it at once.',
+    },
+  },
+  {
+    table: 'password_resets',
+    label: 'Password reset links',
+    counted: 'reset links',
+    holds:
+      'A fingerprint of a reset link we emailed you — never the link itself — with when it was made and when it stops working.',
+    why: 'To let you choose a new password when you have lost the old one.',
+    subject: 'person',
+    leaves: ['email_provider'],
+    kept: {
+      kind: 'days',
+      days: 1,
+      note: 'A link works for 30 minutes and once. Using it deletes it, and every other link for your account.',
     },
   },
   {

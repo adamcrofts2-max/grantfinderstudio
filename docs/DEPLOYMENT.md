@@ -194,6 +194,9 @@ access to at all. They are reached only through `withAdmin`.
 | `APP_ENCRYPTION_KEY` | Always | 32 bytes base64 |
 | `ANTHROPIC_API_KEY` | No | Turns on reading guidance and drafting for everybody. Without it the product still works — see below |
 | `ADMIN_CLAIM_SECRET` | To use the console | At least 24 characters. Opens the one-time claim at `/admin/sign-in` |
+| `APP_URL` | For password reset | The address people use, `https://…`. Reset links are built on it, never on the request |
+| `RESEND_API_KEY` | For password reset | From resend.com. Without it (and the two either side) a forgotten password cannot be reset by email, and the form says so |
+| `MAIL_FROM` | For password reset | A sender on a domain verified with Resend, e.g. `Grant Finder Studio <noreply@example.org>` |
 | `COMPANIES_HOUSE_BASE_URL` | No | Points lookups at their sandbox. **Environment only** — see below |
 | `THREESIXTYGIVING_BASE_URL` | No | Points ingestion at a mirror. Overridable live under Services |
 | `THREESIXTYGIVING_MAX_PAGES` | No | Pages per ingest, default 50. Overridable live under Services |

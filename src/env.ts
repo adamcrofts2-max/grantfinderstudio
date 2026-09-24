@@ -1,4 +1,5 @@
 import { claimSecretProblem } from './domain/auth/admin.js';
+import { usableBaseUrl } from './domain/auth/reset.js';
 
 /**
  * Environment configuration.
@@ -22,6 +23,19 @@ export interface AppEnvironment {
    * deployment the alternative is racing strangers for your own console.
    */
   adminClaimSecret: string | null;
+  /**
+   * Where this deployment is reached, e.g. https://app.example.org.
+   *
+   * Password reset links are built on it. Never on the request's Host header,
+   * which is whatever the requester chose to send.
+   */
+  appUrl: string | null;
+  /** Resend, for the password reset email. Absent means no mail is sent. */
+  resendApiKey: string | null;
+  /** The sender, e.g. "Grant Finder Studio <noreply@example.org>". */
+  mailFrom: string | null;
+  /** Overridable for a stub in the end-to-end walk. */
+  resendBaseUrl: string | null;
   isProduction: boolean;
 }
 
@@ -41,6 +55,10 @@ export function readEnvironment(
     encryptionKey: value('APP_ENCRYPTION_KEY'),
     companiesHouseBaseUrl: value('COMPANIES_HOUSE_BASE_URL'),
     adminClaimSecret: value('ADMIN_CLAIM_SECRET'),
+    appUrl: value('APP_URL'),
+    resendApiKey: value('RESEND_API_KEY'),
+    mailFrom: value('MAIL_FROM'),
+    resendBaseUrl: value('RESEND_BASE_URL'),
     isProduction: source['NODE_ENV'] === 'production',
   };
 }
@@ -96,6 +114,29 @@ export function checkConfiguration(env: AppEnvironment): ConfigProblem[] {
       variable: 'ADMIN_CLAIM_SECRET',
       problem: claimProblem,
       fix: 'Generate one with: openssl rand -base64 32',
+    });
+  }
+
+  // Mail is optional: without it, password reset says it is not set up. Half
+  // of it is a mistake, and one that surfaces only when somebody is locked
+  // out — so it is reported here, where the operator is looking.
+  const mail = { RESEND_API_KEY: env.resendApiKey, MAIL_FROM: env.mailFrom, APP_URL: env.appUrl };
+  if (env.resendApiKey !== null || env.mailFrom !== null) {
+    for (const [variable, set] of Object.entries(mail)) {
+      if (set === null) {
+        problems.push({
+          variable,
+          problem: 'Not set, so password reset emails cannot be sent although the rest of mail is configured.',
+          fix: 'Set RESEND_API_KEY, MAIL_FROM and APP_URL together, or none of them.',
+        });
+      }
+    }
+  }
+  if (env.appUrl !== null && usableBaseUrl(env.appUrl) === null) {
+    problems.push({
+      variable: 'APP_URL',
+      problem: 'Not an https:// address, so a reset link built on it would carry its token in the clear.',
+      fix: 'Set it to the address people use, e.g. https://grants.example.org',
     });
   }
 

@@ -86,3 +86,30 @@ describe('checkConfiguration', () => {
     for (const problem of problems) expect(problem.fix.length).toBeGreaterThan(10);
   });
 });
+
+describe('mail settings', () => {
+  it('are optional', () => {
+    expect(checkConfiguration(readEnvironment(env()))).toEqual([]);
+  });
+
+  it('are all there or none', () => {
+    const problems = checkConfiguration(readEnvironment(env({ RESEND_API_KEY: 're_1' })));
+    expect(problems.map((p) => p.variable).toSorted()).toEqual(['APP_URL', 'MAIL_FROM']);
+  });
+
+  it('pass when complete', () => {
+    expect(
+      checkConfiguration(
+        readEnvironment(
+          env({ RESEND_API_KEY: 're_1', MAIL_FROM: 'x@example.org', APP_URL: 'https://grants.example.org' }),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('refuse an address that would send a reset token in the clear', () => {
+    const problems = checkConfiguration(readEnvironment(env({ APP_URL: 'http://grants.example.org' })));
+    expect(problems.map((p) => p.variable)).toEqual(['APP_URL']);
+  });
+});
+

@@ -3,13 +3,16 @@
 import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 
 import { getDatabase, withAdmin } from '@/db';
 import {
   createAccount,
   createSession,
   deleteSession,
+  deleteSessionsForUser,
   findAccountByEmail,
+  findAccountById,
   organisationsForUser,
   readStoredPassword,
   setPassword,
@@ -33,7 +36,17 @@ import {
   recordFailedSignUp,
 } from './limit';
 import { describeWait } from '@/domain/auth/throttle';
+import { resetEmail, resetExpiry, resetLink } from '@/domain/auth/reset';
+import {
+  claimPasswordReset,
+  createPasswordReset,
+  deleteResetsForUser,
+  sweepExpiredResets,
+} from '@/db/password-reset';
+import { readEnvironment } from '@/env';
+import { mailSetup } from '@/mail/mailer';
 import { deploymentProblem } from './readiness';
+import { checkResetLimit, recordResetRequest } from './limit';
 
 
 
@@ -188,4 +201,171 @@ export async function signOutAction(): Promise<void> {
   }
   jar.delete(SESSION_COOKIE);
   redirect('/sign-in');
+}
+
+/**
+ * Send a password reset link, if there is an account to send one to.
+ *
+ * The reply is the same whether or not the address has an account, and so is
+ * the time it takes: the account is looked up and the email sent AFTER the
+ * response has gone, so neither the words nor the stopwatch say which
+ * addresses are registered. The rate limit is counted before any of that, for
+ * every address alike, for the same reason.
+ *
+ * Only an account with a password gets a link. One without — an operator's
+ * sandbox — has no password to reset, and must not gain one this way.
+ */
+export async function requestResetAction(
+  _previous: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = normaliseEmail(String(formData.get('email') ?? ''));
+
+  const unavailable = await deploymentProblem();
+  if (unavailable !== null) {
+    return { ok: false, message: unavailable, problems: [], email };
+  }
+
+  const setup = mailSetup(readEnvironment());
+  if (setup === null) {
+    return {
+      ok: false,
+      message:
+        'This deployment cannot send email yet, so a password cannot be reset from here. Ask whoever runs it to set up mail.',
+      problems: [],
+      email,
+    };
+  }
+
+  if (!isPlausibleEmail(email)) {
+    return { ok: false, message: 'That does not look like an email address.', problems: [], email };
+  }
+
+  const limit = await checkResetLimit(email);
+  if (!limit.allowed) {
+    return {
+      ok: false,
+      message: `Several links have already been sent. Check your inbox and spam folder, or try again in ${describeWait(limit.retryAfterSeconds)}.`,
+      problems: [],
+      email,
+    };
+  }
+  await recordResetRequest(email);
+
+  after(async () => {
+    try {
+      const now = new Date();
+      const account = await withAdmin((tx) => findAccountByEmail(tx, email));
+      if (account === null) return;
+      const stored = await withAdmin((tx) => readStoredPassword(tx, account.id));
+      if (stored === null) return;
+
+      const token = createSessionToken();
+      await withAdmin(async (tx) => {
+        await sweepExpiredResets(tx, now);
+        await createPasswordReset(tx, {
+          id: hashSessionToken(token),
+          userId: account.id,
+          expiresAt: resetExpiry(now),
+        });
+      });
+      const { subject, text } = resetEmail(resetLink(setup.linkBase, token));
+      await setup.mailer.send({ to: account.email, subject, text });
+    } catch (error) {
+      // After the response, so nobody is waiting on it. The log is the only
+      // place a failure to send can go — never the address or the link.
+      console.error('[grantfinderstudio] a password reset email could not be sent:', error);
+    }
+  });
+
+  return {
+    ok: true,
+    message: `If ${email} has an account, a link to choose a new password is on its way. It works once, for 30 minutes.`,
+    problems: [],
+    email,
+  };
+}
+
+/** Thrown inside the reset transaction to roll the claim back. */
+class KeepTheLink extends Error {
+  constructor(readonly problems: string[]) {
+    super('The new password was refused; the link is kept.');
+  }
+}
+
+/**
+ * Choose a new password with a reset link.
+ *
+ * One transaction: the link is claimed, the password checked against the
+ * account it belongs to, and the new one stored — and if the password is
+ * refused, the claim rolls back, so a typo does not spend the link.
+ *
+ * The link is claimed BEFORE the password is hashed, so a made-up token costs
+ * one indexed DELETE and never a hash. A 256-bit token cannot be guessed, so
+ * there is nothing here for a rate limit to protect.
+ *
+ * On success every session for the account ends — a reset is what somebody
+ * does when they think someone else has their password — and every other
+ * outstanding link dies with it.
+ */
+export async function resetPasswordAction(
+  _previous: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const token = String(formData.get('token') ?? '');
+  const password = String(formData.get('password') ?? '');
+
+  const unavailable = await deploymentProblem();
+  if (unavailable !== null) {
+    return { ok: false, message: unavailable, problems: [], email: '' };
+  }
+
+  const dead: AuthState = {
+    ok: false,
+    message: 'This link has expired or has already been used. Ask for a new one below.',
+    problems: [],
+    email: '',
+  };
+  if (!/^[A-Za-z0-9_-]{43}$/u.test(token)) return dead;
+
+  // The checks that need no account, before anything is spent.
+  const early = passwordProblems(password, '');
+  if (early.length > 0) {
+    return { ok: false, message: 'Your password has not been changed yet.', problems: early, email: '' };
+  }
+
+  let email: string;
+  try {
+    const outcome = await withAdmin(async (tx) => {
+      const userId = await claimPasswordReset(tx, hashSessionToken(token), new Date());
+      if (userId === null) return null;
+      const account = await findAccountById(tx, userId);
+      if (account === null) return null;
+      const problems = passwordProblems(password, account.email);
+      if (problems.length > 0) throw new KeepTheLink(problems);
+      await setPassword(tx, account.id, await hashPassword(password));
+      await deleteSessionsForUser(tx, account.id);
+      await deleteResetsForUser(tx, account.id);
+      return account.email;
+    });
+    if (outcome === null) return dead;
+    email = outcome;
+  } catch (error) {
+    if (error instanceof KeepTheLink) {
+      return {
+        ok: false,
+        message: 'Your password has not been changed yet.',
+        problems: error.problems,
+        email: '',
+      };
+    }
+    throw error;
+  }
+
+  // Whatever was guessed at this address before, the owner has just proved
+  // they hold its inbox.
+  await clearSignInLimit(email);
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE);
+  redirect('/sign-in?reset=done');
 }

@@ -60,7 +60,7 @@ const errs = [];
 const anon = await b.newContext(CONTEXT);
 const a = await anon.newPage();
 a.on('pageerror', (e) => errs.push(`${a.url()} ${e}`));
-for (const [path, label] of [['/', 'landing'], ['/sign-in', 'sign-in'], ['/sign-up', 'sign-up'], ['/admin/sign-in', 'admin sign-in']]) {
+for (const [path, label] of [['/', 'landing'], ['/sign-in', 'sign-in'], ['/sign-up', 'sign-up'], ['/forgot-password', 'forgot password'], ['/reset-password', 'reset password'], ['/admin/sign-in', 'admin sign-in']]) {
   await a.goto(`${B}${path}`, { waitUntil: 'networkidle' });
   results.push(await audit(a, label));
 }

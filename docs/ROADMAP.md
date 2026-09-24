@@ -24,8 +24,10 @@ takes to close them. Everything not named here is polish or post-launch.
 ### B. Engineering needed before real users
 - [ ] Load the real 360Giving corpus on the deployment, then take the landing's
       "In build" note down — until then "find" has nothing to find
-- [ ] Password reset — needs a mailer, and there is none. Without it a forgotten
-      password is a lost account
+- [x] Password reset, with a pluggable mailer (Resend, or the server log in
+      development) (2026-09-24)
+- [ ] Sign-up says "there is already an account with that address" — now there
+      is a mailer, email the owner a notice instead and give one reply
 - [ ] Invite a colleague: membership management, `authorise()` on every action,
       an organisation switcher
 - [x] Uploads over 1 MB fail with a framework error; cap a `.docx`'s decompressed
@@ -129,7 +131,7 @@ weigh a fund and write the bid.
 - [x] Rate limiting on sign-in and sign-up, by address and by origin
 - [ ] Confirm the platform overwrites `x-forwarded-for` (Vercel does; the
       per-origin limit is only worth anything where something upstream does)
-- [ ] Password reset (needs a mailer; there is none yet)
+- [x] Password reset: single-use 30-minute links, stored hashed, built on `APP_URL`
 - [ ] Organisation switcher for someone in more than one
 - [ ] Organisation and membership management endpoints
 - [ ] Audit logging on privileged actions

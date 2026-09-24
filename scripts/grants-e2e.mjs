@@ -269,6 +269,51 @@ await new Promise((resolve, reject) => {
   api.listen(API_PORT, '127.0.0.1', resolve);
 });
 
+/**
+ * A Resend-shaped inbox.
+ *
+ * The server this walk starts is given a Resend key and pointed here, so a
+ * password reset goes through the REAL adapter — the real request, the real
+ * email, the real link — and lands somewhere this script can read it. Only
+ * `POST /emails` exists, because that is all the product ever calls.
+ */
+const MAIL_PORT = Number(process.env['E2E_MAIL_PORT'] ?? 4598);
+const outbox = [];
+const mail = createServer((req, res) => {
+  if (req.method !== 'POST' || req.url !== '/emails') {
+    res.statusCode = 404;
+    res.end('{}');
+    return;
+  }
+  if (req.headers.authorization !== 'Bearer re_e2e_stub_not_a_real_key') {
+    res.statusCode = 401;
+    res.end('{"message":"bad key"}');
+    return;
+  }
+  let body = '';
+  req.on('data', (chunk) => { body += chunk; });
+  req.on('end', () => {
+    outbox.push(JSON.parse(body));
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ id: `email_${outbox.length}` }));
+  });
+});
+if (OWN_SERVER) {
+  await new Promise((resolve, reject) => {
+    mail.once('error', (error) => {
+      reject(
+        error.code === 'EADDRINUSE'
+          ? new Error(
+              `Something is already serving 127.0.0.1:${MAIL_PORT}, which this walk needs for ` +
+                `its stub inbox. Stop it, or run with E2E_MAIL_PORT set to a free port.`,
+            )
+          : error,
+      );
+    });
+    mail.listen(MAIL_PORT, '127.0.0.1', resolve);
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Our own database state, and our own server.
  * ------------------------------------------------------------------ */
@@ -454,6 +499,11 @@ if (OWN_SERVER) {
     THREESIXTYGIVING_BASE_URL: `http://127.0.0.1:${API_PORT}/api/v1/`,
     ADMIN_CLAIM_SECRET: CLAIM_SECRET,
     PORT: String(PORT),
+    // Mail through the real Resend adapter, into the stub inbox above.
+    RESEND_API_KEY: 're_e2e_stub_not_a_real_key',
+    RESEND_BASE_URL: `http://127.0.0.1:${MAIL_PORT}`,
+    MAIL_FROM: 'Grant Finder Studio <noreply@example.org>',
+    APP_URL: B,
   });
 } else {
   console.log(`using the server at ${B} — not touching its database or its processes`);
@@ -475,6 +525,10 @@ const failures = [];
 const fail = (m) => { failures.push(m); console.error('FAIL:', m); process.exitCode = 1; };
 let passed = 0;
 const ok = (m) => { passed += 1; console.log('  ok —', m); };
+
+/** The reset reply with its address taken out, so two replies can be compared. */
+const resetWording = (text, address) =>
+  /If (\S+) has an account, a link to choose a new password is on its way/u.exec(text)?.[0]?.replace(address, 'X');
 
 try {
   // --- the applicant --------------------------------------------------------
@@ -507,6 +561,135 @@ try {
   if (landed === '/sign-up') {
     fail(`sign-up did not go through — page says: ${(await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 400)}`);
   } else ok(`signed up, landed on ${landed}`);
+
+  // --- a forgotten password ---------------------------------------------------
+  //
+  // Its own account in its own browser contexts, because a reset ends every
+  // session the account has — done with the main account, it would sign the
+  // rest of this walk out.
+  if (OWN_SERVER) {
+    const resetEmail = `e2e-reset-${Date.now()}@example.org`;
+    const oldPassword = 'the-first-passphrase-11';
+    const newPassword = 'a-second-longer-passphrase-12';
+    const here = await browser.newContext();
+    const elsewhere = await browser.newContext();
+    const tab = await here.newPage();
+    tab.on('pageerror', (e) => fail(`client exception at ${tab.url()}: ${e.message}`));
+    const other = await elsewhere.newPage();
+
+    for (const p of [tab, other]) {
+      await p.goto(`${B}/${p === tab ? 'sign-up' : 'sign-in'}`, { waitUntil: 'domcontentloaded' });
+      await p.fill('input[type="email"]', resetEmail);
+      await p.fill('input[type="password"]', oldPassword);
+      await p.click('button[type="submit"]');
+      await p.waitForLoadState('networkidle');
+    }
+    // /organisation, not /onboarding: onboarding renders for anybody, so it
+    // cannot tell a live session from a dead one. This page sends a live one
+    // with no organisation to onboarding, and no session at all to sign-in.
+    await other.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+    if (new URL(other.url()).pathname !== '/onboarding') {
+      fail(`the reset account is not signed in from a second browser: ${other.url()}`);
+    }
+    // Signed out of THIS browser, so the reset starts where a real one does.
+    await here.clearCookies();
+
+    await tab.goto(`${B}/sign-in`, { waitUntil: 'domcontentloaded' });
+    await tab.getByRole('link', { name: /Forgot your password/iu }).click();
+    await tab.waitForLoadState('domcontentloaded');
+    if (new URL(tab.url()).pathname !== '/forgot-password') {
+      fail(`"Forgot your password?" went to ${tab.url()}`);
+    } else ok('sign-in offers a way back in for a forgotten password');
+
+    const ask = async (address) => {
+      await tab.goto(`${B}/forgot-password`, { waitUntil: 'domcontentloaded' });
+      await tab.fill('input[type="email"]', address);
+      await tab.click('button[type="submit"]');
+      await tab.getByRole('status').waitFor({ timeout: 10_000 }).catch(() => undefined);
+      return (await tab.locator('main, body').first().innerText()).replace(/\s+/gu, ' ');
+    };
+    const nobody = `e2e-nobody-${Date.now()}@example.org`;
+    const saidToNobody = await ask(nobody);
+    const saidToSomebody = await ask(resetEmail);
+    if (resetWording(saidToNobody, nobody) === undefined || resetWording(saidToNobody, nobody) !== resetWording(saidToSomebody, resetEmail)) {
+      fail(`the reply differs between an address with an account and one without: "${saidToNobody.slice(0, 200)}" / "${saidToSomebody.slice(0, 200)}"`);
+    } else ok('the reply is word for word the same whether or not the address has an account');
+
+    let letter;
+    for (let i = 0; i < 20 && letter === undefined; i += 1) {
+      letter = outbox.find((m) => m.to?.[0] === resetEmail);
+      if (letter === undefined) await tab.waitForTimeout(500);
+    }
+    if (outbox.some((m) => m.to?.[0] === nobody)) {
+      fail('an email went to an address with no account');
+    } else ok('and no email goes to an address with no account');
+
+    const link = /https?:\/\/\S+\/reset-password#token=[A-Za-z0-9_-]{43}/u.exec(letter?.text ?? '')?.[0];
+    if (letter === undefined || link === undefined) {
+      fail(`no reset email with a link arrived: ${JSON.stringify(outbox).slice(0, 300)}`);
+    } else {
+      ok('the reset email arrives through the Resend adapter, with a link in it');
+      if (new URL(link).origin !== new URL(B).origin) {
+        fail(`the link is built on ${new URL(link).origin}, not the configured address`);
+      } else ok('built on the configured address, not the request\'s Host');
+
+      await tab.goto(link, { waitUntil: 'networkidle' });
+      if (new URL(tab.url()).hash !== '') {
+        fail(`the token is still in the address bar: ${tab.url()}`);
+      } else ok('the token is wiped from the address bar as soon as it is read');
+
+      // Too short first: refused, and the link must survive the refusal.
+      await tab.fill('input[type="password"]', 'short');
+      await tab.click('button[type="submit"]');
+      await tab.waitForLoadState('networkidle');
+      await tab.waitForTimeout(500);
+      const refusedText = await tab.locator('body').innerText();
+      if (!/at least 10 characters/iu.test(refusedText)) {
+        fail(`a too-short password was not refused: ${refusedText.slice(0, 300)}`);
+      } else ok('a too-short new password is refused with the rule');
+
+      await tab.fill('input[type="password"]', newPassword);
+      await tab.click('button[type="submit"]');
+      await tab.waitForURL(/\/sign-in/u, { timeout: 15_000 }).catch(() => undefined);
+      const done = await tab.locator('body').innerText();
+      if (!/Your password has been changed/u.test(done)) {
+        fail(`the reset did not land on sign-in with a notice: ${tab.url()} ${done.slice(0, 300)}`);
+      } else ok('the refusal kept the link, and the new password saves and says so');
+
+      await other.goto(`${B}/organisation`, { waitUntil: 'networkidle' });
+      if (new URL(other.url()).pathname !== '/sign-in') {
+        fail(`the other browser is still signed in after the reset, at ${other.url()}`);
+      } else ok('and every other session for the account has ended');
+
+      const signInWith = async (secret) => {
+        await tab.goto(`${B}/sign-in`, { waitUntil: 'domcontentloaded' });
+        await tab.fill('input[type="email"]', resetEmail);
+        await tab.fill('input[type="password"]', secret);
+        await tab.click('button[type="submit"]');
+        await tab.waitForLoadState('networkidle');
+        await tab.waitForTimeout(300);
+        return new URL(tab.url()).pathname;
+      };
+      if ((await signInWith(oldPassword)) !== '/sign-in') {
+        fail('the old password still signs in');
+      } else ok('the old password no longer signs in');
+      if ((await signInWith(newPassword)) === '/sign-in') {
+        fail('the new password does not sign in');
+      } else ok('the new one does');
+
+      await here.clearCookies();
+      await tab.goto(link, { waitUntil: 'networkidle' });
+      await tab.fill('input[type="password"]', 'yet-another-passphrase-13');
+      await tab.click('button[type="submit"]');
+      await tab.waitForLoadState('networkidle');
+      await tab.waitForTimeout(500);
+      if (!/expired or has already been used/iu.test(await tab.locator('body').innerText())) {
+        fail('a used reset link worked a second time');
+      } else ok('and the link does not work twice');
+    }
+    await here.close();
+    await elsewhere.close();
+  }
 
   // --- /grants fills the record BY ITSELF -----------------------------------
   //
@@ -1989,6 +2172,7 @@ try {
 } finally {
   await browser.close();
   api.close();
+  if (mail.listening) mail.close();
   // Ours to stop, group and all. Left running, it holds the port and — worse
   // — serves a build that the next `npm run build` has already replaced.
   stopServer(server);

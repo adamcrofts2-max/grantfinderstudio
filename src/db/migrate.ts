@@ -53,6 +53,7 @@ export const MIGRATIONS = [
   '0027_application_decision.sql',
   '0028_decision_needs_a_date.sql',
   '0029_private_funders.sql',
+  '0030_password_resets.sql',
 ] as const;
 
 /**

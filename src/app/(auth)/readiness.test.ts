@@ -14,6 +14,10 @@ const env = (over: Partial<AppEnvironment> = {}): AppEnvironment => ({
   encryptionKey: null,
   companiesHouseBaseUrl: null,
   adminClaimSecret: null,
+  appUrl: null,
+  resendApiKey: null,
+  mailFrom: null,
+  resendBaseUrl: null,
   isProduction: true,
   ...over,
 });

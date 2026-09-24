@@ -16,9 +16,10 @@ import type { AttemptRecord } from '../domain/auth/throttle.js';
  * `admin-address` is its own axis rather than a reuse of `address` so the two
  * sign-ins cannot interfere: a customer failing repeatedly must not lock the
  * operator out of the console, and an attack on the console must not spend the
- * customer's allowance either.
+ * customer's allowance either. `reset-address` likewise: asking for reset
+ * emails must not use up somebody's sign-in attempts.
  */
-export type Axis = 'address' | 'origin' | 'admin-address';
+export type Axis = 'address' | 'origin' | 'admin-address' | 'reset-address';
 
 /**
  * The key a bucket is stored under.

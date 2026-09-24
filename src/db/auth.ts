@@ -52,6 +52,15 @@ export async function findAccountByEmail(
   return rows[0] ?? null;
 }
 
+/** The account a reset link belongs to, once the link has been used. */
+export async function findAccountById(tx: Queryable, userId: string): Promise<Account | null> {
+  const { rows } = await tx.query<{ id: string; email: string; name: string | null }>(
+    'SELECT id, email, name FROM users WHERE id = $1',
+    [userId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function readStoredPassword(
   tx: Queryable,
   userId: string,

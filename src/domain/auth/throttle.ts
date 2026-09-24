@@ -27,7 +27,7 @@ export interface Policy {
   windowSeconds: number;
 }
 
-export const THROTTLE: { address: Policy; origin: Policy; admin: Policy } = {
+export const THROTTLE: { address: Policy; origin: Policy; admin: Policy; reset: Policy } = {
   /**
    * Ten tries at one address in fifteen minutes. Comfortably above anyone
    * genuinely misremembering a password, far below anything useful for
@@ -49,6 +49,14 @@ export const THROTTLE: { address: Policy; origin: Policy; admin: Policy } = {
    * than one bid.
    */
   admin: { maxAttempts: 5, windowSeconds: 1800 },
+  /**
+   * Three reset emails to one address an hour — and every request counts,
+   * not only failures, because each one sends an email to somebody.
+   *
+   * Enough for a person whose first email went to spam; too few to turn this
+   * form into a way of filling a stranger's inbox.
+   */
+  reset: { maxAttempts: 3, windowSeconds: 3600 },
 };
 
 export interface AttemptRecord {

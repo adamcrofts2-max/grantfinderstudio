@@ -27,7 +27,7 @@ describe('the tables that carry credentials', () => {
     // app_credentials is protected this way already; sessions and
     // user_passwords must be too. A signed-in customer of the platform must
     // not be able to read another account's password hash or replay a session.
-    for (const table of ['sessions', 'user_passwords']) {
+    for (const table of ['sessions', 'user_passwords', 'password_resets']) {
       await expect(harness.db.query(`SELECT * FROM ${table}`)).rejects.toThrow(
         /permission denied/iu,
       );
