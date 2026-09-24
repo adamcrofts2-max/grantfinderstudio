@@ -34,3 +34,85 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # The product in a browser, against a real PostgreSQL 16: the production
+  # smoke test, the accessibility sweep and the end-to-end walk. Each of these
+  # found faults the unit suite could not — a server action body limit, a
+  # hydration error, a script the Content-Security-Policy refused — and until
+  # now they only ran on a developer's machine.
+  browser:
+    needs: verify
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # A NON-superuser owner, as in production. A superuser bypasses row-level
+      # security entirely, so every isolation assertion would pass for the
+      # wrong reason. `sslmode=disable` said out loud: a production build
+      # refuses a connection string that does not state its TLS mode, and this
+      # one is a container on the same runner.
+      DATABASE_URL: postgres://gfsowner:gfsowner@localhost:5432/gfs?sslmode=disable
+      # The walks start their own 360Giving stub; the smoke test uses this one.
+      THREESIXTYGIVING_BASE_URL: http://127.0.0.1:4611/api/v1/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Create the database and its owner
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -c "CREATE ROLE gfsowner LOGIN CREATEROLE NOSUPERUSER PASSWORD 'gfsowner'"
+          psql -h localhost -U postgres -c "CREATE DATABASE gfs OWNER gfsowner"
+
+      - name: Secrets for this run only
+        # Generated per run and never stored: nothing encrypted with them
+        # outlives the job.
+        run: |
+          echo "APP_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "ADMIN_CLAIM_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - run: npm run build
+
+      - name: Start the 360Giving stub
+        run: |
+          node scripts/stub-360giving.mjs --port 4611 > stub-360.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4611/ && break; sleep 1; done
+
+      - name: Production smoke
+        run: npm run smoke
+
+      # Before the e2e, on a fresh database: the sweep claims the console
+      # with ADMIN_CLAIM_SECRET, and the e2e would otherwise have claimed it
+      # first with its own.
+      - name: Accessibility sweep
+        run: |
+          npx next start -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
+          npm run accessibility
+          kill %1 || true
+
+      - name: End-to-end walk
+        run: npm run e2e
+
+      - name: Logs, if anything failed
+        if: failure()
+        run: tail -n 200 server.log stub-360.log 2>/dev/null || true

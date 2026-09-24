@@ -33,7 +33,7 @@ takes to close them. Everything not named here is polish or post-launch.
 - [x] A script Content-Security-Policy with per-request nonces
 - [ ] Run the Writer and the Critic against the real model and read the output;
       an evaluation suite so a prompt change cannot quietly regress
-- [ ] Axe accessibility sweep and the e2e in CI, not only on a developer's machine
+- [x] Axe accessibility sweep and the e2e in CI, not only on a developer's machine
 - [ ] Export an application as DOCX/PDF — the most common thing a bid writer
       asks for after "copy"
 
@@ -770,10 +770,10 @@ this cheque before", where no source answers "what is open".
         (`/opportunities/<typed fund>`), which also renders corpus data (the
         funder's awards) while the e2e's background load writes them; 20
         rounds of the same save-then-open sequence on a settled corpus: none
-- [ ] `npm run accessibility` cannot sign in to the console after `npm run e2e`
+- [x] `npm run accessibility` cannot sign in to the console after `npm run e2e`
       has claimed it with its own admin; give it the e2e's provisioning (or a
       flag to skip the console) so the sweep runs after the e2e in CI
-- [ ] Playwright is not a declared dependency: the scripts use a copy linked into
+- [x] Playwright is not a declared dependency: the scripts use a copy linked into
       `node_modules`, and any `npm install` prunes the link. Declare it as a dev
       dependency pinned to the machine's browser build, or document the link
 - [x] **The e2e provisions itself.** It reported 23 failures of 117 this week,
@@ -1156,7 +1156,7 @@ annotation inside the working screens.**
 - [x] Fix `link-in-text-block`: nine inline links across six screens were
       distinguished by colour alone (WCAG 1.4.1)
 - [x] Fix an invalid `<dl>` on the console overview
-- [ ] Run the axe sweep in CI. It needs a dev server and a browser, so it is a
+- [x] Run the axe sweep in CI. It needs a dev server and a browser, so it is a
       separate step from `npm test` rather than part of it
 - [x] Security review of the console, settings and ingestion work. Found and
       fixed a credential-exfiltration path I had introduced the same day: an

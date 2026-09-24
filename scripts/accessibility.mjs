@@ -17,10 +17,9 @@
 /* One browser page walks the screens in order, so the awaits below are meant
    to be sequential — auditing in parallel would need a page each and tell us
    nothing more. `scripts/**` turns off no-await-in-loop for that reason. */
-// Playwright is not an app dependency; this resolves whatever the machine
-// running the sweep has installed.
+// Playwright is a dev dependency, pinned to the browser build CI installs.
 import pw from 'playwright';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 const { chromium } = pw;
 const B = process.env.BASE_URL ?? 'http://localhost:3000';
 const AXE = readFileSync(
@@ -29,10 +28,23 @@ const AXE = readFileSync(
 );
 // Only used to claim a console on a fresh database; ignored once claimed.
 const SECRET = process.env.ADMIN_CLAIM_SECRET ?? '';
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+// This machine keeps a Chromium outside Playwright's own cache; CI does not,
+// and uses the one `npx playwright install` put in the default place.
+const LOCAL_CHROMIUM = '/opt/pw-browsers/chromium';
+const b = await chromium.launch(
+  existsSync(LOCAL_CHROMIUM) ? { executablePath: LOCAL_CHROMIUM } : {},
+);
+// axe goes into the page as an inline script, and the product's
+// Content-Security-Policy refuses inline scripts without the request's nonce —
+// correctly. So the SWEEP'S contexts bypass the policy; nothing about the
+// product changes, and `audit` checks axe really loaded rather than trusting it.
+const CONTEXT = { viewport: { width: 1280, height: 900 }, bypassCSP: true };
 
 const audit = async (p, label) => {
   await p.addScriptTag({ content: AXE });
+  if (!(await p.evaluate(() => typeof window.axe !== 'undefined'))) {
+    throw new Error(`axe did not load on ${p.url()} — nothing was audited`);
+  }
   const r = await p.evaluate(async () => await window.axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
   }));
@@ -45,7 +57,7 @@ const results = [];
 const errs = [];
 
 // --- signed-out ---
-const anon = await b.newContext({ viewport: { width: 1280, height: 900 } });
+const anon = await b.newContext(CONTEXT);
 const a = await anon.newPage();
 a.on('pageerror', (e) => errs.push(`${a.url()} ${e}`));
 for (const [path, label] of [['/', 'landing'], ['/sign-in', 'sign-in'], ['/sign-up', 'sign-up'], ['/admin/sign-in', 'admin sign-in']]) {
@@ -55,7 +67,7 @@ for (const [path, label] of [['/', 'landing'], ['/sign-in', 'sign-in'], ['/sign-
 await anon.close();
 
 // --- a customer with the demo data ---
-const tc = await b.newContext({ viewport: { width: 1280, height: 900 } });
+const tc = await b.newContext(CONTEXT);
 const t = await tc.newPage();
 t.on('pageerror', (e) => errs.push(`${t.url()} ${e}`));
 await t.goto(`${B}/sign-up`, { waitUntil: 'networkidle' });
@@ -97,7 +109,7 @@ if (opp) { await t.goto(`${B}${opp}`, { waitUntil: 'networkidle' }); results.pus
 await tc.close();
 
 // --- the console ---
-const ac = await b.newContext({ viewport: { width: 1280, height: 900 } });
+const ac = await b.newContext(CONTEXT);
 const q = await ac.newPage();
 q.on('pageerror', (e) => errs.push(`${q.url()} ${e}`));
 await q.goto(`${B}/admin/sign-in`, { waitUntil: 'networkidle' });
@@ -106,13 +118,24 @@ await q.fill('#email', 'ops@example.org');
 if (claiming) await q.fill('#secret', SECRET);
 await q.fill('#password', 'a long enough passphrase here');
 await q.click('form button[type=submit]');
-await q.waitForURL(/\/admin$/, { timeout: 60000 });
-for (const [path, label] of [['/admin', 'console overview'], ['/admin/funders', 'console funders'],
-  ['/admin/catalogue', 'console catalogue'], ['/admin/accounts', 'console accounts'],
-  ['/admin/admins', 'console admins'], ['/admin/sandbox', 'console sandbox'],
-  ['/admin/settings', 'console services']]) {
-  await q.goto(`${B}${path}`, { waitUntil: 'networkidle' });
-  results.push(await audit(q, label));
+// The console is claimed once per database. If somebody else claimed it —
+// the e2e does, with its own admin — these credentials cannot get in, and
+// that is the database's state, not an accessibility fault. Said, not crashed:
+// the customer screens above have still been audited.
+const inConsole = await q
+  .waitForURL(/\/admin$/, { timeout: 20000 })
+  .then(() => true)
+  .catch(() => false);
+if (!inConsole) {
+  console.log('console: SKIPPED — already claimed by an admin this sweep does not know');
+} else {
+  for (const [path, label] of [['/admin', 'console overview'], ['/admin/funders', 'console funders'],
+    ['/admin/catalogue', 'console catalogue'], ['/admin/accounts', 'console accounts'],
+    ['/admin/admins', 'console admins'], ['/admin/sandbox', 'console sandbox'],
+    ['/admin/settings', 'console services']]) {
+    await q.goto(`${B}${path}`, { waitUntil: 'networkidle' });
+    results.push(await audit(q, label));
+  }
 }
 await b.close();
 

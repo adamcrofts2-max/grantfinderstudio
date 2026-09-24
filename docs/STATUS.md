@@ -6067,3 +6067,33 @@ response's nonce and that nonces differ between requests; the e2e fails on
 any policy violation in the browser console. Clean on both — 172 e2e checks
 with the watcher on.
 
+## The browser checks run in CI
+
+`.github/workflows/ci.yml` gains a `browser` job after `verify`: PostgreSQL 16
+as a service, a NON-superuser owner with CREATEROLE (a superuser bypasses
+row-level security, and every isolation assertion would pass for the wrong
+reason), per-run secrets generated with `openssl` and never stored, Chromium
+from `npx playwright install --with-deps`, the 360Giving stub, then the
+production smoke, the axe sweep and the e2e — in that order, because the sweep
+claims the console on a fresh database and the e2e would otherwise claim it
+first.
+
+Playwright is a declared dev dependency now, pinned to 1.56.1 (the browser
+build this machine has): it was a link into a global install that any
+`npm install` pruned, which the design pass found the hard way.
+
+The sweep needed three changes. It injects axe as an inline script, which the
+new Content-Security-Policy refuses — correctly — so its contexts use
+Playwright's `bypassCSP`, and `audit` now FAILS if axe did not load instead of
+reporting an empty page as clean. It finds Chromium where CI puts it. And an
+already-claimed console is reported as skipped rather than crashing the run
+after every customer screen had been audited.
+
+Rehearsed here as CI will run it, on a brand-new database and owner: the smoke
+clean (health ok, isolation enforced, 29/29 migrations), axe clean on all 21
+screens including the console, the e2e clean at 172; then the sweep again on
+the claimed console, which skipped it and passed. Two things the rehearsal
+caught before CI could: the connection string must say `sslmode=disable` (a
+production build refuses one that states no TLS mode), and the stub answers
+404 at its root, so the wait uses any response rather than `curl -f`.
+
