@@ -34,8 +34,10 @@ takes to close them. Everything not named here is polish or post-launch.
 - [ ] Run the Writer and the Critic against the real model and read the output;
       an evaluation suite so a prompt change cannot quietly regress
 - [x] Axe accessibility sweep and the e2e in CI, not only on a developer's machine
-- [ ] Export an application as DOCX/PDF — the most common thing a bid writer
-      asks for after "copy"
+- [x] Export an application as DOCX — the most common thing a bid writer
+      asks for after "copy" (2026-09-24)
+- [ ] The same as PDF, for a funder that asks for one — Word covers editing and
+      email; PDF is the fixed copy
 
 ### C. Design, to finish the job this pass started
 - [ ] One date style everywhere (the tracker's "Sun, 1 Nov 2026" or the rest's
@@ -232,7 +234,7 @@ funder's own guidance. See `PRODUCT_ARCHITECTURE.md` §2.3.1.
 - [x] Paste questions from a funder's portal, with word limits pulled out
 - [x] Copy an answer as plain text, warning when a claim is unsupported
 - [x] Copy the whole application as question-and-answer text
-- [ ] Export to DOCX/PDF (for internal review and email-attachment funders)
+- [x] Export to DOCX (for internal review and email-attachment funders) — PDF open above
 - [x] Start an application from any opportunity, eligibility-aware but never blocking
 - [x] Applications pipeline ordered by deadline
 
@@ -392,7 +394,7 @@ marketplace built first is a bet; built last it is an obvious extension.
 - [ ] Subscribable calendar feed (needs auth: a feed URL is fetched without a session)
 - [ ] Track a fund without opening an application for it (an explicit watchlist)
 - [ ] Effort features beyond word counts (attachments, policies, match funding) per opportunity
-- [ ] DOCX/PDF export
+- [x] DOCX export — PDF open in the finish line
 
 ## Phase 12 — Visual pass
 Brief: `docs/DESIGN_BRIEF.md`, written after a screen-by-screen audit. The

@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,980 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,991 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 173 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -6096,4 +6096,29 @@ the claimed console, which skipped it and passed. Two things the rehearsal
 caught before CI could: the connection string must say `sslmode=disable` (a
 production build refuses one that states no TLS mode), and the stub answers
 404 at its root, so the wait uses any response rather than `curl -f`.
+
+## The application as a Word document
+
+"Download as Word" beside "Copy all answers" on the application page. The
+content is decided in `src/domain/export/application.ts` (pure, tested): the
+questions in the funder's order, each answer's own paragraphs, the limit and
+where the answer stands against it ("9 words — 4 over the limit of 5",
+"Not yet answered"), the funder, the organisation, the deadline and the ask,
+dates as a person writes them, and a filename a downloads folder can
+recognise (`tree-planting-fund-2026-09-24.docx`, safe on every filesystem).
+What the product knows about each sentence is deliberately LEFT OUT: a file
+bound for a trustee or a funder must be the answer, and "No confirmed fact
+behind this" printed into it would read as part of it.
+
+Rendered by `docx` (pinned) in `src/export/application-docx.ts`, plainly —
+one typeface, questions as headings — so it looks like it came from the
+applicant, not from software. The test reads the file back with `mammoth`,
+the reader the upload path uses, and runs it through the zip guard.
+
+`/api/applications/[id]/docx` asks `application:read` before it reads, reads
+on the tenant connection (an id from another organisation is the same 404 as
+one that does not exist), and writes `application.exported` to the trail in
+the same transaction, against the application. The e2e downloads it from a
+live application: 200, the Word type, a real zip, the fund-and-date name —
+clean at 173 checks. PDF is split out as its own open item.
 

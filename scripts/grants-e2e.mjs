@@ -1415,6 +1415,28 @@ try {
       if (/young people aged 14 to 19/u.test(kept)) ok('and is still there after a reload');
       else fail('a saved answer did not survive a reload');
 
+      // --- the application as a Word document ------------------------------
+      //
+      // Fetched from inside the page, because Playwright's request context
+      // does not carry the session cookie.
+      const docx = await page.evaluate(async () => {
+        const id = location.pathname.split('/').at(-1);
+        const response = await fetch(`/api/applications/${id}/docx`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return {
+          status: response.status,
+          type: response.headers.get('content-type') ?? '',
+          disposition: response.headers.get('content-disposition') ?? '',
+          zip: bytes[0] === 0x50 && bytes[1] === 0x4b,
+          size: bytes.length,
+        };
+      });
+      if (docx.status !== 200 || !/wordprocessingml/u.test(docx.type) || !docx.zip) {
+        fail(`the Word download did not arrive: ${JSON.stringify(docx)}`);
+      } else if (!/attachment; filename="[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.docx"/u.test(docx.disposition)) {
+        fail(`the Word download is not named for the fund and the date: ${docx.disposition}`);
+      } else ok(`the application downloads as a Word document (${docx.size} bytes)`);
+
       // --- removing the fund would take this application with it ------------
       //
       // Applications cascade from their fund, and the answers are the

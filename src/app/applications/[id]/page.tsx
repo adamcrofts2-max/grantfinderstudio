@@ -462,8 +462,8 @@ export default async function ApplicationPage({
         <section className="card">
           <h2 className="card-title">Take it to the funder’s form</h2>
           <p className="card-sub" style={{ marginTop: 'var(--s-2)' }}>
-            Every answered question, as plain text, in order. Useful for a colleague to read
-            through before you paste each answer into the portal.
+            Every answered question, in order — as plain text to paste, or as a Word document
+            for a colleague to read through or a funder who takes applications by email.
           </p>
           <div className="row" style={{ marginTop: 'var(--s-4)' }}>
             <CopyButton
@@ -472,6 +472,16 @@ export default async function ApplicationPage({
               unsupportedCount={unsupported}
               variant="secondary"
             />
+            {/* A file, for a trustee's read-through or a funder who takes
+                applications by email. The answers only — not what the product
+                knows about each sentence. */}
+            <a
+              className="btn btn-secondary"
+              href={`/api/applications/${application.id}/docx`}
+              download
+            >
+              Download as Word
+            </a>
           </div>
         </section>
       ) : null}

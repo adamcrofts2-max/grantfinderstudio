@@ -41,6 +41,7 @@ export const AUDIT_ACTIONS = {
   'application.unsubmitted': 'No longer marked as submitted',
   'application.decided': 'The funder answered',
   'application.decision_cleared': 'Funder’s answer withdrawn',
+  'application.exported': 'Downloaded as a document',
 
   // Writing
   'answer.saved': 'Answer written',
@@ -157,6 +158,10 @@ export function auditDetail(action: string, metadata: Record<string, unknown>): 
           ? null
           : `${grounded} of ${sentences} sentences traced to a confirmed fact`;
       return [length, traced].filter((part) => part !== null).join(', ');
+    }
+    case 'application.exported': {
+      const format = str('format');
+      return format === 'docx' ? 'Word' : (format ?? '');
     }
     case 'application.questions_added': {
       const added = num('added');

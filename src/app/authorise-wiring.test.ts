@@ -47,3 +47,19 @@ describe('the erasure', () => {
     );
   });
 });
+
+describe('the Word download', () => {
+  const route = code('src/app/api/applications/[id]/docx/route.ts');
+
+  it('asks for application:read before it reads anything', () => {
+    expect(route).toMatch(/authorise\('application:read'\)/u);
+    expect(route.indexOf("authorise('application:read')")).toBeLessThan(
+      route.indexOf('loadApplication('),
+    );
+  });
+
+  it('reads through the tenant connection, where row-level security scopes it', () => {
+    expect(route).toMatch(/withTenant\(/u);
+    expect(route).not.toMatch(/\bwithAdmin\b|\bwithOperator\b/u);
+  });
+});
