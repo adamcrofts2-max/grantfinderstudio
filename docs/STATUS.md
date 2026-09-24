@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,964 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,980 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 172 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -6029,4 +6029,41 @@ Recorded against the open #418 item. Axe: every customer screen clean (the
 console leg could not sign in after the e2e had claimed the console — rig
 state, now a roadmap item). `npm install` for Lucide pruned the Playwright copy
 the scripts use; relinked, and noted on the roadmap.
+
+## Finishing jobs: large uploads, the zip bomb, and a script policy
+
+The first three engineering items on the finish line.
+
+**Uploads over 1 MB.** Next caps a server action's body at 1 MB, the upload is
+a server action, and the page promised 15. `experimental.serverActions.
+bodySizeLimit: '16mb'` — the 15 MB ceiling plus the multipart around it — and
+`src/documents/upload-limit.test.ts` holds the config to `UPLOAD_LIMITS` in
+both directions, since the limit applies to every form and should not creep.
+Walked: a 3.2 MB text file through the real documents form (with the model
+stub) was read, stored and listed.
+
+**The zip bomb.** A .docx is a zip and `mammoth` inflates all of it; the upload
+limit bounds what arrives, not what it becomes. `src/documents/zip-guard.ts`
+reads the central directory and then ACTUALLY INFLATES every entry with Node's
+`maxOutputLength` set to the budget left (100 MB in all), because the sizes a
+zip declares are the attacker's numbers — a test builds an archive that
+declares 10 bytes and inflates to 20 MB. Zip64, unknown methods and absurd
+entry counts are refused. It runs before `mammoth`, outside the parser's
+catch-all, so the person is told why.
+
+**A script Content-Security-Policy.** Until now the only policy was
+`frame-ancestors`. `src/app/csp.ts` builds one that allows scripts only by a
+per-request nonce with `'strict-dynamic'` — no `'unsafe-inline'`, no
+`'unsafe-eval'` outside development — plus `form-action 'self'`,
+`object-src 'none'` and `base-uri 'self'`. Middleware makes the nonce (128 bits,
+Web Crypto, edge-safe) and sets the policy on the request, where Next finds it
+and stamps it on its own scripts, and on the response. Every page is rendered
+per request (the root layout reads headers), which nonces require; the build
+has no static routes. Inline styles stay allowed: the product uses `style`
+attributes throughout and a style cannot run code. The static CSP line left
+`next.config.mjs` so a same-named header could never replace the full policy.
+Guards: the smoke test checks every `<script>` on three pages carries that
+response's nonce and that nonces differ between requests; the e2e fails on
+any policy violation in the browser console. Clean on both — 172 e2e checks
+with the watcher on.
 

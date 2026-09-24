@@ -484,6 +484,14 @@ try {
   // which of forty pages it was on, and the only way to narrow it was to run
   // the walk again and watch.
   page.on('pageerror', (e) => fail(`client exception at ${page.url()}: ${e.message}`));
+  // The script policy (src/app/csp.ts) refuses anything without this
+  // request's nonce. A refusal is a script the product meant to run and the
+  // browser would not — a broken page, or a new inline script nobody nonced.
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /Content Security Policy/iu.test(message.text())) {
+      fail(`a script policy violation at ${page.url()}: ${message.text().slice(0, 200)}`);
+    }
+  });
 
   const email = `e2e-${Date.now()}@example.org`;
   const password = 'a-long-enough-passphrase-9';

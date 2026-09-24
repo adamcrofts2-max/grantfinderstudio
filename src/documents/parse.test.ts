@@ -136,3 +136,33 @@ describe('parseDocument', () => {
     expect(parsed.characters).toBeLessThanOrEqual(UPLOAD_LIMITS.maxCharacters);
   });
 });
+
+describe('a Word file that would unpack into something enormous', () => {
+  it('is refused with a reason, before the Word reader sees it', async () => {
+    // A single 120 MB entry of zeros: a few hundred kilobytes on disk.
+    const { deflateRawSync } = await import('node:zlib');
+    const body = deflateRawSync(Buffer.alloc(120 * 1024 * 1024));
+    const name = Buffer.from('word/document.xml');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(body.length, 20);
+    central.writeUInt16LE(name.length, 28);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(1, 10);
+    end.writeUInt32LE(46 + name.length, 12);
+    end.writeUInt32LE(30 + name.length + body.length, 16);
+    const bomb = new Uint8Array(Buffer.concat([local, name, body, central, name, end]));
+
+    await expect(parseDocument(bomb, 'plan.docx', DOCX_MIME)).rejects.toThrow(
+      /unpacks to far more/u,
+    );
+  });
+});
+

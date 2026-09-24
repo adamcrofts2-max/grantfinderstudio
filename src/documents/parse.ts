@@ -15,6 +15,8 @@
 import { extractText, getDocumentProxy } from 'unpdf';
 import mammoth from 'mammoth';
 
+import { checkZip, ZipGuardError } from './zip-guard.js';
+
 import { classify, UPLOAD_LIMITS } from './accepted.js';
 import type { ParsedPage } from './chunk.js';
 
@@ -90,6 +92,18 @@ export async function parseDocument(
   const kind = classify(filename, mimeType);
   if (kind === null) {
     throw new DocumentError('We can read PDF, Word (.docx), plain text and Markdown files.');
+  }
+
+  // Before the parser, and outside its catch-all: a Word file that would
+  // inflate into gigabytes must be refused with a reason, not handed to
+  // mammoth to find out. See zip-guard.ts.
+  if (kind === 'docx') {
+    try {
+      checkZip(bytes);
+    } catch (error) {
+      if (error instanceof ZipGuardError) throw new DocumentError(error.message);
+      throw error;
+    }
   }
 
   let pages: ParsedPage[];

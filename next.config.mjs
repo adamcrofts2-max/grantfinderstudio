@@ -19,6 +19,18 @@ const nextConfig = {
   serverExternalPackages: ['@electric-sql/pglite', 'unpdf', 'mammoth'],
 
   /**
+   * Server actions default to a 1 MB body, and documents are uploaded through
+   * one — so every file over 1 MB failed with a framework error while the page
+   * promised 15. 16 MB is the 15 MB ceiling (`UPLOAD_LIMITS.maxBytes`) plus the
+   * multipart wrapping around it; `upload-limit.test.ts` holds the two to each
+   * other. What a Word file then UNPACKS to is bounded separately, in
+   * `src/documents/zip-guard.ts`.
+   */
+  experimental: {
+    serverActions: { bodySizeLimit: '16mb' },
+  },
+
+  /**
    * Response headers on every route. Added by the September 2026 security
    * review, which found none at all.
    *
@@ -33,15 +45,15 @@ const nextConfig = {
    *    sites. Stated anyway, so it is a decision rather than a browser
    *    default we happen to inherit.
    *
-   * Deliberately NOT a script Content-Security-Policy. Next inlines scripts
-   * for hydration, and a policy that allowed them would be theatre while one
-   * that did not would break every page; doing it properly needs nonces, and
-   * that is its own piece of work, recorded on the roadmap.
+   * The Content-Security-Policy is NOT here: it needs a nonce per request,
+   * so middleware sets it, `frame-ancestors 'none'` included (see
+   * `src/app/csp.ts`). One source for it, because a second header with the
+   * same name here could replace the full policy with this one line.
+   * `X-Frame-Options` still covers framing on the few paths middleware skips.
    */
   async headers() {
     const everywhere = [
       { key: 'X-Frame-Options', value: 'DENY' },
-      { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },

@@ -28,9 +28,9 @@ takes to close them. Everything not named here is polish or post-launch.
       password is a lost account
 - [ ] Invite a colleague: membership management, `authorise()` on every action,
       an organisation switcher
-- [ ] Uploads over 1 MB fail with a framework error; cap a `.docx`'s decompressed
+- [x] Uploads over 1 MB fail with a framework error; cap a `.docx`'s decompressed
       size before reading it
-- [ ] A script Content-Security-Policy with per-request nonces
+- [x] A script Content-Security-Policy with per-request nonces
 - [ ] Run the Writer and the Critic against the real model and read the output;
       an evaluation suite so a prompt change cannot quietly regress
 - [ ] Axe accessibility sweep and the e2e in CI, not only on a developer's machine
@@ -1200,10 +1200,10 @@ annotation inside the working screens.**
       the delete count — the data-rights work had left them out
 - [ ] `authorise()` on every other action before an invite flow ships; today
       only export and erasure consult a role
-- [ ] Uploads over 1 MB fail with a framework error: Next caps server actions
+- [x] Uploads over 1 MB fail with a framework error: Next caps server actions
       at 1 MB, the app promises 15. Fix together with the next item
-- [ ] Cap a `.docx`'s decompressed size before `mammoth` reads it (zip bomb)
-- [ ] A script Content-Security-Policy with per-request nonces
+- [x] Cap a `.docx`'s decompressed size before `mammoth` reads it (zip bomb) — every entry actually inflated under a 100 MB budget, not the headers trusted
+- [x] A script Content-Security-Policy with per-request nonces — middleware, `src/app/csp.ts`; the smoke test checks every script carries the nonce
 - [ ] AI evaluation suite
 - [ ] Performance
 

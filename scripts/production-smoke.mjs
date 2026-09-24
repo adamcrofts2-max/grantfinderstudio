@@ -204,6 +204,34 @@ for (const route of ROUTES) {
 }
 /* eslint-enable no-await-in-loop */
 
+// The script policy. Every page carries one whose nonce is on every script
+// in it — a script without the nonce is one the browser will refuse, which is
+// a broken page — and the nonce is new on every request, or it is no nonce.
+/* eslint-disable no-await-in-loop */
+const nonces = new Set();
+for (const route of ['/', '/sign-in', '/privacy']) {
+  const response = await fetch(`${B}${route}`, { redirect: 'manual' });
+  const policy = response.headers.get('content-security-policy') ?? '';
+  const nonce = /'nonce-([^']+)'/u.exec(policy)?.[1] ?? null;
+  const html = await response.text();
+  const scripts = html.match(/<script\b[^>]*>/giu) ?? [];
+  const bare = scripts.filter((tag) => nonce === null || !tag.includes(`nonce="${nonce}"`));
+  if (nonce === null || !policy.includes(`'strict-dynamic'`) || bare.length > 0) {
+    broken += 1;
+    console.log(
+      `${route.padEnd(22)} ${nonce === null ? 'NO SCRIPT POLICY' : `${bare.length} of ${scripts.length} scripts without the nonce`}  ← CSP`,
+    );
+  } else {
+    console.log(`${route.padEnd(22)} script policy: ${scripts.length} scripts, all nonced`);
+  }
+  if (nonce !== null) nonces.add(nonce);
+}
+if (nonces.size < 3) {
+  broken += 1;
+  console.log('the nonce repeated across requests  ← CSP');
+}
+/* eslint-enable no-await-in-loop */
+
 if (broken > 0 && server) {
   console.error('\n--- server log ---');
   console.error((server.serverLog ?? []).join('').slice(-6000));

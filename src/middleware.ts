@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { contentSecurityPolicy, makeNonce } from './app/csp';
+
 /**
- * Two small things the layout cannot do for itself.
+ * Three small things the layout cannot do for itself.
  *
  * A root layout in the App Router is not told which page it is wrapping, and
  * the console must not be dressed in the customer's shell — its navigation,
@@ -20,7 +22,16 @@ export function middleware(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set('x-pathname', request.nextUrl.pathname);
 
+  // The script policy, with a nonce made for this request alone. Set on the
+  // REQUEST so Next finds the nonce and stamps it on its own scripts, and on
+  // the RESPONSE so the browser enforces it. See `csp.ts`.
+  const policy = contentSecurityPolicy(makeNonce(), {
+    development: process.env.NODE_ENV === 'development',
+  });
+  headers.set('Content-Security-Policy', policy);
+
   const response = NextResponse.next({ request: { headers } });
+  response.headers.set('Content-Security-Policy', policy);
 
   // A console has no business in a search index. Belt and braces alongside the
   // per-page robots metadata: this covers the routes and any error page they
