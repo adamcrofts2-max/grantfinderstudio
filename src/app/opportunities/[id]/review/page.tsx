@@ -190,7 +190,7 @@ export default async function ReviewPage({
               <form action={rejectCriterionAction}>
                 <input type="hidden" name="criterionId" value={criterion.id} />
                 <input type="hidden" name="opportunityId" value={review.id} />
-                <button className="btn btn-secondary" type="submit">
+                <button className="btn btn-destructive" type="submit">
                   That’s wrong — don’t use it
                 </button>
               </form>

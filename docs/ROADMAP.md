@@ -40,15 +40,18 @@ takes to close them. Everything not named here is polish or post-launch.
       email; PDF is the fixed copy
 
 ### C. Design, to finish the job this pass started
-- [ ] One date style everywhere (the tracker's "Sun, 1 Nov 2026" or the rest's
-      "1 November 2026" — pick one)
-- [ ] Button hierarchy by consequence on every screen, not only the application;
-      a destructive style for remove and reject
+- [x] One date style everywhere — "1 November 2026", with the weekday named only
+      on the tracker's deadlines, from one function (2026-09-24)
+- [x] A destructive button style for remove, reject and delete (2026-09-24)
+- [ ] Button hierarchy by consequence audited on every screen, not only the
+      application page
 - [ ] Stat tiles on the home, tracker and organisation screens; application
       progress as a segmented bar; the effort composition bar
 - [ ] Real drop zones on the two upload screens
-- [ ] "Who benefits" has nothing for an environmental CIC; one answer to "who is
-      it for" rather than the checkbox and the prose asking twice
+- [x] "Who benefits" has nothing for an environmental CIC — "the environment and
+      wildlife", which meets funders' "Environment and conservation" (2026-09-24)
+- [ ] One answer to "who is it for" rather than the project's checkboxes and the
+      work step's prose asking twice
 - [ ] A professional illustrator's pass over `illustration/cast.tsx` — optional;
       the hand-authored set is production quality, not placeholder
 
@@ -1316,7 +1319,7 @@ Found, not fixed — most need a product decision:
 - [ ] After "Add this fund" you stay on the full form with a one-line success
 - [x] "Find your company" stays in the nav after setup, with "Your organisation"'s icon
 - [ ] Stale hint under "Kind of cost" (Overheads text while Staff is chosen)
-- [ ] "Who benefits" is people only; an environmental CIC has nothing to tick
+- [x] "Who benefits" is people only; an environmental CIC has nothing to tick
 - [ ] Rows saved before the deadline fix still read "date not confirmed" beside
       "No deadline recorded" on the tracker
 - [ ] The landing's hard-coded "In build — the corpus is being loaded" note: remove
@@ -1346,7 +1349,7 @@ rather than faults, kept here rather than in a document nobody opens again.
 - [ ] The nav's first item is labelled "Opportunities" and goes to `/`, the
       next-step dashboard. Ten flat entries also put "Search grants", "Who
       funds this", "Add a fund" and "Opportunities" in one ungrouped list
-- [ ] Dates are formatted two ways: "2026-11-01" on the card and fund page,
+- [x] Dates are formatted two ways: "2026-11-01" on the card and fund page,
       "Sun, 1 Nov 2026 · in 47 days" on the tracker. The tracker's is the one
       to keep
 - [ ] Repeated classification labels print twice — "Somerset · Children and

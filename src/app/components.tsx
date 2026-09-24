@@ -1,3 +1,4 @@
+import { formatDate } from '@/domain/time/format';
 import type { ReactNode } from 'react';
 import type { CriterionOutcome } from '@/domain/eligibility/types';
 import type { Recommendation } from '@/domain/effort/model';
@@ -116,15 +117,12 @@ export function decisionLine(row: DecidedRow): string {
   return `Funded${when} — ${gbp(row.amountAwardedGbp)}${cut}.`;
 }
 
-/** A date a British reader can scan: "Mon 30 Nov 2026". */
+/**
+ * A date with its weekday: "Monday 30 November 2026". One style with every
+ * other date in the product — see `formatDate`.
+ */
 export function humanDate(isoDate: string): string {
-  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  return formatDate(isoDate, { weekday: true });
 }
 
 export function gbp(value: number): string {

@@ -105,7 +105,7 @@ export function DataRights({
               )}
 
               <button
-                className="btn btn-secondary"
+                className="btn btn-destructive"
                 disabled={erasing}
                 style={{ marginTop: 'var(--s-4)' }}
                 type="submit"

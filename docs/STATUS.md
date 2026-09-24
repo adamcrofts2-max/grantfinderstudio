@@ -4,7 +4,7 @@
 
 ## What exists
 
-**1,991 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 173 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
+**1,994 tests (8 skipped), lint clean, typecheck clean, app builds.** `npm run verify` runs all four. Beyond it: `npm run smoke` (production build, real Postgres, every route — it starts its own server on :3200 too), `npm run e2e` (a browser walks sign-up to a budgeted application and on to the tracker, 173 assertions — it starts its own stub publisher, resets the three tables it depends on and serves its own build on :3100, so consecutive runs agree) and `npm run walk`. `scripts/stub-360giving.mjs` is a realistic corpus to walk against: `--print` reports its distribution, `--port` serves it.
 
 ### Documentation
 - `docs/PRODUCT_ARCHITECTURE.md` — product and technical analysis (Part 1)
@@ -6121,4 +6121,27 @@ one that does not exist), and writes `application.exported` to the trail in
 the same transaction, against the application. The e2e downloads it from a
 live application: 200, the Word type, a real zip, the fund-and-date name —
 clean at 173 checks. PDF is split out as its own open item.
+
+## Three design items from the finish line
+
+**One date style.** The tracker wrote "Sun, 1 Nov 2026" through the runtime's
+locale data and everything else "1 November 2026". `formatDate` in
+`src/domain/time/format.ts` is now the only source; `{ weekday: true }` adds
+the day's name ("Sunday 1 November 2026") for the tracker's deadlines, the one
+place it is information — a Sunday deadline means Friday. Computed in UTC, so
+the day cannot move with the server's time zone, and no longer dependent on
+the machine's ICU data.
+
+**A destructive button weight.** `.btn-destructive`: red text and border on
+the ordinary surface, a red wash on hover — distinct from secondary, and
+deliberately lighter than primary, as the design brief requires. On removing
+a fund, deleting the organisation, rejecting a proposed rule, and the
+console's two Remove buttons. Each keeps its words, so the colour never
+carries the meaning alone.
+
+**An environmental choice under "who benefits".** A tree nursery had nothing
+to tick. "the environment and wildlife" shares a word with the label funders
+publish for that work ("Environment and conservation"), which is how the funder
+match compares them — a test holds it. The same list feeds the rule form, so a
+funder's environmental rule and an applicant's choice meet.
 

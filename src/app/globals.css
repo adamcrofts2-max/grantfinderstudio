@@ -413,6 +413,16 @@ a:hover { color: var(--accent-hover); }
   border-color: var(--line-strong);
 }
 .btn-secondary:hover { background: var(--surface-sunken); }
+/* The fourth weight: removes or discards something. Red, and deliberately
+   LIGHTER than primary — the design brief's rule is that a destructive action
+   is never the same weight as the one the screen exists for. It keeps its
+   words ("Remove the fund", "Delete everything, permanently"), so the colour
+   is never the only thing saying what it does. */
+.btn-destructive {
+  background: var(--surface); color: var(--negative);
+  border-color: var(--negative-line);
+}
+.btn-destructive:hover { background: var(--negative-bg); border-color: var(--negative); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* A control that carries a real action but should not compete with the

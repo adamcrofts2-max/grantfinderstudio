@@ -103,7 +103,7 @@ export const EMPTY_PROJECT: ProjectState = {
   values: NO_VALUES,
 };
 
-/** Beneficiary groups as funders name them, so a criterion can actually match. */
+/** Who (or what) the work is for, as funders name them, so a criterion can actually match. */
 export const BENEFICIARY_CHOICES = [
   'young people',
   'older people',
@@ -115,6 +115,11 @@ export const BENEFICIARY_CHOICES = [
   'women and girls',
   'ethnic minority communities',
   'the general community',
+  // Not people, and the one choice an environmental CIC was missing: a tree
+  // nursery had nothing to tick. Worded so it shares a word with the label
+  // funders publish ("Environment and conservation"), which is how the
+  // funder match reads it — see `labelsOverlap`.
+  'the environment and wildlife',
 ] as const;
 
 export const SPEND_CHOICES = [

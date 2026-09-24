@@ -606,3 +606,12 @@ describe('one word is a coincidence, two are a description', () => {
     expect(p.workAwards).toHaveLength(0);
   });
 });
+
+describe('an environmental CIC’s beneficiary choice', () => {
+  it('meets the label funders publish for environmental grants', () => {
+    // The choice exists so a tree nursery has something to tick; it is only
+    // worth having if it matches what funders call that work.
+    expect(labelsOverlap('Environment and conservation', 'the environment and wildlife')).toBe(true);
+    expect(labelsOverlap('Children and young people', 'the environment and wildlife')).toBe(false);
+  });
+});

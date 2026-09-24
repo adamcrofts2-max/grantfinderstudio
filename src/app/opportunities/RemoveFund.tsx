@@ -40,7 +40,7 @@ export function RemoveFund({
             Remove my application and its answers as well
           </label>
         )}
-        <button className="btn btn-secondary" type="submit" style={{ marginTop: 'var(--s-4)' }}>
+        <button className="btn btn-destructive" type="submit" style={{ marginTop: 'var(--s-4)' }}>
           {application === null ? 'Remove the fund' : 'Remove the fund and its application'}
         </button>
       </form>

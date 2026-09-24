@@ -102,7 +102,7 @@ export default async function AdminCataloguePage() {
                 </div>
                 <form action={removeSharedFundAction}>
                   <input type="hidden" name="id" value={fund.id} />
-                  <button className="btn btn-secondary btn-small" type="submit">Remove</button>
+                  <button className="btn btn-destructive btn-small" type="submit">Remove</button>
                 </form>
               </li>
             ))}

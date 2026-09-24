@@ -13,10 +13,30 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-/** "16 November 2026". Anything that is not YYYY-MM-DD comes back unchanged. */
-export function formatDate(isoDate: string): string {
+const WEEKDAYS = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+] as const;
+
+/**
+ * "16 November 2026" — the one date style in the product.
+ *
+ * `weekday` adds the day's name, "Monday 16 November 2026", for the one place
+ * it is information rather than decoration: a deadline on a planning screen,
+ * where a Sunday deadline means Friday. There used to be a second style
+ * ("Mon, 16 Nov 2026", from the browser's locale data) on the tracker and
+ * this one everywhere else; a date written two ways in one product reads as
+ * two different kinds of date.
+ *
+ * Anything that is not YYYY-MM-DD comes back unchanged.
+ */
+export function formatDate(isoDate: string, { weekday = false } = {}): string {
   const [year, month, day] = isoDate.slice(0, 10).split('-');
   const name = MONTHS[Number(month) - 1];
   if (year === undefined || day === undefined || name === undefined) return isoDate;
-  return `${Number(day)} ${name} ${year}`;
+  const plain = `${Number(day)} ${name} ${year}`;
+  if (!weekday) return plain;
+  // UTC throughout: a date has no time zone, and local midnight in the
+  // server's zone can fall on the previous day.
+  const dayOfWeek = WEEKDAYS[new Date(`${isoDate.slice(0, 10)}T00:00:00Z`).getUTCDay()];
+  return dayOfWeek === undefined ? plain : `${dayOfWeek} ${plain}`;
 }

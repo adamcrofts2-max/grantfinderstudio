@@ -119,7 +119,7 @@ export default async function AdminFundersPage() {
                 </div>
                 <form action={removeFunderAction}>
                   <input type="hidden" name="id" value={holding.id} />
-                  <button className="btn btn-secondary btn-small" type="submit">Remove</button>
+                  <button className="btn btn-destructive btn-small" type="submit">Remove</button>
                 </form>
               </li>
             ))}
