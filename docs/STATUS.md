@@ -6200,3 +6200,18 @@ the link, and the reset links as something held for at most a day.
   password refused without spending the link, the new one saved, a second
   browser's session ended, old password refused, new one accepted, the link
   dead on a second use — **clean at 185 checks**. Axe clean on both new pages.
+
+## Two ids that were only the time
+
+CI failed on `main` for ed9f424 — the same commit passed on the branch — with
+`duplicate key value violates unique constraint "answer_versions_pkey"` in
+`reviews.test.ts`. Not a flake: an answer version's id was
+`ver_<question>_<Date.now()>`, so two saves of one answer in the same
+millisecond collided. A test that saves three times in a row does that on a
+fast runner; a person double-clicking Save would have got a server error.
+A fact correction's id (`<fact>_r<Date.now()>`) had the same fault. Both now
+carry 32 random bits after the time. `answers.test.ts` freezes `Date.now` and
+saves twice — both tests fail with the original error before the fix and pass
+after, so the collision is proven rather than hoped away. Question ids were
+checked too and are already unique: their position counter advances within
+one insert.

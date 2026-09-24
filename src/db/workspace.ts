@@ -6,6 +6,8 @@
  * layer is where a human turns one into something the Writer may rely on.
  */
 
+import { randomBytes } from 'node:crypto';
+
 import type { Fact } from '../domain/provenance/facts.js';
 import type { Confidence } from '../domain/provenance/facts.js';
 import type { SourceType } from '../domain/types.js';
@@ -90,7 +92,9 @@ export async function correctFact(
   const original = existing.rows[0];
   if (!original) return;
 
-  const replacementId = `${factId}_r${Date.now()}`;
+  // The time alone is not unique: two corrections in one millisecond collided
+  // on the primary key. The random part is what makes it an id.
+  const replacementId = `${factId}_r${Date.now()}_${randomBytes(4).toString('hex')}`;
   await tx.query(
     `INSERT INTO facts
        (id, organisation_id, claim, value, source, source_ref, source_span,
@@ -240,7 +244,15 @@ export async function saveAnswer(
   await tx.query(
     `INSERT INTO answer_versions (id, organisation_id, answer_id, content, created_by)
      VALUES ($1, $2, $3, $4, $5)`,
-    [`ver_${answer.questionId}_${Date.now()}`, organisationId, answerId, answer.content, createdBy],
+    // Not the time alone: two saves of one answer in the same millisecond — a
+    // double click, or a test — collided on the primary key and failed CI.
+    [
+      `ver_${answer.questionId}_${Date.now()}_${randomBytes(4).toString('hex')}`,
+      organisationId,
+      answerId,
+      answer.content,
+      createdBy,
+    ],
   );
 
   // Replace the provenance for this answer with the current draft's.

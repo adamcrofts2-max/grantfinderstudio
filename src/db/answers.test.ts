@@ -10,9 +10,9 @@
  * which assumes you write every answer yourself.
  */
 
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadApplication, loadClaimRefs, saveAnswer } from './workspace.js';
+import { correctFact, loadApplication, loadClaimRefs, saveAnswer } from './workspace.js';
 import { createTestDatabase, type TestDatabase } from './testing/harness.js';
 import type { Queryable } from './client.js';
 
@@ -95,5 +95,43 @@ describe('an answer somebody wrote themselves', () => {
     const application = await loadApplication(tx(), APP);
     expect(application?.answers.get(Q)?.content).toBe('');
     expect(await loadClaimRefs(tx(), Q)).toEqual([]);
+  });
+});
+
+describe('saving the same answer twice in one millisecond', () => {
+  it('keeps both versions rather than colliding on the key', async () => {
+    // The version id was the question and the time, so a double click — or a
+    // fast test on CI — failed on the primary key. The clock is frozen here
+    // so the collision is certain rather than a matter of luck.
+    const frozen = vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    try {
+      await save('First go.', []);
+      await save('Second go.', []);
+      await save('Third go.', []);
+    } finally {
+      frozen.mockRestore();
+    }
+    const { rows } = await tx().query<{ n: string }>(
+      'SELECT count(*)::text AS n FROM answer_versions',
+    );
+    expect(rows[0]?.n).toBe('3');
+  });
+});
+
+describe('correcting a fact twice in one millisecond', () => {
+  it('stores both corrections rather than colliding on the key', async () => {
+    // The same time-only id as answer versions had, one table along.
+    await harness.db.exec(`INSERT INTO users (id, email) VALUES ('user_fix', 'fix@example.org')`);
+    const frozen = vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    try {
+      await correctFact(tx(), 'fact_mission', 'We train young people in Wells and Frome.', 'user_fix');
+      await correctFact(tx(), 'fact_mission', 'We train young people across Somerset.', 'user_fix');
+    } finally {
+      frozen.mockRestore();
+    }
+    const { rows } = await tx().query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM facts WHERE id LIKE 'fact_mission_r%'",
+    );
+    expect(rows[0]?.n).toBe('2');
   });
 });
